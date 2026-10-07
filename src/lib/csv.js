@@ -26,6 +26,7 @@ export function buildWorkflowCsv(leads, getCrm) {
     ['manual_instagram_user_entered', (lead) => manualOnly(lead, 'instagram', lead.instagram)],
     ['manual_facebook_user_entered', (lead) => manualOnly(lead, 'facebook', lead.facebook)],
     ['google_place_id_google_sourced', (lead) => lead.source === 'google' ? lead.placeId || lead.id : ''],
+    ['osm_object_osm_sourced', (lead) => lead.source === 'osm' ? lead.placeId || lead.id : ''],
     ['user_status', (lead) => getCrm(lead).status],
     ['user_notes', (lead) => getCrm(lead).notes],
     ['user_last_contacted_date', (lead) => getCrm(lead).lastContacted],

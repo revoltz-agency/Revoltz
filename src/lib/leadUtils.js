@@ -1,3 +1,4 @@
+import { isOsmLead, listingSourceNoun } from './freeLeadFinder.js';
 import { getWebsiteAudit } from './qualification.js';
 
 export function dedupeLeads(leads = []) {
@@ -53,11 +54,14 @@ export function whyThisLead(lead) {
   const reviews = Number(lead.reviews);
   const rating = Number(lead.rating);
   const audit = getWebsiteAudit(lead);
-  if (!lead.website) reasons.push({ key: 'website', text: lead.demo ? 'No website field is included in this fictional sample record.' : 'No website is listed in the Google business profile.', type: 'opportunity' });
+  if (!lead.website) reasons.push({ key: 'website', text: lead.demo ? 'No website field is included in this fictional sample record.' : `No website is listed in the ${listingSourceNoun(lead)} business record.`, type: 'opportunity' });
   if (reviews >= 100) reasons.push({ key: 'reviews', text: lead.demo ? `Fictional sample data includes ${reviews.toLocaleString()} reviews.` : lead.manualUserFields?.includes('reviews') ? `${reviews.toLocaleString()} reviews were entered manually; verify the count before relying on it.` : `${reviews.toLocaleString()} Google reviews`, type: 'positive' });
   if (rating >= 4.5) reasons.push({ key: 'rating', text: lead.demo ? `Fictional sample rating (${rating.toFixed(1)} / 5).` : lead.manualUserFields?.includes('rating') ? `A ${rating.toFixed(1)} rating was entered manually; verify its source before relying on it.` : `Strong local rating (${rating.toFixed(1)} / 5)`, type: 'positive' });
   if (lead.phone) reasons.push({ key: 'phone', text: lead.demo ? 'A phone number is included in this fictional sample.' : lead.manualUserFields?.includes('phone') ? 'A phone number was entered manually; confirm it belongs to the business before use.' : 'Public business phone is available in the listing.', type: 'positive' });
-  if (!lead.phone) reasons.push({ key: 'phone-missing', text: lead.demo ? 'No phone number is included in this fictional sample.' : 'Phone was not returned in the Google listing.', type: 'neutral' });
+  if (!lead.phone) reasons.push({ key: 'phone-missing', text: lead.demo ? 'No phone number is included in this fictional sample.' : `Phone was not returned in the ${listingSourceNoun(lead)} listing.`, type: 'neutral' });
+  // OpenStreetMap carries no reputation or operational-status fields; say so
+  // instead of letting the absence look like a scored weakness.
+  if (isOsmLead(lead)) reasons.push({ key: 'osm-no-reputation', text: 'OpenStreetMap does not provide ratings, review counts, or business status, so those signals are absent rather than poor.', type: 'neutral' });
   if ((lead.instagram || lead.facebook) && lead.manualUserFields?.some((field) => ['instagram', 'facebook'].includes(field))) reasons.push({ key: 'social-manual', text: 'A social profile link was entered manually; verify the profile belongs to the business.', type: 'positive' });
   if (lead.businessStatus === 'OPERATIONAL') reasons.push({ key: 'active', text: lead.demo ? 'Fictional sample data marks this business operational.' : 'Google lists the business as operational.', type: 'positive' });
   if (audit?.ctaDetected === false) reasons.push({ key: 'cta', text: lead.demo ? 'Illustrative demo check did not detect an enquiry CTA.' : 'No obvious enquiry CTA detected in the limited HTML check.', type: 'opportunity' });
@@ -90,7 +94,7 @@ export function recommendService(lead) {
     return [{ service: 'Manual review', reason: 'Fictional demo signals are illustrative only; no real-business service gap is verified.' }];
   }
   if (!lead.website) {
-    suggestions.push({ service: 'Website', reason: 'No website is listed in the returned Google profile.' });
+    suggestions.push({ service: 'Website', reason: `No website is listed in the returned ${listingSourceNoun(lead)} profile.` });
     suggestions.push({ service: 'Lead capture', reason: 'A website is not listed, so a dedicated enquiry path could be explored.' });
     return suggestions;
   }
