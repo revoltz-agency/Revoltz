@@ -11,6 +11,9 @@ import { buildWorkflowCsv } from './lib/csv.js';
 import { addDays, followUpPlan, formatDate, localDateString } from './lib/dates.js';
 import { buildOutreach } from './lib/outreach.js';
 import { getWebsiteAudit, opportunityReason, scoreOpportunity } from './lib/qualification.js';
+import { initials, ScorePill, titleCaseStatus } from './components/leadPrimitives.jsx';
+import { isAppPath, navigate, useRouterPath } from './lib/router.js';
+import RevoltzSite from './site/RevoltzSite.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
 import { enrichmentCrmPatch, markLeadContacted, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
 import { getOrCreateCachedRequest } from './lib/placeDetailsCache.js';
@@ -147,8 +150,6 @@ function demoSearch(category, city) {
     return cityMatch && (!requested.length || requested.some((token) => text.includes(token)));
   });
 }
-function titleCaseStatus(value) { return String(value || '').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase()); }
-function initials(name = '') { return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '—'; }
 function getLeadKey(lead) { return lead?.placeId || lead?.id; }
 function safePhoneDigits(phone) { const value = String(phone || '').trim(); if (!/^\+[1-9]/.test(value)) return ''; const digits = value.replace(/\D/g, ''); return digits.length >= 8 && digits.length <= 15 ? digits : ''; }
 function safeHttpUrl(value) {
@@ -157,7 +158,7 @@ function safeHttpUrl(value) {
 }
 function getDefaultCrm(lead) { return cleanCrmRecord({ ...DEFAULT_CRM, ...(lead?.initialCRM || {}) }); }
 
-function App() {
+function AgencyOSApp() {
   const [activePage, setActivePage] = useState('Dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [apiConfig, setApiConfig] = useState({ loading: true, googlePlacesConfigured: false, freeSearchEnabled: false, reachable: true });
@@ -595,7 +596,7 @@ function App() {
           {activePage === 'Privacy Policy' && <LegalPage type="privacy" onNavigate={setActivePage} />}
           {activePage === 'Terms' && <LegalPage type="terms" onNavigate={setActivePage} />}
         </main>
-        <footer className="app-footer"><span>AgencyOS <i>·</i> Evidence-led prospecting</span><div><button type="button" onClick={() => setActivePage('Privacy Policy')}>Privacy</button><button type="button" onClick={() => setActivePage('Terms')}>Terms</button><span className="footer-version">V1.0</span></div></footer>
+        <footer className="app-footer"><span>AgencyOS <i>·</i> Evidence-led prospecting</span><div><a className="footer-site-link" href="/" onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey) return; event.preventDefault(); navigate('/'); }}>REVOLTZ AI</a><button type="button" onClick={() => setActivePage('Privacy Policy')}>Privacy</button><button type="button" onClick={() => setActivePage('Terms')}>Terms</button><span className="footer-version">V1.0</span></div></footer>
       </div>
       {selectedLead && <LeadDrawer key={getLeadKey(selectedLead)} lead={selectedLead} crm={getCrm(selectedLead)} onClose={() => setSelectedLeadId('')} onUpdate={(patch) => updateCrm(selectedLead, patch)} onStatus={(status) => updateStatus(selectedLead, status)} onMarkContacted={() => markContacted(selectedLead)} onRemove={() => removeSavedLead(selectedLead)} onRefreshPlace={() => refreshSavedPlace(selectedLead)} refreshingPlace={Boolean(refreshingDetailsIds[getLeadKey(selectedLead)])} onAnalyze={() => analyzeWebsite(selectedLead)} analyzing={Boolean(auditLoadingIds[getLeadKey(selectedLead)])} auditRevealed={Boolean(auditRevealedIds[getLeadKey(selectedLead)])} onEnrich={() => enrichLead(selectedLead)} enriching={Boolean(enrichmentLoadingIds[getLeadKey(selectedLead)])} onPitch={() => handleOpenPitch(selectedLead)} />}
       {outreachLead && <OutreachModal key={getLeadKey(outreachLead)} lead={outreachLead} crm={getCrm(outreachLead)} onClose={() => setOutreachLeadId('')} onToast={showToast} onMarkContacted={() => markContacted(outreachLead)} onReviewLead={() => { setOutreachLeadId(''); setSelectedLeadId(getLeadKey(outreachLead)); }} />}
@@ -655,10 +656,6 @@ function OsmDisclosure({ matchedCategory = '', queriedTags = [], resolvedLocatio
     </div>
     <p className="google-source-note"><Info size={12} /> Data from OpenStreetMap, a community-maintained map, made available under the <a href={OSM_LICENSE_URL} target="_blank" rel="noreferrer">Open Database License</a>. Coverage varies by area; a missing field is unknown, not evidence of a gap.{matchedCategory ? ` Matched category: ${matchedCategory}${tagText ? ` (${tagText})` : ''}.` : ''}{resolvedLocation ? ` Searched around: ${resolvedLocation}.` : ''}</p>
   </div>;
-}
-function ScorePill({ lead, compact = false }) {
-  const result = scoreOpportunity(lead);
-  return <span className={`score-pill score-${result.tier} ${compact ? 'score-compact' : ''}`} title={`${result.rawScore} raw points normalized to ${result.score}/100`}><span className="score-pill-dot" />{result.score}<span className="score-pill-suffix">/100</span></span>;
 }
 function PriorityLabel({ tier }) { return <span className={`priority-label priority-${tier}`}>{tier === 'high' ? <Flame size={13} /> : tier === 'medium' ? <span className="priority-sun" /> : <span className="priority-ring" />}{tier === 'high' ? 'HOT' : tier === 'medium' ? 'WARM' : 'COLD'}</span>; }
 function EmptyState({ icon: Icon, title, body, actionLabel, onAction }) {
@@ -1248,6 +1245,17 @@ function OutreachModal({ lead, crm, onClose, onToast, onMarkContacted, onReviewL
       </section>
     </div>
   );
+}
+
+// Top-level shell: the public REVOLTZ AI site lives at "/", the AgencyOS
+// workspace at "/agencyos". Both share one bundle; no server routes changed.
+function App() {
+  const path = useRouterPath();
+  useEffect(() => {
+    if (window.location.hash) return;
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, [path]);
+  return isAppPath(path) ? <AgencyOSApp /> : <RevoltzSite />;
 }
 
 export default App;
