@@ -4,8 +4,8 @@
 # workspace runs in its client-only fallback (demo/manual leads, local CRM
 # storage). Run the Express server (`npm start`) for full search/enrichment.
 #
-# The first run enables Pages automatically (Source: GitHub Actions), so no
-# manual Settings -> Pages change is required.
+# GitHub Pages is configured in repository Settings -> Pages with Source =
+# "GitHub Actions".
 # Site URL: https://revoltz-agency.github.io/Revoltz/
 name: Deploy to GitHub Pages
 
@@ -31,12 +31,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Enables GitHub Pages with Source = "GitHub Actions" on the first run,
-      # so no manual Settings → Pages change is required.
       - name: Setup Pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Set up Node
         uses: actions/setup-node@v4
