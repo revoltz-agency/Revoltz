@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { buildOutreach } from '../src/lib/outreach.js';
 import { addDays, followUpPlan } from '../src/lib/dates.js';
 import { markLeadContacted, updateCrmRecord, validateOutreachContact } from '../src/lib/crm.js';
+import { createManualLead } from '../src/lib/manualLeads.js';
 
 test('outreach uses only the listing details supplied to the generator', () => {
   const lead = { name: 'Sample Bistro', category: 'Restaurant', city: 'Pune', website: '', rating: 4.8, reviews: 428 };
@@ -72,4 +73,17 @@ test('WhatsApp outreach requires a public phone and explicit per-lead opt-in', (
   assert.equal(validateOutreachContact('whatsapp', lead, { status: 'NEW', whatsappOptInConfirmed: true }).allowed, true);
   assert.equal(validateOutreachContact('whatsapp', { ...lead, phone: '' }, { status: 'NEW', whatsappOptInConfirmed: true }).allowed, false);
   assert.equal(validateOutreachContact('whatsapp', { ...lead, demo: true }, { status: 'NEW', whatsappOptInConfirmed: true }).allowed, false);
+});
+
+test('manual lead outreach keeps email verification, contact-basis, WhatsApp opt-in, and Do Not Contact gates', () => {
+  const lead = createManualLead({ name: 'North Star', category: 'Cafe', city: 'Pune', email: 'owner@example.com', phone: '+91 98765 43210' }, { id: 'manual-outreach' });
+  const crm = { status: 'NEW', email: lead.initialCRM.email, emailVerifiedByUser: false, emailPermissionConfirmed: false, whatsappOptInConfirmed: false };
+  assert.equal(validateOutreachContact('email', lead, crm).allowed, false);
+  assert.equal(validateOutreachContact('email', lead, { ...crm, emailVerifiedByUser: true }).allowed, false);
+  assert.equal(validateOutreachContact('email', lead, { ...crm, emailVerifiedByUser: true, emailPermissionConfirmed: true }).allowed, true);
+  assert.equal(validateOutreachContact('whatsapp', lead, crm).allowed, false);
+  assert.equal(validateOutreachContact('whatsapp', lead, { ...crm, whatsappOptInConfirmed: true }).allowed, true);
+  const dnc = { ...crm, status: 'DO NOT CONTACT', emailVerifiedByUser: true, emailPermissionConfirmed: true, whatsappOptInConfirmed: true };
+  assert.equal(validateOutreachContact('email', lead, dnc).allowed, false);
+  assert.equal(validateOutreachContact('whatsapp', lead, dnc).allowed, false);
 });

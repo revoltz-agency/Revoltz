@@ -1,3 +1,5 @@
+import { manualLeadSourceLabel } from './manualLeads.js';
+
 function safeCell(value) {
   let text = value == null ? '' : String(value);
   // Prevent spreadsheet formula execution while preserving CRM data.
@@ -5,8 +7,24 @@ function safeCell(value) {
   return `"${text.replaceAll('"', '""')}"`;
 }
 
+function manualOnly(lead, field, value) {
+  return lead?.source === 'manual' || lead?.manualUserFields?.includes(field) ? value ?? '' : '';
+}
+
 export function buildWorkflowCsv(leads, getCrm) {
   const columns = [
+    ['lead_source', (lead) => manualLeadSourceLabel(lead)],
+    ['manual_business_name_user_entered', (lead) => manualOnly(lead, 'name', lead.name)],
+    ['manual_industry_user_entered', (lead) => manualOnly(lead, 'category', lead.category)],
+    ['manual_city_user_entered', (lead) => manualOnly(lead, 'city', lead.city)],
+    ['manual_website_user_entered', (lead) => manualOnly(lead, 'website', lead.website)],
+    ['manual_phone_user_entered', (lead) => manualOnly(lead, 'phone', lead.phone)],
+    ['manual_google_maps_url_user_entered', (lead) => manualOnly(lead, 'mapsUrl', lead.mapsUrl)],
+    ['manual_address_user_entered', (lead) => manualOnly(lead, 'address', lead.address)],
+    ['manual_rating_user_entered', (lead) => manualOnly(lead, 'rating', lead.rating)],
+    ['manual_review_count_user_entered', (lead) => manualOnly(lead, 'reviews', lead.reviews)],
+    ['manual_instagram_user_entered', (lead) => manualOnly(lead, 'instagram', lead.instagram)],
+    ['manual_facebook_user_entered', (lead) => manualOnly(lead, 'facebook', lead.facebook)],
     ['google_place_id_google_sourced', (lead) => lead.source === 'google' ? lead.placeId || lead.id : ''],
     ['user_status', (lead) => getCrm(lead).status],
     ['user_notes', (lead) => getCrm(lead).notes],

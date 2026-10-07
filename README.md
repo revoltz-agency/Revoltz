@@ -10,14 +10,14 @@ AgencyOS is a responsive, dark-mode lead research and CRM MVP for an AI/web agen
 - **Server:** Express 5 serves the Vite app in development and the static build in production. API keys and outbound API calls stay server-side.
 - **Places search:** `POST /api/places/search` calls `https://places.googleapis.com/v1/places:searchText` with an explicit field mask and paginates up to 50 results (20 per request, at most three pages). Results are deduplicated by place ID. No wildcard field masks or Maps-page scraping are used. When a radius is selected, the server optionally geocodes the location through Google's Geocoding API and applies a Text Search location bias. Text Search bias is approximate, not a strict geographic boundary. `POST /api/places/details` is only called when an operator manually refreshes a saved place ID; the frontend caches each successful or failed request for the active app session.
 - **Website check:** `POST /api/website/analyze` performs a constrained request to a public website and inspects a small HTML response for observable source signals, including link-text/URL evidence of an ordering link for food businesses. It includes SSRF safeguards, redirect checks, timeouts, content-type checks, and a 350 KB response limit. It is not a visual, accessibility, security, or full conversion audit.
-- **Qualification and draft generation:** A local, explainable rule engine scores only observed signals. Message drafts are generated from verified listing fields and any completed HTML check; no external LLM is used in this V1 so the product does not invent business claims. There is no AI-provider credential to configure.
-- **CRM storage:** Places responses exist in browser memory for the active session and are not stored by the server or browser storage. `localStorage` holds CRM-only workflow fields keyed by place ID, saved Google place IDs (which are exempt from Places caching restrictions), and recent user-entered search terms only. Saved Google IDs are shown as placeholders after a reload; the operator explicitly refreshes a place to fetch current details. The CRM export includes labeled user-entered workflow fields and Google place IDs only; it intentionally omits Google business content.
+- **Qualification and draft generation:** A local, explainable rule engine scores source-appropriate observable signals; manually entered rating/review/social details are clearly identified as user-provided, and missing manual fields are treated as unknown. Message drafts use the supplied business details and any explicitly completed HTML check; no external LLM is used in this V1 so the product does not invent business claims. There is no AI-provider credential to configure.
+- **CRM storage:** Google Places responses stay in browser memory for the active session and are not written to the server or browser storage. `localStorage` holds CRM workflow fields, manually entered leads and explicit user-entered overrides, saved Google place IDs (which are exempt from Places caching restrictions), and recent user-entered search terms. Saved Google IDs are shown as placeholders after a reload; the operator explicitly refreshes a place to fetch current details. CSV export includes labeled manual/user-entered details, CRM workflow fields, and Google place IDs, but intentionally omits Google Places business listing content.
 
 ## Requirements
 
 - Node.js 20 or later (tested with Node 22)
 - npm
-- Google Maps Platform credentials only if you want live lead search. The app runs without them in Demo Mode.
+- Google Maps Platform credentials only if you want live lead search. Manual lead entry and CSV import are free, work without a key, and make zero Google Places API calls.
 
 ## Local setup
 
@@ -27,17 +27,14 @@ cp .env.example .env
 npm run dev
 ```
 
-Open the URL printed by the server (default `http://localhost:5173`). Demo Mode is automatic when `GOOGLE_MAPS_API_KEY` is empty. The app displays:
-
-> Google Places API not configured — Demo Mode active.
-
-The demo contains ten **fictional** Pune businesses. Their `.example` website URLs are reserved placeholders and are never fetched. Demo contact actions cannot reach real businesses.
+Open the URL printed by the server (default `http://localhost:5173`). Demo Mode is automatic when `GOOGLE_MAPS_API_KEY` is empty. The app offers Demo Mode with ten **fictional** Pune businesses. The Lead Finder also offers **Add Manual Lead** and **Import CSV** when no key is configured; these local-only flows work without a Google Places key or Places API request. Demo records use reserved `.example` website placeholders and are never fetched. Demo contact actions cannot reach real businesses.
 
 Run the checks/build:
 
 ```bash
 npm test
 npm run build
+npm audit --omit=dev
 ```
 
 ## Environment variables
@@ -64,14 +61,20 @@ The UI shows the prescribed “Google Maps” text attribution alongside live li
 ## Product flows
 
 - **Dashboard:** Pipeline counts, priority shortlist, and suggested follow-up queue.
-- **Find Leads:** Industry/city/radius/result limit search (up to 50), recent-search shortcuts, and deduplicated results. With no Places key it filters the fictional demo dataset; with a key it uses paginated Places Text Search (New). Results show the returned listing fields, Google Maps link, place ID, an evidence panel, and a potential service recommendation.
-- **Leads:** Search/filter/sort, HOT/WARM/COLD priority bands, saved/removed leads, CRM checkboxes and bulk status/service/tag actions (never messaging), user-entered contact fields, score, notes, assigned service, estimate, and follow-up. Saved live place IDs persist locally; Google business content does not.
+- **Find Leads:** Industry/city/radius/result limit search (up to 50), recent-search shortcuts, and deduplicated results. With no Places key it filters the fictional demo dataset; with a key it uses paginated Places Text Search (New). The same page includes **Add Manual Lead** (business name, industry, city, website, phone, email, Google Maps URL, address, rating, review count, Instagram, Facebook, and notes) and a local **Import CSV** preview/validation flow. CSV imports detect likely duplicates by Maps URL, website domain, phone, and normalized business name plus city, then let you cancel, add anyway, or update existing records. Manual entry/import never scrapes Google Maps or makes a Places API call. Search results show their source, evidence, and potential service recommendation.
+- **Leads:** Search/filter/sort, HOT/WARM/COLD priority bands, Manual / Google Places / Demo source labels, saved/removed leads, CRM checkboxes and bulk status/service/tag actions (never messaging), user-entered contact fields, score, notes, assigned service, estimate, and follow-up. Manual leads appear in the CRM, dashboard source counts, follow-up queues, and CSV export. Manual information and CRM fields persist in this browser; saved live place IDs persist locally; Google Places business content does not.
 - **Analyze Website:** Manual, per-lead source inspection. Dynamic content can be missed. Visual design freshness is deliberately reported as not assessed.
-- **Generate Pitch:** Editable email and WhatsApp drafts based only on returned facts. Email copy/open requires a valid business email entered by the user, verified by the user, plus a per-lead contact-basis confirmation. WhatsApp copy/open requires a valid public business phone and explicit per-lead opt-in. Demo and Do Not Contact records cannot use channel actions. No action sends automatically; the operator must review and send in their own app. A future compliant mail provider belongs behind a server-side, single-recipient adapter that re-checks consent at send time; V1 intentionally has no send endpoint.
+- **Generate Pitch:** Editable email and WhatsApp drafts based only on returned facts. Email copy/open requires a valid business email entered by the user, verified by the user, plus a per-lead contact-basis confirmation. WhatsApp copy/open requires a valid international-format business phone and explicit per-lead opt-in. Demo and Do Not Contact records cannot use channel actions. No action sends automatically; the operator must review and send in their own app. A future compliant mail provider belongs behind a server-side, single-recipient adapter that re-checks consent at send time; V1 intentionally has no send endpoint.
 - **Campaigns:** Suggested Day 0 / Day 3 / Day 7 / Day 14 cadence, manually advanced and a dashboard overdue queue. Marking a lead contacted stores a timestamp and suggests the next date; there are no bulk-send or automated scheduling controls.
 - **CRM statuses:** `NEW`, `RESEARCHED`, `CONTACTED`, `REPLIED`, `INTERESTED`, `CALL BOOKED`, `PROPOSAL`, `WON`, `LOST`, `DO NOT CONTACT`.
-- **Export:** CSV headers identify Google-sourced place IDs separately from user-entered CRM fields and use spreadsheet-formula injection protection. Business names, categories, ratings, addresses, phone numbers, and URLs are excluded.
+- **Export:** CSV uses spreadsheet-formula injection protection. It exports manually entered lead details and labeled CRM workflow fields; Google-sourced place IDs are identified separately while Google Places business names, categories, ratings, addresses, phone numbers, and URLs remain excluded.
 - **Privacy / Terms:** In-app MVP notices explain local storage, external actions, responsibilities, and product limitations. These are placeholders, not legal advice.
+
+## Manual lead import
+
+The Lead Finder's **Add Manual Lead** form requires Business Name, Industry, and City; all remaining fields are optional. **Import CSV** accepts UTF-8 comma-separated files with a header row. Required headers are `Business Name`, `Industry`, and `City`; supported optional headers are `Website`, `Phone`, `Email`, `Google Maps URL`, `Address`, `Rating`, `Review Count`, `Instagram`, `Facebook`, and `Notes`. `Category` may be used instead of `Industry`, and `Name` may be used instead of `Business Name`.
+
+CSV import validates rows and previews errors and likely duplicates before the operator confirms **Add anyway** or **Update existing**. Duplicate checks compare normalized Maps URLs, website domains, phone digits, and business name plus city. Blank optional data is shown as **Not provided** and does not count as a confirmed website/contact weakness. Imports are parsed locally in the browser (maximum 5 MB and 1,000 rows); manual creation/import makes no Google Places API request and does not visit or scrape any Maps URL. Manual lead details, explicit overrides, and CRM workflow fields are stored in that browser's local storage.
 
 ## Deployment
 
@@ -93,9 +96,9 @@ Provide `GOOGLE_MAPS_API_KEY` through your host's secret/environment manager, no
 - The operator is responsible for a lawful basis for email outreach, honoring opt-outs, and getting WhatsApp opt-in before opening a WhatsApp conversation. The in-app contact check is an operator confirmation, not legal verification.
 - Google Places does not return business email in this field set. Email is blank until the operator enters it; AgencyOS does not discover or verify email addresses.
 - Scores are deterministic and explainable, not predictive guarantees. Raw factor points are normalized to 0–100 because mutually exclusive website signals cap the raw sum at 70. The drawer shows raw and normalized values.
-- “Active” means Google returned `OPERATIONAL`; it does not prove a business is currently open. Website checks are limited to public HTML signals and do not claim visual or design findings.
+- “Active” means Google returned `OPERATIONAL` on a Google-sourced lead; manual records default to business status **Not provided**. An operational status does not prove a business is currently open. Website checks are limited to public HTML signals and do not claim visual or design findings.
 - Demo values are fictional. Do not use them as real prospects.
-- Google Places results are session-only in this app. CRM workflow data is local to the browser. CSV exports intentionally omit Places content; verify current Google policies before changing retention, display, or export behavior.
+- Google Places results are session-only in this app. CRM workflow data, manually entered leads, and explicit manual overrides are local to the browser. CSV exports include manual/user-entered details but intentionally omit Google Places listing content; verify current Google policies before changing retention, display, or export behavior.
 - Before a public launch, replace the policy placeholders with jurisdiction-specific legal text and a real agency contact address.
 
 ## API routes
@@ -104,3 +107,5 @@ Provide `GOOGLE_MAPS_API_KEY` through your host's secret/environment manager, no
 - `POST /api/places/search` — validates search input and proxies up to three official Places Text Search pages (maximum 50 results) with an explicit field mask.
 - `POST /api/places/details` — refreshes one saved place ID using a minimal explicit field mask; called only after an operator action.
 - `POST /api/website/analyze` — performs a constrained public-website HTML check.
+
+Manual lead creation, validation, duplicate detection, and CSV parsing/import are client-side workflows; they have no server route and do not call Google Places. Website analysis only runs after an explicit per-lead click.

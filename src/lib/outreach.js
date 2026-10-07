@@ -1,7 +1,11 @@
 import { getWebsiteAudit } from './qualification.js';
 
 function verifiedObservation(lead) {
-  if (!lead.website) return 'I noticed your Google business listing does not include a website.';
+  if (!lead.website) {
+    return lead.source === 'manual'
+      ? 'A website was not provided with the lead details, so I have not assessed one.'
+      : 'I noticed your Google business listing does not include a website.';
+  }
 
   const audit = getWebsiteAudit(lead);
   if (audit && !lead.demo) {
@@ -13,6 +17,12 @@ function verifiedObservation(lead) {
     }
   }
   if (Number(lead.rating) > 0 && Number(lead.reviews) > 0) {
+    if (lead.source === 'manual') return `The details I received list a ${Number(lead.rating).toFixed(1)} rating across ${Number(lead.reviews).toLocaleString()} reviews.`;
+    if (lead.manualUserFields?.includes('rating') || lead.manualUserFields?.includes('reviews')) {
+      const rating = `${Number(lead.rating).toFixed(1)} ${lead.manualUserFields?.includes('rating') ? 'user-provided rating' : 'rating'}`;
+      const reviews = `${Number(lead.reviews).toLocaleString()} ${lead.manualUserFields?.includes('reviews') ? 'user-provided reviews' : 'Google reviews'}`;
+      return `The supplied details list a ${rating} across ${reviews}.`;
+    }
     return `Your Google listing shows a ${Number(lead.rating).toFixed(1)} rating across ${Number(lead.reviews).toLocaleString()} reviews.`;
   }
   return '';
