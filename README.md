@@ -1,6 +1,6 @@
 # AgencyOS
 
-AgencyOS is a responsive, dark-mode lead research and CRM MVP for an AI/web agency. It helps an operator search local businesses through the **official Google Places API (New)**, qualify visible opportunities, review website signals, prepare evidence-based outreach drafts, and track follow-ups.
+AgencyOS is a responsive, dark-mode lead research and CRM MVP for an AI/web agency. It helps an operator search local businesses through the **free OpenStreetMap lead finder** (no API key required) or the **official Google Places API (New)**, qualify visible opportunities, review website signals, prepare evidence-based outreach drafts, and track follow-ups.
 
 > **Safety by design:** AgencyOS does not scrape Google Maps webpages, bulk-send email, automatically message WhatsApp numbers, or send follow-ups in the background. Email and WhatsApp actions are explicit, per-lead user clicks. WhatsApp opening is gated on a user-confirmed opt-in.
 
@@ -9,6 +9,7 @@ AgencyOS is a responsive, dark-mode lead research and CRM MVP for an AI/web agen
 - **Frontend:** React 19 + Vite; responsive single-page workspace.
 - **Server:** Express 5 serves the Vite app in development and the static build in production. API keys and outbound API calls stay server-side.
 - **Places search:** `POST /api/places/search` calls `https://places.googleapis.com/v1/places:searchText` with an explicit field mask and paginates up to 50 results (20 per request, at most three pages). Results are deduplicated by place ID. No wildcard field masks or Maps-page scraping are used. When a radius is selected, the server optionally geocodes the location through Google's Geocoding API and applies a Text Search location bias. Text Search bias is approximate, not a strict geographic boundary. `POST /api/places/details` is only called when an operator manually refreshes a saved place ID; the frontend caches each successful or failed request for the active app session.
+- **Free OpenStreetMap search:** `POST /api/free/search` resolves the operator's location text through Nominatim, then runs one Overpass API query for businesses within the requested radius. It needs no API key and has no billing. Operator category text is matched against a fixed allowlist of Overpass tag pairs; when nothing matches it falls back to a name search restricted to seven business tag keys. Category text can never reach the query directly, and fallback name tokens are reduced to `[a-z0-9]` so no regex metacharacter can be injected. Results are deduplicated by OSM object ID and sorted by distance from the resolved point.
 - **Website check:** `POST /api/website/analyze` performs a constrained request to a public website and inspects a small HTML response for observable source signals, including link-text/URL evidence of an ordering link for food businesses. It includes SSRF safeguards, redirect checks, timeouts, content-type checks, and a 350 KB response limit. It is not a visual, accessibility, security, or full conversion audit.
 - **Qualification and draft generation:** A local, explainable rule engine scores source-appropriate observable signals; manually entered rating/review/social details are clearly identified as user-provided, and missing manual fields are treated as unknown. Message drafts use the supplied business details and any explicitly completed HTML check; no external LLM is used in this V1 so the product does not invent business claims. There is no AI-provider credential to configure.
 - **CRM storage:** Google Places responses stay in browser memory for the active session and are not written to the server or browser storage. `localStorage` holds CRM workflow fields, manually entered leads and explicit user-entered overrides, saved Google place IDs (which are exempt from Places caching restrictions), and recent user-entered search terms. Saved Google IDs are shown as placeholders after a reload; the operator explicitly refreshes a place to fetch current details. CSV export includes labeled manual/user-entered details, CRM workflow fields, and Google place IDs, but intentionally omits Google Places business listing content.
@@ -17,7 +18,8 @@ AgencyOS is a responsive, dark-mode lead research and CRM MVP for an AI/web agen
 
 - Node.js 20 or later (tested with Node 22)
 - npm
-- Google Maps Platform credentials only if you want live lead search. Manual lead entry and CSV import are free, work without a key, and make zero Google Places API calls.
+- No credentials at all for the free OpenStreetMap lead finder, manual lead entry, or CSV import — none of these make a Google Places API call.
+- Google Maps Platform credentials only if you want Google Places lead search.
 
 ## Local setup
 
@@ -27,7 +29,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Open the URL printed by the server (default `http://localhost:5173`). Demo Mode is automatic when `GOOGLE_MAPS_API_KEY` is empty. The app offers Demo Mode with ten **fictional** Pune businesses. The Lead Finder also offers **Add Manual Lead** and **Import CSV** when no key is configured; these local-only flows work without a Google Places key or Places API request. Demo records use reserved `.example` website placeholders and are never fetched. Demo contact actions cannot reach real businesses.
+Open the URL printed by the server (default `http://localhost:5173`). Demo Mode is automatic when `GOOGLE_MAPS_API_KEY` is empty. The app offers Demo Mode with ten **fictional** Pune businesses. The Lead Finder's **OpenStreetMap** source works with no key at all and returns real map data; **Add Manual Lead** and **Import CSV** are also available; these flows work without a Google Places key or Places API request. Demo records use reserved `.example` website placeholders and are never fetched. Demo contact actions cannot reach real businesses.
 
 Run the checks/build:
 
@@ -43,8 +45,13 @@ Copy `.env.example` to `.env` for local development. `.env` is ignored by Git.
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `GOOGLE_MAPS_API_KEY` | No (live search only) | Server-only Google Maps Platform key. Enable Places API (New). Geocoding API is optional for radius bias. |
+| `GOOGLE_MAPS_API_KEY` | No (Google search only) | Server-only Google Maps Platform key. Enable Places API (New). Geocoding API is optional for radius bias. |
 | `PORT` | No | Express server port; defaults to `5173`. |
+| `FREE_LEAD_SEARCH` | No | Set to `off` to disable the free OpenStreetMap search. Defaults to `on`. |
+| `OVERPASS_API_URL` | No | Override the Overpass endpoint (default `https://overpass-api.de/api/interpreter`). |
+| `NOMINATIM_API_URL` | No | Override the Nominatim geocoding endpoint (default `https://nominatim.openstreetmap.org/search`). |
+| `OSM_USER_AGENT` | No | User-Agent sent to OpenStreetMap services; set to your own app name and contact for production. |
+| `OVERPASS_TIMEOUT_MS` | No | Overpass request timeout in milliseconds. Defaults to `30000`. |
 
 Never place the Google key in a `VITE_*` variable, frontend code, browser storage, a checked-in file, or a public client bundle. The key is sent from the server to the Google APIs only. The Settings screen reports whether the environment variable is present; an actual search confirms whether Google's API permissions and quota are valid.
 
@@ -61,8 +68,8 @@ The UI shows the prescribed “Google Maps” text attribution alongside live li
 ## Product flows
 
 - **Dashboard:** Pipeline counts, priority shortlist, and suggested follow-up queue.
-- **Find Leads:** Industry/city/radius/result limit search (up to 50), recent-search shortcuts, and deduplicated results. With no Places key it filters the fictional demo dataset; with a key it uses paginated Places Text Search (New). The same page includes **Add Manual Lead** (business name, industry, city, website, phone, email, Google Maps URL, address, rating, review count, Instagram, Facebook, and notes) and a local **Import CSV** preview/validation flow. CSV imports detect likely duplicates by Maps URL, website domain, phone, and normalized business name plus city, then let you cancel, add anyway, or update existing records. Manual entry/import never scrapes Google Maps or makes a Places API call. Search results show their source, evidence, and potential service recommendation.
-- **Leads:** Search/filter/sort, HOT/WARM/COLD priority bands, Manual / Google Places / Demo source labels, saved/removed leads, CRM checkboxes and bulk status/service/tag actions (never messaging), user-entered contact fields, score, notes, assigned service, estimate, and follow-up. Manual leads appear in the CRM, dashboard source counts, follow-up queues, and CSV export. Manual information and CRM fields persist in this browser; saved live place IDs persist locally; Google Places business content does not.
+- **Find Leads:** Choose a data source — **OpenStreetMap** (free, no key), **Google Places** (when a key is configured), or **Demo sample** — then run an industry/city/radius/result limit search (up to 50) with recent-search shortcuts and deduplicated results. OpenStreetMap results come from one Overpass query around the resolved city; Places results use paginated Places Text Search (New). The same page includes **Add Manual Lead** (business name, industry, city, website, phone, email, Google Maps URL, address, rating, review count, Instagram, Facebook, and notes) and a local **Import CSV** preview/validation flow. CSV imports detect likely duplicates by Maps URL, website domain, phone, and normalized business name plus city, then let you cancel, add anyway, or update existing records. Manual entry/import never scrapes Google Maps or makes a Places API call. Search results show their source, evidence, and potential service recommendation.
+- **Leads:** Search/filter/sort, HOT/WARM/COLD priority bands, Manual / Google Places / OpenStreetMap / Demo source labels, saved/removed leads, CRM checkboxes and bulk status/service/tag actions (never messaging), user-entered contact fields, score, notes, assigned service, estimate, and follow-up. Manual leads appear in the CRM, dashboard source counts, follow-up queues, and CSV export. Manual information and CRM fields persist in this browser; saved live place IDs persist locally; Google Places business content does not.
 - **Analyze Website:** Manual, per-lead source inspection. Dynamic content can be missed. Visual design freshness is deliberately reported as not assessed.
 - **Generate Pitch:** Editable email and WhatsApp drafts based only on returned facts. Email copy/open requires a valid business email entered by the user, verified by the user, plus a per-lead contact-basis confirmation. WhatsApp copy/open requires a valid international-format business phone and explicit per-lead opt-in. Demo and Do Not Contact records cannot use channel actions. No action sends automatically; the operator must review and send in their own app. A future compliant mail provider belongs behind a server-side, single-recipient adapter that re-checks consent at send time; V1 intentionally has no send endpoint.
 - **Campaigns:** Suggested Day 0 / Day 3 / Day 7 / Day 14 cadence, manually advanced and a dashboard overdue queue. Marking a lead contacted stores a timestamp and suggests the next date; there are no bulk-send or automated scheduling controls.
@@ -75,6 +82,31 @@ The UI shows the prescribed “Google Maps” text attribution alongside live li
 The Lead Finder's **Add Manual Lead** form requires Business Name, Industry, and City; all remaining fields are optional. **Import CSV** accepts UTF-8 comma-separated files with a header row. Required headers are `Business Name`, `Industry`, and `City`; supported optional headers are `Website`, `Phone`, `Email`, `Google Maps URL`, `Address`, `Rating`, `Review Count`, `Instagram`, `Facebook`, and `Notes`. `Category` may be used instead of `Industry`, and `Name` may be used instead of `Business Name`.
 
 CSV import validates rows and previews errors and likely duplicates before the operator confirms **Add anyway** or **Update existing**. Duplicate checks compare normalized Maps URLs, website domains, phone digits, and business name plus city. Blank optional data is shown as **Not provided** and does not count as a confirmed website/contact weakness. Imports are parsed locally in the browser (maximum 5 MB and 1,000 rows); manual creation/import makes no Google Places API request and does not visit or scrape any Maps URL. Manual lead details, explicit overrides, and CRM workflow fields are stored in that browser's local storage.
+
+## Free OpenStreetMap lead search
+
+The **Free Lead Finder** searches OpenStreetMap directly — no API key, no billing, no Google Places calls. Select **OpenStreetMap** as the data source on the Find Leads page.
+
+How it works:
+
+1. The city/location text is resolved to coordinates with one **Nominatim** place lookup.
+2. The industry/category is matched against a fixed allowlist of roughly 55 Overpass tag groups (`Dental clinics` → `amenity=dentist`, `Gyms` → `leisure=fitness_centre`, and so on).
+3. One **Overpass** query fetches matching businesses within the radius. Results are deduplicated by OSM object ID and sorted by distance from the resolved point.
+4. Each result is normalised into the same lead shape used everywhere else in AgencyOS, with `source: "osm"` and an `osm-node/12345`-style identifier that links to `openstreetmap.org`.
+
+Categories with no fixed tag fall back to a case-insensitive **name search** limited to seven business tag keys (`amenity`, `shop`, `office`, `craft`, `leisure`, `tourism`, `healthcare`). Results are then approximate and are labelled as such in the UI.
+
+**Security:** operator text never reaches the Overpass query. Tag keys and values come only from the allowlist and are re-validated against `^[a-z_]{2,32}$` / `^[a-z0-9_:]{1,40}$` before use; fallback name tokens are reduced to `[a-z0-9]{2,30}`, which removes every regex metacharacter.
+
+**Honest limitations.** OpenStreetMap is community-maintained:
+
+- **Coverage varies** by city and category. A short result list means thin map data, not a thin market.
+- **No ratings, review counts, or operational status exist** in the source. These are left empty in the lead record rather than estimated, and the evidence panel states that they are absent rather than poor. The 100+ reviews and operational-status scoring signals therefore cannot fire for OSM leads.
+- **A missing website is unknown, not proof of a gap.** It still counts as the strongest observable signal (no website listed), but it should be confirmed by a human before outreach.
+- Unnamed map objects are skipped instead of being given a placeholder name.
+- Both services are rate limited. `429` responses surface as an actionable "wait a moment" message, and a slow query returns a "try a smaller radius" timeout message.
+
+Attribution is required: results display **© OpenStreetMap contributors** and link the [Open Database License](https://www.openstreetmap.org/copyright). Review the [Overpass API](https://dev.overpass-api.de/overpass-doc/en/preface/commons.html) and [Nominatim](https://operations.osmfoundation.org/policies/nominatim/) usage policies before heavy or production use.
 
 ## Deployment
 
@@ -98,12 +130,14 @@ Provide `GOOGLE_MAPS_API_KEY` through your host's secret/environment manager, no
 - Scores are deterministic and explainable, not predictive guarantees. Raw factor points are normalized to 0–100 because mutually exclusive website signals cap the raw sum at 70. The drawer shows raw and normalized values.
 - “Active” means Google returned `OPERATIONAL` on a Google-sourced lead; manual records default to business status **Not provided**. An operational status does not prove a business is currently open. Website checks are limited to public HTML signals and do not claim visual or design findings.
 - Demo values are fictional. Do not use them as real prospects.
-- Google Places results are session-only in this app. CRM workflow data, manually entered leads, and explicit manual overrides are local to the browser. CSV exports include manual/user-entered details but intentionally omit Google Places listing content; verify current Google policies before changing retention, display, or export behavior.
+- Google Places results are session-only in this app. CRM workflow data, manually entered leads, and explicit manual overrides are local to the browser. CSV exports include manual/user-entered details but intentionally omit Google Places and OpenStreetMap listing content (only the source identifier is exported); verify current Google and ODbL policies before changing retention, display, or export behavior.
+- OpenStreetMap results are also session-only. They are covered by the ODbL: keep the “© OpenStreetMap contributors” attribution visible wherever the data is displayed, and review the Overpass and Nominatim usage policies before heavy use.
 - Before a public launch, replace the policy placeholders with jurisdiction-specific legal text and a real agency contact address.
 
 ## API routes
 
-- `GET /api/config` — reports whether a server-side Places key is present; never returns the key.
+- `GET /api/config` — reports whether a server-side Places key is present and whether free OpenStreetMap search is enabled; never returns the key.
+- `POST /api/free/search` — free OpenStreetMap lead search. Validates input, geocodes the location via Nominatim, runs one allowlisted Overpass query, and returns normalised leads with attribution and coverage warnings. Makes no Google Places call and needs no API key.
 - `POST /api/places/search` — validates search input and proxies up to three official Places Text Search pages (maximum 50 results) with an explicit field mask.
 - `POST /api/places/details` — refreshes one saved place ID using a minimal explicit field mask; called only after an operator action.
 - `POST /api/website/analyze` — performs a constrained public-website HTML check.

@@ -190,3 +190,21 @@
   .mode-notice button { margin-left:22px; }
 }
 .mode-notice button + button { margin-left:0; }
+
+/* Free OpenStreetMap lead finder */
+.source-choice-row{display:flex;flex-direction:column;gap:7px;margin-top:16px;color:#9aa7b4;font-size:10px;font-weight:500}
+.source-choice-group{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
+.source-choice{display:flex;flex-direction:column;gap:3px;align-items:flex-start;padding:9px 11px;border:1px solid #283440;border-radius:9px;background:#111a24;color:#8d9aa8;text-align:left;cursor:pointer;transition:.16s ease}
+.source-choice:hover:not(:disabled){border-color:#3b5468;background:#152231;color:#cbd6e1}
+.source-choice:disabled{cursor:not-allowed;opacity:.42}
+.source-choice strong{color:#dbe4ed;font-size:10px;font-weight:600}
+.source-choice span{color:#71808e;font-size:8px}
+.source-choice-active{border-color:#39705f;background:linear-gradient(145deg,#2c513226,#1e2f2a1a);box-shadow:inset 0 0 0 1px #4d8a7133}
+.source-choice-active strong{color:#e2f0e8}
+.source-choice-active span{color:#7fb99a}
+.free-hint{margin-top:10px}
+.osm-badge{display:inline-flex;align-items:center;gap:5px;width:max-content;padding:4px 6px;border:1px solid #2f5f52;border-radius:5px;background:#2f7a5f1c;color:#84c9a8;font-size:7px;font-weight:700;letter-spacing:.45px;line-height:1;white-space:nowrap}
+.osm-dot{width:6px;height:6px;display:inline-block;border-radius:50%;background:#6cc79b;box-shadow:0 0 0 3px #6cc79b1f}
+.business-cell .osm-badge{padding:3px 4px;font-size:6px}
+.osm-attribution{width:fit-content;display:flex;align-items:center;gap:8px;margin:0;padding:6px 9px;border:1px solid #35424e;border-radius:7px;background:#131c25;color:#f1f4f6;font:400 12px/1.25 Roboto,Arial,sans-serif;letter-spacing:normal;white-space:nowrap}
+.osm-text-attribution{color:#eaf3ee;font:400 12px/1.25 Roboto,Arial,sans-serif;letter-spacing:normal;white-space:nowrap}

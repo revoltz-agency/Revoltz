@@ -4,6 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getGooglePlaceDetails, searchGooglePlaces } from './googlePlaces.js';
+import { searchOpenStreetMap } from './overpass.js';
 import { auditWebsite } from './websiteAudit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -23,14 +24,51 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '32kb' }));
 
 const googleApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
+// The OpenStreetMap path needs no key. It can still be switched off for an
+// air-gapped or policy-restricted deployment.
+const freeSearchEnabled = (process.env.FREE_LEAD_SEARCH || 'on').trim().toLowerCase() !== 'off';
 
 app.get('/api/config', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     googlePlacesConfigured: Boolean(googleApiKey),
+    freeSearchEnabled,
+    // Unchanged: "Demo Mode" means no Places key. Free OSM search is separate.
     demoMode: !googleApiKey,
     message: googleApiKey ? null : 'Google Places API not configured — Demo Mode active.',
   });
+});
+
+app.post('/api/free/search', async (req, res) => {
+  if (!freeSearchEnabled) {
+    return res.status(503).json({ error: 'Free OpenStreetMap search is disabled on this server.' });
+  }
+
+  const category = typeof req.body?.category === 'string' ? req.body.category.trim() : '';
+  const location = typeof req.body?.location === 'string' ? req.body.location.trim() : '';
+  const radiusKm = Number(req.body?.radiusKm);
+  const maxResults = Number(req.body?.maxResults);
+
+  if (!category || category.length > 100 || !location || location.length > 160) {
+    return res.status(400).json({ error: 'Add an industry/category and a city or location to search.' });
+  }
+  if (!Number.isFinite(radiusKm) || radiusKm < 1 || radiusKm > 50) {
+    return res.status(400).json({ error: 'Search radius must be between 1 and 50 km.' });
+  }
+  if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 50) {
+    return res.status(400).json({ error: 'Maximum results must be between 1 and 50.' });
+  }
+
+  try {
+    const { results, warnings, requests, geocodingRequests, attribution, licenseUrl, matchedCategory, queriedTags, resolvedLocation } = await searchOpenStreetMap({ category, location, radiusKm, maxResults });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({
+      results, warnings, requests, geocodingRequests, attribution, licenseUrl,
+      matchedCategory, queriedTags, resolvedLocation,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 502).json({ error: error.message || 'OpenStreetMap search failed. Please try again.' });
+  }
 });
 
 app.post('/api/places/search', async (req, res) => {

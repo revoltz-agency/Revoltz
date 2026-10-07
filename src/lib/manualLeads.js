@@ -173,6 +173,7 @@ export function manualLeadSourceLabel(leadOrSource) {
     : leadOrSource?.source || (leadOrSource?.demo ? 'demo' : 'google');
   if (source === 'manual') return 'Manual';
   if (source === 'google') return 'Google Places';
+  if (source === 'osm') return 'OpenStreetMap';
   return 'Demo';
 }
 

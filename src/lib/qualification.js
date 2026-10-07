@@ -1,3 +1,5 @@
+import { isOsmLead, listingSourceNoun } from './freeLeadFinder.js';
+
 export const MAX_OBSERVABLE_RAW_SCORE = 70;
 
 export function getWebsiteAudit(lead) {
@@ -34,7 +36,7 @@ export function scoreOpportunity(lead) {
       active: !manual && !lead.website,
     },
     { key: 'weak-website', label: lead.demo ? 'Illustrative website check shows multiple gaps' : 'Website checks indicate multiple gaps', points: 20, active: Boolean(lead.website && audit?.weakWebsite) },
-    { key: 'reviews', label: manual && lead.reviews == null ? 'Review count not provided' : userProvidedReviews ? '100+ user-provided reviews' : lead.demo ? '100+ fictional sample reviews' : '100+ Google reviews', points: 15, active: Number(lead.reviews) >= 100 },
+    { key: 'reviews', label: manual && lead.reviews == null ? 'Review count not provided' : userProvidedReviews ? '100+ user-provided reviews' : lead.demo ? '100+ fictional sample reviews' : isOsmLead(lead) ? '100+ reviews (not provided by OpenStreetMap)' : '100+ Google reviews', points: 15, active: Number(lead.reviews) >= 100 },
     { key: 'rating', label: manual && lead.rating == null ? 'Rating not provided' : userProvidedRating ? 'Strong user-provided rating (4.5+)' : 'Strong rating (4.5+)', points: 10, active: Number(lead.rating) >= 4.5 },
     { key: 'active', label: manual ? 'Business status not provided' : lead.demo ? 'Demo sample marked operational' : 'Business status is operational', points: 10, active: lead.businessStatus === 'OPERATIONAL' },
     { key: 'contact-flow', label: manual && !audit ? 'Contact flow not assessed' : lead.demo ? 'Illustrative contact flow not detected' : 'No obvious contact flow detected', points: 10, active: Boolean(lead.website && audit?.contactFlowDetected === false) },
@@ -82,8 +84,8 @@ export function opportunityReason(lead) {
   const audit = getWebsiteAudit(lead);
 
   if (!lead.website) {
-    if (reputation) return `${reputationHasManualFields ? 'The available details include' : 'The Google listing shows'} ${reputation}, but no website is listed. A focused site with a clear enquiry path may be worth exploring.`;
-    return 'No website is listed on the business profile. A simple, enquiry-focused web presence may be worth exploring.';
+    if (reputation) return `${reputationHasManualFields ? 'The available details include' : `The ${listingSourceNoun(lead)} listing shows`} ${reputation}, but no website is listed. A focused site with a clear enquiry path may be worth exploring.`;
+    return `No website is listed in the ${listingSourceNoun(lead)} record. A simple, enquiry-focused web presence may be worth exploring.`;
   }
   if (audit?.weakWebsite) {
     const issueCount = Number(audit.majorGapCount) || 2;
