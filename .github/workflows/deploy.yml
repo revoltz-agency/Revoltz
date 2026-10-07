@@ -1,0 +1,78 @@
+# Builds the Vite SPA and publishes it to GitHub Pages.
+#
+# The Express API in server/ is NOT part of this static deployment: the
+# workspace runs in its client-only fallback (demo/manual leads, local CRM
+# storage). Run the Express server (`npm start`) for full search/enrichment.
+#
+# The first run enables Pages automatically (Source: GitHub Actions), so no
+# manual Settings -> Pages change is required.
+# Site URL: https://revoltz-agency.github.io/Revoltz/
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; superseded runs are cancelled.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Enables GitHub Pages with Source = "GitHub Actions" on the first run,
+      # so no manual Settings → Pages change is required.
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build with Pages base path
+        # Pages serves this repository at /Revoltz/, so asset URLs and the
+        # client router base must match it. Local/Express builds keep the
+        # default '/' base from vite.config.js.
+        run: npm run build -- --base=/Revoltz/
+
+      - name: Add SPA fallback for history routing
+        # GitHub Pages has no SPA rewrite rule; a 404.html copy of index.html
+        # lets deep links such as /Revoltz/agencyos load the bundle.
+        run: cp dist/index.html dist/404.html
+
+      - name: Disable Jekyll processing
+        run: touch dist/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

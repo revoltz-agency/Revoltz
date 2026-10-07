@@ -3,7 +3,7 @@ import {
   ArrowRight, ArrowUpRight, Check, CheckCircle2, Cpu, Globe2, Mail, Menu, Radar, Search,
   Sparkles, Target, Workflow, Wrench, X, Zap,
 } from 'lucide-react';
-import { goToSection, navigate } from '../lib/router.js';
+import { goToSection, navigate, withBase } from '../lib/router.js';
 import { CONTACT_EMAIL, CONTACT_SUBJECT } from './siteConfig.js';
 import ProductPreview from './ProductPreview.jsx';
 
@@ -129,7 +129,7 @@ function SiteNav() {
   return (
     <header className={`rv-nav ${scrolled ? 'is-scrolled' : ''}`}>
       <div className="rv-nav-inner">
-        <a className="rv-brand" href="/" aria-label="REVOLTZ AI — home" onClick={(event) => {
+        <a className="rv-brand" href={withBase('/')} aria-label="REVOLTZ AI — home" onClick={(event) => {
           if (event.metaKey || event.ctrlKey || event.shiftKey) return;
           event.preventDefault();
           navigate('/');
