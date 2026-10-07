@@ -4,6 +4,7 @@ import {
   Sparkles, Target, Workflow, Wrench, X, Zap,
 } from 'lucide-react';
 import { goToSection, navigate } from '../lib/router.js';
+import { CONTACT_EMAIL, CONTACT_SUBJECT } from './siteConfig.js';
 import ProductPreview from './ProductPreview.jsx';
 
 const NAV_LINKS = [
@@ -62,9 +63,9 @@ const WHY_ITEMS = [
   { title: 'Focused on measurable outcomes', copy: 'Hours saved, leads handled, revenue moved — agreed up front.' },
 ];
 
-const CONTACT_EMAIL = 'hello@revoltz.ai';
-
 /* ---------------------------------------------------------------- helpers */
+
+const mailtoHref = (subject) => `mailto:${CONTACT_EMAIL}${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`;
 
 function Reveal({ as: Tag = 'div', delay = 0, className = '', children, ...rest }) {
   const ref = useRef(null);
@@ -416,14 +417,14 @@ function FinalCta() {
         </Reveal>
         <Reveal delay={90}>
           <div className="rv-cta-actions">
-            <a className="rv-btn rv-btn-primary" href={`mailto:${CONTACT_EMAIL}?subject=Building%20with%20REVOLTZ%20AI`}>
+            <a className="rv-btn rv-btn-primary" href={mailtoHref(CONTACT_SUBJECT)}>
               Build With Us <ArrowRight size={17} />
             </a>
           </div>
           <div className="rv-cta-contact">
             <Mail size={15} />
             <span>Prefer email?</span>
-            <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+            <a href={mailtoHref()}>{CONTACT_EMAIL}</a>
             <span aria-hidden="true">·</span>
             <span>We reply within one business day.</span>
           </div>
@@ -472,7 +473,7 @@ function SiteFooter() {
         <div className="rv-footer-col">
           <h4>Contact</h4>
           <ul>
-            <li><a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a></li>
+            <li><a href={mailtoHref()}>{CONTACT_EMAIL}</a></li>
             <li><a href="/#contact" onClick={(event) => sectionLink(event, 'contact')}>Build With Us</a></li>
             <li><button type="button" onClick={() => navigate('/agencyos')}>Launch AgencyOS</button></li>
           </ul>

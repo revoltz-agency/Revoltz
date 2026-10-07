@@ -494,7 +494,20 @@
   text-transform: uppercase;
   white-space: nowrap;
 }
-.rv-mock-chip i { width: 5px; height: 5px; border-radius: 50%; background: #57c69b; box-shadow: 0 0 0 3px rgba(87, 198, 155, .18); }
+.rv-mock-chip i { width: 5px; height: 5px; border-radius: 50%; background: #d7a94f; box-shadow: 0 0 0 3px rgba(215, 169, 79, .18); }
+.rv-mock-chip { color: #d8b978; }
+
+/* Explicit "this is a sample" labelling inside the preview frame. */
+.rv-mock-sample-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: -4px;
+  color: #6f7885;
+  font-size: 9.5px;
+  letter-spacing: .04em;
+}
+.rv-mock-sample-note svg { flex: 0 0 auto; color: #8d7f5e; }
 
 .rv-mock-body { display: grid; grid-template-columns: 190px minmax(0, 1fr); min-height: 400px; }
 .rv-mock-side {
@@ -596,6 +609,18 @@
   box-shadow: 0 20px 44px -18px rgba(0, 0, 0, .95);
 }
 .rv-mock-badge span { color: #8d96a1; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.rv-mock-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  max-width: 720px;
+  margin-top: 26px;
+  color: var(--rv-muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.rv-mock-note svg { flex: 0 0 auto; margin-top: 3px; color: #8d7f5e; }
+.rv-mock-note strong { color: #b9c2cd; font-weight: 600; }
 
 /* ---------- services ---------- */
 .rv-services { margin-top: clamp(38px, 5vw, 60px); border: 1px solid var(--rv-line); border-radius: var(--rv-radius); overflow: hidden; }
