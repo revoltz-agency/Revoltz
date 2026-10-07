@@ -12,7 +12,7 @@ import { addDays, followUpPlan, formatDate, localDateString } from './lib/dates.
 import { buildOutreach } from './lib/outreach.js';
 import { getWebsiteAudit, opportunityReason, scoreOpportunity } from './lib/qualification.js';
 import { initials, ScorePill, titleCaseStatus } from './components/leadPrimitives.jsx';
-import { isAppPath, navigate, useRouterPath } from './lib/router.js';
+import { isAppPath, navigate, useRouterPath, withBase } from './lib/router.js';
 import RevoltzSite from './site/RevoltzSite.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
 import { enrichmentCrmPatch, markLeadContacted, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
@@ -596,7 +596,7 @@ function AgencyOSApp() {
           {activePage === 'Privacy Policy' && <LegalPage type="privacy" onNavigate={setActivePage} />}
           {activePage === 'Terms' && <LegalPage type="terms" onNavigate={setActivePage} />}
         </main>
-        <footer className="app-footer"><span>AgencyOS <i>·</i> Evidence-led prospecting</span><div><a className="footer-site-link" href="/" onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey) return; event.preventDefault(); navigate('/'); }}>REVOLTZ AI</a><button type="button" onClick={() => setActivePage('Privacy Policy')}>Privacy</button><button type="button" onClick={() => setActivePage('Terms')}>Terms</button><span className="footer-version">V1.0</span></div></footer>
+        <footer className="app-footer"><span>AgencyOS <i>·</i> Evidence-led prospecting</span><div><a className="footer-site-link" href={withBase('/')} onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey) return; event.preventDefault(); navigate('/'); }}>REVOLTZ AI</a><button type="button" onClick={() => setActivePage('Privacy Policy')}>Privacy</button><button type="button" onClick={() => setActivePage('Terms')}>Terms</button><span className="footer-version">V1.0</span></div></footer>
       </div>
       {selectedLead && <LeadDrawer key={getLeadKey(selectedLead)} lead={selectedLead} crm={getCrm(selectedLead)} onClose={() => setSelectedLeadId('')} onUpdate={(patch) => updateCrm(selectedLead, patch)} onStatus={(status) => updateStatus(selectedLead, status)} onMarkContacted={() => markContacted(selectedLead)} onRemove={() => removeSavedLead(selectedLead)} onRefreshPlace={() => refreshSavedPlace(selectedLead)} refreshingPlace={Boolean(refreshingDetailsIds[getLeadKey(selectedLead)])} onAnalyze={() => analyzeWebsite(selectedLead)} analyzing={Boolean(auditLoadingIds[getLeadKey(selectedLead)])} auditRevealed={Boolean(auditRevealedIds[getLeadKey(selectedLead)])} onEnrich={() => enrichLead(selectedLead)} enriching={Boolean(enrichmentLoadingIds[getLeadKey(selectedLead)])} onPitch={() => handleOpenPitch(selectedLead)} />}
       {outreachLead && <OutreachModal key={getLeadKey(outreachLead)} lead={outreachLead} crm={getCrm(outreachLead)} onClose={() => setOutreachLeadId('')} onToast={showToast} onMarkContacted={() => markContacted(outreachLead)} onReviewLead={() => { setOutreachLeadId(''); setSelectedLeadId(getLeadKey(outreachLead)); }} />}

@@ -7,9 +7,21 @@ export const NAVIGATION_EVENT = 'revoltz:navigation';
 
 export const ROUTES = { site: '/', app: '/agencyos' };
 
+// GitHub Pages hosts the static build at /Revoltz/, while the Express/Vite
+// servers host it from the domain root. Vite's BASE_URL records the build-time
+// public path, so the route logic below keeps using plain ('/', '/agencyos')
+// paths in both environments.
+const BASE_PATH = (import.meta.env?.BASE_URL || '/').replace(/\/+$/, '');
+
+/** Prefixes an app route with the deployment's public base path. */
+export function withBase(path) {
+  return `${BASE_PATH}${path}`;
+}
+
 export function currentPath() {
   if (typeof window === 'undefined') return ROUTES.site;
-  const path = window.location.pathname.replace(/\/+$/, '');
+  let path = window.location.pathname.replace(/\/+$/, '');
+  if (BASE_PATH && path.startsWith(BASE_PATH)) path = path.slice(BASE_PATH.length);
   return path || ROUTES.site;
 }
 
@@ -20,7 +32,7 @@ export function isAppPath(path = currentPath()) {
 export function navigate(path, { replace = false } = {}) {
   if (typeof window === 'undefined') return;
   if (path !== currentPath()) {
-    window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
+    window.history[replace ? 'replaceState' : 'pushState']({}, '', withBase(path));
   }
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
@@ -43,7 +55,7 @@ export function goToSection(id) {
     scrollToTarget();
     return;
   }
-  window.history.pushState({}, '', `/#${id}`);
+  window.history.pushState({}, '', `${withBase('/')}#${id}`);
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
   // Let the site mount before measuring the target position.
   window.setTimeout(scrollToTarget, 80);

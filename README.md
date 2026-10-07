@@ -138,6 +138,10 @@ PORT=3000 npm start
 
 Provide `GOOGLE_MAPS_API_KEY` through your host's secret/environment manager, not a frontend build argument. Terminate TLS at your hosting platform or reverse proxy. The server binds to `0.0.0.0`; the Vite development host allowlist includes Arena's `*.e2b.app` preview host.
 
+### GitHub Pages (static build)
+
+`.github/workflows/deploy.yml` builds the bundle with `--base=/Revoltz/` and publishes it to <https://revoltz-agency.github.io/Revoltz/> on every push to `main` (or via a manual run). The repository setting **Settings → Pages → Source: GitHub Actions** must be selected. `src/lib/router.js` derives its path prefix from the Vite base, so the same code serves `/` on the Express server and `/Revoltz/` on Pages, with `dist/404.html` covering history-route deep links. The static build ships no Express API: live OpenStreetMap/Google search, enrichment and website checks are unavailable there, and the workspace falls back to the demo and manual leads with browser-local CRM storage.
+
 **Important production limitation:** V1 has no accounts, authentication, authorization, shared database, server-side audit log, or multi-tenant boundary. Do not expose a public instance with prospect or CRM data without adding appropriate authentication/access controls and reviewing rate limits, privacy notices, retention/deletion, and deployment security. Local workflow fields are browser-specific and are lost if that browser's storage is cleared.
 
 ## Compliance and limitations
