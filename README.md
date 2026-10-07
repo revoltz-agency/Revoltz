@@ -4,6 +4,21 @@ AgencyOS is a responsive, dark-mode lead research and CRM MVP for an AI/web agen
 
 > **Safety by design:** AgencyOS does not scrape Google Maps webpages, bulk-send email, automatically message WhatsApp numbers, or send follow-ups in the background. Email and WhatsApp actions are explicit, per-lead user clicks. WhatsApp opening is gated on a user-confirmed opt-in.
 
+## Routes
+
+| Route | What it is |
+| --- | --- |
+| `/` | The public **REVOLTZ AI** site: hero, capability strip, the AgencyOS product section (with a live workspace preview), services, process, and contact. |
+| `/agencyos` | The **AgencyOS** workspace: lead finder, CRM, enrichment, website checks, CSV import/export, campaigns and settings. |
+
+Both routes are served from one single-page bundle. Client-side routing is a thin
+History API wrapper in `src/lib/router.js` — no Express routes were added or changed,
+so every path still falls back to `index.html`.
+
+- Site components and styles live in `src/site/` (`RevoltzSite.jsx`, `ProductPreview.jsx`, `site.css`).
+- Workspace styles remain in `src/styles.css`; the site styles are scoped under `.rv-root` so neither surface affects the other.
+- `src/components/leadPrimitives.jsx` holds the small lead badges shared by both surfaces.
+
 ## Architecture
 
 - **Frontend:** React 19 + Vite; responsive single-page workspace.
