@@ -4,7 +4,7 @@ import {
   Check, CheckCircle2, ChevronDown, CircleHelp, Clock3, Copy, Download, ExternalLink, FileText,
   Filter, Flame, Globe2, LayoutDashboard, LoaderCircle, Mail, MapPin, Menu, MessageCircle,
   MoreHorizontal, Phone, Plus, RefreshCw, Search, Send, Settings as SettingsIcon, ShieldCheck,
-  SlidersHorizontal, Sparkles, Star, Target, Users, X, Zap, Info, History, Trash2, Tag,
+  SlidersHorizontal, Sparkles, Star, Target, Users, Upload, X, Zap, Info, History, Trash2, Tag,
 } from 'lucide-react';
 import { DEMO_LEADS, LEAD_STATUSES, SERVICES } from './data/demoLeads.js';
 import { buildWorkflowCsv } from './lib/csv.js';
@@ -14,11 +14,17 @@ import { getWebsiteAudit, opportunityReason, scoreOpportunity } from './lib/qual
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
 import { markLeadContacted, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
 import { getOrCreateCachedRequest } from './lib/placeDetailsCache.js';
+import {
+  applyManualLeadOverride, applyManualLeadUpdate, createManualLead, findManualLeadDuplicate,
+  manualLeadOverrideFields, manualLeadSourceLabel, parseManualLeadCsv, validateManualLead,
+} from './lib/manualLeads.js';
 
 const DEFAULT_CRM = { status: 'NEW', notes: '', lastContacted: '', lastContactedAt: '', followUpAnchorDate: '', followUpStep: 0, nextFollowUp: '', assignedService: 'Website', estimatedDealValue: '', email: '', emailVerifiedByUser: false, emailPermissionConfirmed: false, whatsappOptInConfirmed: false, tags: [] };
 const WORKFLOW_STORAGE_KEY = 'agencyos:workflow:v1';
 const SAVED_PLACE_IDS_KEY = 'agencyos:saved-place-ids:v1';
 const SEARCH_HISTORY_KEY = 'agencyos:search-history:v1';
+const MANUAL_LEADS_STORAGE_KEY = 'agencyos:manual-leads:v1';
+const MANUAL_OVERRIDES_STORAGE_KEY = 'agencyos:manual-lead-overrides:v1';
 const EXAMPLE_SEARCHES = ['Restaurants in Pune', 'Dental clinics in Pune', 'CA firms in Pune', 'Gyms in Pune', 'Salons in Pune', 'Real estate agencies in Pune', 'Cloud kitchens in Pune'];
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard },
@@ -50,6 +56,40 @@ function readSearchHistory() {
     return parsed.filter((item) => item && typeof item.category === 'string' && typeof item.city === 'string')
       .slice(0, 8).map((item) => ({ category: item.category.slice(0, 100), city: item.city.slice(0, 160), radiusKm: String(item.radiusKm || '10'), maxResults: String(item.maxResults || '10') }));
   } catch { return []; }
+}
+
+function readManualLeads() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(MANUAL_LEADS_STORAGE_KEY) || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((record) => record?.source === 'manual' && typeof record.id === 'string' && record.id.length <= 256)
+      .slice(0, 1000).map((record) => {
+        const validation = validateManualLead({
+          ...record,
+          email: record.initialCRM?.email ?? record.email,
+          notes: record.initialCRM?.notes ?? record.notes,
+        });
+        if (!validation.valid) return null;
+        const lead = createManualLead(validation.values, { id: record.id });
+        lead.initialCRM = cleanCrmRecord({
+          ...lead.initialCRM,
+          ...(record.initialCRM || {}),
+          ...(validation.values.email ? { email: validation.values.email } : {}),
+          ...(validation.values.notes ? { notes: validation.values.notes } : {}),
+        });
+        return lead;
+      }).filter(Boolean);
+  } catch { return []; }
+}
+function readManualLeadOverrides() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(MANUAL_OVERRIDES_STORAGE_KEY) || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const allowed = ['name', 'category', 'city', 'website', 'phone', 'mapsUrl', 'address', 'rating', 'reviews', 'instagram', 'facebook'];
+    return Object.fromEntries(Object.entries(parsed).filter(([id, patch]) => id && id.length <= 300 && patch && typeof patch === 'object' && !Array.isArray(patch))
+      .map(([id, patch]) => [id, Object.fromEntries(allowed.filter((field) => typeof patch[field] === 'string' || Number.isFinite(patch[field])).map((field) => [field, patch[field]]))])
+      .filter(([, patch]) => Object.keys(patch).length));
+  } catch { return {}; }
 }
 
 function cleanCrmRecord(record) {
@@ -103,7 +143,9 @@ function App() {
   const [activePage, setActivePage] = useState('Dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [apiConfig, setApiConfig] = useState({ loading: true, googlePlacesConfigured: false, reachable: true });
-  const [leads, setLeads] = useState(DEMO_LEADS);
+  const [manualLeads, setManualLeads] = useState(readManualLeads);
+  const [manualOverrides, setManualOverrides] = useState(readManualLeadOverrides);
+  const [leads, setLeads] = useState(() => dedupeLeads([...DEMO_LEADS, ...manualLeads].map((lead) => applyManualLeadOverride(lead, manualOverrides))));
   const [workflow, setWorkflow] = useState(readWorkflow);
   const [savedPlaceIds, setSavedPlaceIds] = useState(readSavedPlaceIds);
   const [searchHistory, setSearchHistory] = useState(readSearchHistory);
@@ -149,12 +191,19 @@ function App() {
         if (!initialConfigLoaded.current) {
           initialConfigLoaded.current = true;
           const savedReferences = savedPlaceIds.map((id) => savedLeadPlaceholder(id));
-          setLeads(data.googlePlacesConfigured ? savedReferences : [...DEMO_LEADS, ...savedReferences]);
+          setLeads((current) => {
+            const retainedManual = [...manualLeads, ...current.filter((lead) => lead.source === 'manual')];
+            const base = data.googlePlacesConfigured ? [] : DEMO_LEADS;
+            return dedupeLeads([...base, ...savedReferences, ...retainedManual].map((lead) => applyManualLeadOverride(lead, manualOverrides)));
+          });
         }
       } catch {
         if (!alive) return;
         setApiConfig({ loading: false, reachable: false, googlePlacesConfigured: false, demoMode: true });
-        if (!initialConfigLoaded.current) { initialConfigLoaded.current = true; setLeads(DEMO_LEADS); }
+        if (!initialConfigLoaded.current) {
+          initialConfigLoaded.current = true;
+          setLeads((current) => dedupeLeads([...DEMO_LEADS, ...manualLeads, ...current.filter((lead) => lead.source === 'manual')].map((lead) => applyManualLeadOverride(lead, manualOverrides))));
+        }
       }
     })();
     return () => { alive = false; };
@@ -174,6 +223,14 @@ function App() {
     try { window.localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory.slice(0, 8))); }
     catch { /* Search history is optional and contains user-entered terms only. */ }
   }, [searchHistory]);
+  useEffect(() => {
+    try { window.localStorage.setItem(MANUAL_LEADS_STORAGE_KEY, JSON.stringify(manualLeads.slice(0, 1000))); }
+    catch { /* Manual leads remain usable in the current app session if storage is unavailable or full. */ }
+  }, [manualLeads]);
+  useEffect(() => {
+    try { window.localStorage.setItem(MANUAL_OVERRIDES_STORAGE_KEY, JSON.stringify(manualOverrides)); }
+    catch { /* Only explicitly user-entered overrides are stored; the active session remains usable. */ }
+  }, [manualOverrides]);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
   function showToast(message) {
@@ -225,8 +282,12 @@ function App() {
       const data = await response.json();
       setApiConfig({ loading: false, reachable: true, ...data });
       const savedReferences = savedPlaceIds.map((id) => savedLeadPlaceholder(id));
-      if (data.googlePlacesConfigured) setLeads((current) => dedupeLeads([...current.filter((lead) => !lead.demo && !lead.needsRefresh), ...savedReferences]));
-      else setLeads((current) => dedupeLeads([...DEMO_LEADS, ...current.filter((lead) => !lead.demo && !lead.needsRefresh), ...savedReferences]));
+      setLeads((current) => {
+        const retained = current.filter((lead) => !lead.demo && !lead.needsRefresh);
+        const manual = [...manualLeads, ...retained.filter((lead) => lead.source === 'manual')];
+        const base = data.googlePlacesConfigured ? retained.filter((lead) => lead.source !== 'manual') : [...DEMO_LEADS, ...retained.filter((lead) => lead.source !== 'manual')];
+        return dedupeLeads([...base, ...savedReferences, ...manual].map((lead) => applyManualLeadOverride(lead, manualOverrides)));
+      });
       setSettingsNotice('Configuration status refreshed.');
     } catch {
       setApiConfig((current) => ({ ...current, loading: false, reachable: false }));
@@ -245,10 +306,10 @@ function App() {
         const response = await fetch('/api/places/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, location: city, radiusKm: Number(searchForm.radiusKm), maxResults: Number(searchForm.maxResults) }) });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Lead search failed.');
-        setFinderResults(dedupeLeads(data.results || [])); setFinderWarnings(data.warnings || []); setFinderRequests(Number(data.requests) || 1); setFinderGeocodingRequests(Number(data.geocodingRequests) || 0); setFinderSource('google');
+        setFinderResults(dedupeLeads(data.results || []).map((lead) => applyManualLeadOverride(lead, manualOverrides))); setFinderWarnings(data.warnings || []); setFinderRequests(Number(data.requests) || 1); setFinderGeocodingRequests(Number(data.geocodingRequests) || 0); setFinderSource('google');
         if (!data.results?.length) showToast('No matches returned. Try a broader category or nearby city.');
       } else {
-        setFinderResults(dedupeLeads(demoSearch(category, city).slice(0, Number(searchForm.maxResults) || 10)));
+        setFinderResults(dedupeLeads(demoSearch(category, city).slice(0, Number(searchForm.maxResults) || 10)).map((lead) => applyManualLeadOverride(lead, manualOverrides)));
         setFinderSource('demo');
         setFinderWarnings(['The sample set contains fictional Pune businesses only. Search radius is illustrative in Demo Mode.']);
       }
@@ -269,11 +330,84 @@ function App() {
     if (lead.source === 'google' && !String(key).startsWith('demo-')) setSavedPlaceIds((current) => [...new Set([key, ...current])].slice(0, 500));
     showToast(existing?.needsRefresh ? 'Saved place details refreshed from this search.' : existing ? 'This lead is already in your workspace.' : 'Lead saved to your workspace.');
   }
+  function addManualLeadEntries(entries, mode = 'add') {
+    const working = [...allLeads];
+    const added = [];
+    const updates = new Map();
+    const overridePatches = new Map();
+    const crmPatches = new Map();
+    for (const entry of entries) {
+      const input = entry?.values || entry?.input || entry;
+      const validation = validateManualLead(input);
+      if (!validation.valid) continue;
+      const values = validation.values;
+      const duplicate = findManualLeadDuplicate(values, working);
+      if (duplicate && mode === 'update' && duplicate.lead?.source !== 'demo') {
+        const key = duplicate.leadId;
+        const current = working.find((lead) => getLeadKey(lead) === key) || duplicate.lead;
+        const updated = applyManualLeadUpdate(current, values);
+        updates.set(key, updated);
+        if (updated.source !== 'manual') {
+          overridePatches.set(key, { ...(overridePatches.get(key) || {}), ...manualLeadOverrideFields(values) });
+        }
+        const crmPatch = {};
+        if (values.email) crmPatch.email = values.email;
+        if (values.notes) crmPatch.notes = values.notes;
+        if (values.phone && values.phone.trim() !== String(current.phone || '').trim()) crmPatch.whatsappOptInConfirmed = false;
+        if (Object.keys(crmPatch).length) crmPatches.set(key, { lead: updated, patch: crmPatch });
+        const index = working.findIndex((lead) => getLeadKey(lead) === key);
+        if (index >= 0) working[index] = updated;
+      } else {
+        const lead = createManualLead(values);
+        added.push(lead);
+        working.unshift(lead);
+      }
+    }
+
+    const finalAdded = added.map((lead) => updates.get(getLeadKey(lead)) || lead);
+    const updatedLeads = [...updates.values()];
+    const manualRecords = [...finalAdded, ...updatedLeads.filter((lead) => lead.source === 'manual')];
+    if (manualRecords.length) {
+      setManualLeads((current) => {
+        const byId = new Map(current.map((lead) => [getLeadKey(lead), lead]));
+        for (const lead of manualRecords) byId.set(getLeadKey(lead), lead);
+        return [...byId.values()].slice(-1000);
+      });
+    }
+    if (finalAdded.length || updatedLeads.length) {
+      setLeads((current) => {
+        const next = current.map((lead) => updates.get(getLeadKey(lead)) || lead);
+        for (const lead of updatedLeads) {
+          if (!next.some((item) => getLeadKey(item) === getLeadKey(lead))) next.unshift(lead);
+        }
+        return dedupeLeads([...finalAdded, ...next]);
+      });
+      setFinderResults((current) => current.map((lead) => updates.get(getLeadKey(lead)) || lead));
+    }
+    if (overridePatches.size) {
+      setManualOverrides((current) => {
+        const next = { ...current };
+        for (const [key, patch] of overridePatches) next[key] = { ...(next[key] || {}), ...patch };
+        return next;
+      });
+    }
+    if (crmPatches.size) {
+      for (const { lead, patch } of crmPatches.values()) updateCrm(lead, patch);
+    }
+    const googleIds = updatedLeads.filter((lead) => lead.source === 'google' && !lead.needsRefresh).map((lead) => getLeadKey(lead));
+    if (googleIds.length) setSavedPlaceIds((current) => [...new Set([...googleIds, ...current])].slice(0, 500));
+    const updatedCount = [...updates.values()].length;
+    showToast(`${finalAdded.length} manual ${finalAdded.length === 1 ? 'lead added' : 'leads added'}${updatedCount ? `; ${updatedCount} existing ${updatedCount === 1 ? 'lead updated' : 'leads updated'}` : ''}. No Google Places search was made.`);
+  }
+
   function removeSavedLead(lead) {
     const key = getLeadKey(lead);
     if (!key) return;
     setLeads((current) => current.filter((item) => getLeadKey(item) !== key));
+    setFinderResults((current) => current.filter((item) => getLeadKey(item) !== key));
+    if (lead.source === 'manual') setManualLeads((current) => current.filter((item) => getLeadKey(item) !== key));
     if (lead.source === 'google') setSavedPlaceIds((current) => current.filter((id) => id !== key));
+    setManualOverrides((current) => { const next = { ...current }; delete next[key]; return next; });
     setWorkflow((current) => { const next = { ...current }; delete next[key]; return next; });
     setSelectedLeadId((current) => current === key ? '' : current);
     showToast('Lead removed from your workspace.');
@@ -294,7 +428,7 @@ function App() {
       });
       const refreshed = await request;
       const result = { ...refreshed, source: 'google', demo: false, needsRefresh: false };
-      const mergeDetails = (item) => ({
+      const mergeDetails = (item) => applyManualLeadOverride({
         ...item, ...result,
         category: result.category || (item.needsRefresh ? '' : item.category),
         city: result.city || item.city,
@@ -307,7 +441,7 @@ function App() {
         mapsUrl: result.mapsUrl || item.mapsUrl,
         businessStatus: result.businessStatus === 'UNKNOWN' ? item.businessStatus : result.businessStatus,
         needsRefresh: false,
-      });
+      }, manualOverrides);
       setLeads((current) => current.map((item) => getLeadKey(item) === key ? mergeDetails(item) : item));
       setFinderResults((current) => current.map((item) => getLeadKey(item) === key ? mergeDetails(item) : item));
       showToast('Saved place details refreshed for this session. Google listing content is not stored locally.');
@@ -344,7 +478,7 @@ function App() {
     const href = URL.createObjectURL(blob);
     const anchor = document.createElement('a'); anchor.href = href; anchor.download = `agencyos-workflow-${localDateString()}.csv`;
     document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(href);
-    showToast('CRM workflow CSV exported. Google listing details are not included.');
+    showToast('CRM CSV exported. Manual lead details and workflow fields are included; Google Places listing content is excluded.');
   }
 
   const filteredLeads = useMemo(() => {
@@ -386,9 +520,9 @@ function App() {
           <div className="topbar-actions"><span className={`environment-pill ${apiConfig.googlePlacesConfigured ? 'is-connected' : ''}`}><span className="status-dot" />{apiConfig.loading ? 'Checking setup' : apiConfig.googlePlacesConfigured ? 'Places configured' : 'Demo Mode'}</span><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
         </header>
         <main className="main-content">
-          {!apiConfig.loading && !apiConfig.googlePlacesConfigured && <div className={`mode-notice ${apiConfig.reachable ? '' : 'notice-warning'}`} role="status"><span className="notice-icon"><Info size={16} /></span><span>{apiConfig.reachable ? 'Google Places API not configured — Demo Mode active.' : 'API status could not be reached — Demo Mode preview active.'}</span><button type="button" onClick={() => setActivePage('Settings')}>Configure API <ArrowRight size={14} /></button></div>}
+          {!apiConfig.loading && !apiConfig.googlePlacesConfigured && <div className={`mode-notice ${apiConfig.reachable ? '' : 'notice-warning'}`} role="status"><span className="notice-icon"><Info size={16} /></span><span>{apiConfig.reachable ? 'Google Places API is optional. Add manual leads or import a CSV for free—this workflow makes no Places API calls.' : 'API status could not be reached. Manual lead entry and CSV import still work without Google Places.'}</span><button type="button" onClick={() => setActivePage('Find Leads')}>Manual lead options <ArrowRight size={14} /></button><button type="button" onClick={() => setActivePage('Settings')}>Configure API <ArrowRight size={14} /></button></div>}
           {activePage === 'Dashboard' && <DashboardPage leads={leads} getCrm={getCrm} onNavigate={setActivePage} onOpenLead={openLead} onExport={() => exportCsv(leads)} />}
-          {activePage === 'Find Leads' && <FinderPage searchForm={searchForm} setSearchForm={setSearchForm} onSearch={runLeadSearch} searching={searching} searchError={searchError} results={finderResults} source={finderSource} warnings={finderWarnings} requests={finderRequests} geocodingRequests={finderGeocodingRequests} history={searchHistory} onSelectHistory={(entry) => setSearchForm((current) => ({ ...current, ...entry }))} hasRun={searchHasRun} query={finderQuery} configLoading={apiConfig.loading} leads={leads} onAdd={addLeadToWorkspace} onOpenLead={openLead} />}
+          {activePage === 'Find Leads' && <FinderPage searchForm={searchForm} setSearchForm={setSearchForm} onSearch={runLeadSearch} searching={searching} searchError={searchError} results={finderResults} source={finderSource} warnings={finderWarnings} requests={finderRequests} geocodingRequests={finderGeocodingRequests} history={searchHistory} onSelectHistory={(entry) => setSearchForm((current) => ({ ...current, ...entry }))} hasRun={searchHasRun} query={finderQuery} configLoading={apiConfig.loading} leads={leads} onAdd={addLeadToWorkspace} onOpenLead={openLead} onManualEntries={addManualLeadEntries} />}
           {activePage === 'Leads' && <LeadsPage leads={sortedLeads} allCount={leads.length} getCrm={getCrm} search={leadSearch} setSearch={setLeadSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} priorityFilter={priorityFilter} setPriorityFilter={setPriorityFilter} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort} onOpenLead={openLead} onPitch={handleOpenPitch} onStatus={updateStatus} onBulkUpdate={updateCrmBulk} onRemove={removeSavedLead} onRefreshDetails={refreshSavedPlace} refreshingDetailsIds={refreshingDetailsIds} onExport={() => exportCsv(leads)} onFind={() => setActivePage('Find Leads')} />}
           {activePage === 'Campaigns' && <CampaignsPage leads={leads} getCrm={getCrm} onOpenLead={openLead} onPitch={handleOpenPitch} />}
           {activePage === 'Settings' && <SettingsPage config={apiConfig} notice={settingsNotice} onRefresh={refreshConfig} onNavigate={setActivePage} />}
@@ -416,7 +550,29 @@ function Sidebar({ activePage, onNavigate, open }) {
 function PageHeading({ eyebrow, title, description, children }) {
   return <div className="page-heading"><div>{eyebrow && <div className="eyebrow">{eyebrow}</div>}<h1>{title}</h1><p>{description}</p></div>{children && <div className="page-heading-actions">{children}</div>}</div>;
 }
-function ModeBadge({ demo }) { return demo ? <span className="sample-badge"><span className="sample-dot" /> DEMO SAMPLE</span> : <span className="google-badge"><Globe2 size={12} /> GOOGLE PLACES</span>; }
+function ModeBadge({ lead, demo = false }) {
+  const source = typeof lead === 'string' ? lead : lead?.source || (demo ? 'demo' : 'google');
+  if (source === 'manual') return <span className="manual-badge"><span className="manual-dot" /> {manualLeadSourceLabel(source).toUpperCase()}</span>;
+  if (source === 'demo') return <span className="sample-badge"><span className="sample-dot" /> DEMO</span>;
+  return <span className="google-badge"><Globe2 size={12} /> GOOGLE PLACES</span>;
+}
+function missingLeadValue(lead, otherLabel = 'Not provided') {
+  if (lead?.source === 'manual') return 'Not provided';
+  return otherLabel;
+}
+function isUserProvidedManualField(lead, field) {
+  return lead?.source === 'manual' || lead?.manualUserFields?.includes(field);
+}
+function leadRatingSummary(lead) {
+  if (lead?.needsRefresh) return 'Refresh to load current rating and review count';
+  const manualRating = isUserProvidedManualField(lead, 'rating');
+  const manualReviews = isUserProvidedManualField(lead, 'reviews');
+  const ratingAvailable = lead?.source === 'manual' ? lead.rating != null : Number(lead?.rating) > 0;
+  const reviewsAvailable = lead?.source === 'manual' ? lead.reviews != null : Number(lead?.reviews) > 0;
+  const rating = ratingAvailable ? `${Number(lead.rating).toFixed(1)} rating${manualRating ? ' · user-provided' : ''}` : '';
+  const reviews = reviewsAvailable ? `${Number(lead.reviews).toLocaleString()} reviews${manualReviews ? ' · user-provided' : ''}` : '';
+  return [rating, reviews].filter(Boolean).join(' · ') || (lead?.source === 'manual' ? 'Not provided' : 'Not returned by Google');
+}
 function GoogleDisclosure({ compact = false }) {
   return <div className={`google-disclosure ${compact ? 'google-disclosure-compact' : ''}`}>
     <div className="google-attribution" aria-label="Google Maps attribution"><span className="google-text-attribution" translate="no">Google Maps</span><span className="attribution-context">Business listing data</span></div>
@@ -433,6 +589,11 @@ function EmptyState({ icon: Icon, title, body, actionLabel, onAction }) {
 }
 
 function DashboardPage({ leads, getCrm, onNavigate, onOpenLead, onExport }) {
+  const sourceCounts = [
+    { source: 'manual', label: 'Manual' },
+    { source: 'google', label: 'Google Places' },
+    { source: 'demo', label: 'Demo' },
+  ].map(({ source, label }) => ({ source, label, count: leads.filter((lead) => (lead.source || (lead.demo ? 'demo' : 'google')) === source).length }));
   const stats = [
     { label: 'Total leads', value: leads.length, icon: Users, tone: 'blue', caption: 'In your workspace' },
     { label: 'HOT leads', value: leads.filter((lead) => scoreOpportunity(lead).score >= 80).length, icon: Flame, tone: 'amber', caption: 'Score 80–100' },
@@ -456,6 +617,7 @@ function DashboardPage({ leads, getCrm, onNavigate, onOpenLead, onExport }) {
   return <div className="page-stack">
     <PageHeading eyebrow={dateLabel} title="Your pipeline, at a glance." description="A clear view of the relationships you’re building."><button className="button button-secondary" type="button" onClick={onExport} disabled={!leads.length}><Download size={16} /> Export workflow</button><button className="button button-primary" type="button" onClick={() => onNavigate('Find Leads')}><Plus size={16} /> Find new leads</button></PageHeading>
     <section className="kpi-grid" aria-label="Pipeline metrics">{stats.map(({ label, value, icon: Icon, tone, caption }) => <div className="kpi-card" key={label}><div className={`kpi-icon kpi-${tone}`}><Icon size={17} strokeWidth={1.8} /></div><div className="kpi-label">{label}</div><div className="kpi-value">{value}</div><div className="kpi-caption">{caption}</div></div>)}</section>
+    <section className="surface-card source-counts-card" aria-label="Lead counts by source"><div className="source-counts-heading"><div><div className="card-kicker">LEAD SOURCES</div><h2>Where your leads came from</h2></div><span>Current workspace</span></div><div className="source-counts-grid">{sourceCounts.map(({ source, label, count }) => <div className={`source-count-item source-count-${source}`} key={source}><span className="source-count-dot" /><span>{label}</span><strong>{count}</strong></div>)}</div></section>
     <div className="dashboard-main-grid">
       <section className="surface-card pipeline-card"><div className="card-heading-row"><div><div className="card-kicker">PIPELINE HEALTH</div><h2>Lead stages</h2></div><span className="quiet-chip"><Activity size={13} /> Workspace snapshot</span></div><div className="pipeline-summary"><strong>{leads.length}</strong><span>leads in the current workspace</span><ArrowUpRight size={16} /></div><div className="pipeline-bars">{pipeline.map((stage) => <div className="pipeline-row" key={stage.label}><div className="pipeline-row-head"><span>{stage.label}</span><strong>{stage.count}</strong></div><div className="pipeline-track"><span style={{ width: `${leads.length ? Math.max(stage.count ? 8 : 0, (stage.count / maxStage) * 100) : 0}%`, background: stage.color }} /></div></div>)}</div><div className="pipeline-footnote"><span className="legend-dot" /> Counts reflect current CRM statuses; no messages are sent automatically.</div></section>
       <section className="surface-card priority-card"><div className="card-heading-row"><div><div className="card-kicker">BEST NEXT OPPORTUNITIES</div><h2>Worth a closer look</h2></div><button className="text-button" type="button" onClick={() => onNavigate('Leads')}>View all <ArrowRight size={14} /></button></div>{highest.length ? <div className="opportunity-list">{highest.map((lead) => { const crm = getCrm(lead); return <button type="button" className="opportunity-row" key={getLeadKey(lead)} onClick={() => onOpenLead(lead)}><div className="business-avatar">{initials(lead.name)}</div><div className="opportunity-copy"><strong>{lead.name}</strong><span>{lead.category} <i>·</i> {lead.city || lead.address || 'Location not returned'}</span></div><div className="opportunity-right"><ScorePill lead={lead} compact /><span className={`stage-mini stage-${crm.status.toLowerCase().replaceAll(' ', '-')}`}>{titleCaseStatus(crm.status)}</span></div></button>; })}</div> : <EmptyState icon={Target} title="Your shortlist starts here" body="Add a few prospects to see evidence-based opportunities." actionLabel="Find leads" onAction={() => onNavigate('Find Leads')} />}{leads.some((lead) => lead.source === 'google') && <GoogleDisclosure />}</section>
@@ -467,7 +629,7 @@ function DashboardPage({ leads, getCrm, onNavigate, onOpenLead, onExport }) {
   </div>;
 }
 
-function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchError, results, source, warnings, requests, geocodingRequests, history, onSelectHistory, hasRun, query, configLoading, leads, onAdd, onOpenLead }) {
+function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchError, results, source, warnings, requests, geocodingRequests, history, onSelectHistory, hasRun, query, configLoading, leads, onAdd, onOpenLead, onManualEntries }) {
   const updateField = (key, value) => setSearchForm((current) => ({ ...current, [key]: value }));
   const added = (lead) => leads.some((item) => getLeadKey(item) === getLeadKey(lead));
   return <div className="page-stack">
@@ -485,14 +647,15 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
       {history.length > 0 && <div className="search-history-row"><span><History size={13} /> Recent searches</span>{history.map((entry, index) => <button type="button" key={`${entry.category}-${entry.city}-${index}`} className="history-chip" onClick={() => onSelectHistory(entry)}>{entry.category} · {entry.city}</button>)}</div>}
       <div className="finder-form-foot"><ShieldCheck size={14} /> No Maps webpage scraping. Results come from the official Places API or the clearly marked demo dataset.</div>
     </section>
-    {hasRun ? <section className={`finder-results-section ${source === 'google' ? 'google-results-container' : ''}`}><div className="results-heading"><div><div className="card-kicker">SEARCH RESULTS</div><h2>{results.length} {results.length === 1 ? 'business' : 'businesses'} <span>for “{query}”</span></h2></div><ModeBadge demo={source === 'demo'} /></div>
+    <ManualLeadTools leads={leads} results={results} onImport={onManualEntries} />
+    {hasRun ? <section className={`finder-results-section ${source === 'google' ? 'google-results-container' : ''}`}><div className="results-heading"><div><div className="card-kicker">SEARCH RESULTS</div><h2>{results.length} {results.length === 1 ? 'business' : 'businesses'} <span>for “{query}”</span></h2></div><ModeBadge lead={source} /></div>
       {warnings.map((warning) => <div className="results-note" key={warning}><Info size={14} />{warning}</div>)}
       {source === 'google' && <div className="results-note request-cost-note"><Info size={14} />{requests} Text Search {requests === 1 ? 'request' : 'requests'} used{geocodingRequests ? ` + ${geocodingRequests} Geocoding request for radius bias` : ''}. Place Details are requested only when you manually refresh a saved place, at most once per place per app session.</div>}
-      {results.length ? <div className="finder-results-grid">{results.map((lead) => { const isAdded = added(lead); const ratingText = [Number(lead.rating) > 0 ? `${Number(lead.rating).toFixed(1)} rating` : '', Number(lead.reviews) > 0 ? `${Number(lead.reviews).toLocaleString()} reviews` : ''].filter(Boolean).join(' · ') || 'Rating and review count not available'; const reasons = whyThisLead(lead).slice(0, 3); const recommendations = recommendService(lead).slice(0, 2); return <article className="finder-result-card" key={getLeadKey(lead)}>
+      {results.length ? <div className="finder-results-grid">{results.map((lead) => { const isAdded = added(lead); const ratingText = [Number(lead.rating) > 0 ? `${Number(lead.rating).toFixed(1)} rating${isUserProvidedManualField(lead, 'rating') ? ' · user-provided' : ''}` : '', Number(lead.reviews) > 0 ? `${Number(lead.reviews).toLocaleString()} reviews${isUserProvidedManualField(lead, 'reviews') ? ' · user-provided' : ''}` : ''].filter(Boolean).join(' · ') || 'Rating and review count not available'; const reasons = whyThisLead(lead).slice(0, 3); const recommendations = recommendService(lead).slice(0, 2); return <article className="finder-result-card" key={getLeadKey(lead)}>
         <div className="result-card-head"><div className="business-avatar business-avatar-large">{initials(lead.name)}</div><div className="result-title"><h3>{lead.name}</h3><span>{lead.category || 'Category not returned'}</span></div><ScorePill lead={lead} compact /></div>
         <div className="result-detail"><MapPin size={14} /><span>{lead.address || lead.city || 'Address not returned'}</span></div>
         <div className="result-detail"><Star size={14} className="star-icon" /><span>{ratingText}</span></div>
-        {lead.phone && <div className="result-detail"><Phone size={14} /><span>{lead.phone} · public business phone</span></div>}
+        {lead.phone && <div className="result-detail"><Phone size={14} /><span>{lead.phone} · {isUserProvidedManualField(lead, 'phone') ? 'user-entered business phone' : 'public business phone'}</span></div>}
         <div className="result-detail"><Globe2 size={14} />{lead.demo ? <span>{lead.website ? 'Reserved sample URL only' : 'No website field in sample'}</span> : safeHttpUrl(lead.website) ? <a className="result-website-link" href={safeHttpUrl(lead.website)} target="_blank" rel="noreferrer">{lead.website}</a> : <span>{lead.website ? 'Invalid website URL' : 'Website not listed'}</span>}</div>
         <div className="lead-evidence-panel"><strong>Why this lead?</strong><ul>{reasons.map((reason) => <li key={reason.key} className={`evidence-${reason.type}`}>{reason.text}</li>)}</ul><div className="service-recommendation"><Tag size={13} /><span><b>Potential service:</b> {recommendations[0].service} · {recommendations[0].reason}</span></div></div>
         {lead.placeId && !lead.demo && <div className="place-id-line"><span>Google Place ID</span><code title={lead.placeId}>{lead.placeId}</code></div>}
@@ -502,6 +665,133 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
       {source === 'google' && <GoogleDisclosure />}{source === 'demo' && <div className="demo-result-footnote"><Info size={14} /> Fictional demo dataset · Search details are illustrative and are not Google Places results.</div>}
     </section> : <div className="finder-placeholder"><div className="placeholder-orbit"><Search size={22} /></div><h2>Start with a local search.</h2><p>Choose an industry and a city. AgencyOS will bring the business profile signals into one calm workspace.</p><div className="placeholder-points"><span><CheckCircle2 size={15} /> Evidence-based scoring</span><span><CheckCircle2 size={15} /> No automated outreach</span><span><CheckCircle2 size={15} /> Your choice, every time</span></div></div>}
   </div>;
+}
+
+const EMPTY_MANUAL_LEAD_FORM = {
+  name: '', category: '', city: '', website: '', phone: '', email: '', mapsUrl: '', address: '',
+  rating: '', reviews: '', instagram: '', facebook: '', notes: '',
+};
+
+function ManualLeadTools({ leads, results, onImport }) {
+  const [formOpen, setFormOpen] = useState(false);
+  const [formValues, setFormValues] = useState(EMPTY_MANUAL_LEAD_FORM);
+  const [formErrors, setFormErrors] = useState({});
+  const [pendingManual, setPendingManual] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [importError, setImportError] = useState('');
+  const fileInput = useRef(null);
+  const candidates = useMemo(() => dedupeLeads([...leads, ...results]), [leads, results]);
+
+  function updateForm(key, value) {
+    setFormValues((current) => ({ ...current, [key]: value }));
+    setFormErrors((current) => ({ ...current, [key]: '' }));
+  }
+  function closeManualForm() {
+    setFormOpen(false);
+    setPendingManual(null);
+    setFormErrors({});
+  }
+  function submitManualForm(event) {
+    event.preventDefault();
+    const validation = validateManualLead(formValues);
+    setFormErrors(validation.errors);
+    if (!validation.valid) return;
+    const duplicate = findManualLeadDuplicate(validation.values, candidates);
+    if (duplicate) {
+      setPendingManual({ values: validation.values, duplicate });
+      return;
+    }
+    onImport([validation.values], 'add');
+    setFormValues(EMPTY_MANUAL_LEAD_FORM);
+    closeManualForm();
+  }
+  function resolveManualDuplicate(mode) {
+    if (!pendingManual) return;
+    if (mode !== 'cancel') onImport([pendingManual.values], mode);
+    setFormValues(EMPTY_MANUAL_LEAD_FORM);
+    closeManualForm();
+  }
+  async function readCsvFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    setImportError('');
+    setPreview(null);
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setImportError('CSV files must be 5 MB or smaller. Split larger files and import them separately.');
+      return;
+    }
+    try {
+      const parsed = parseManualLeadCsv(await file.text());
+      if (parsed.error) {
+        setPreview({ fileName: file.name, error: parsed.error, rows: [] });
+        return;
+      }
+      const seen = [...candidates];
+      const rows = parsed.rows.map((row) => {
+        const duplicate = row.valid ? findManualLeadDuplicate(row.values, seen) : null;
+        if (row.valid) seen.push({ ...row.values, id: `csv-preview-${row.rowNumber}`, source: 'manual' });
+        return { ...row, duplicate };
+      });
+      setPreview({ fileName: file.name, error: '', rows });
+    } catch {
+      setPreview({ fileName: file.name, error: 'The selected file could not be read as text. Choose a UTF-8 CSV file.', rows: [] });
+    }
+  }
+  function confirmCsvImport(mode) {
+    if (!preview) return;
+    const rows = preview.rows.filter((row) => row.valid);
+    if (rows.length) onImport(rows, mode);
+    setPreview(null);
+  }
+
+  const validRows = preview?.rows.filter((row) => row.valid) || [];
+  const invalidRows = preview?.rows.filter((row) => !row.valid) || [];
+  const duplicateRows = validRows.filter((row) => row.duplicate);
+
+  return <section className="surface-card manual-tools-card" aria-labelledby="manual-import-title">
+    <div className="manual-tools-header">
+      <div><div className="card-kicker">FREE · NO API KEY REQUIRED</div><h2 id="manual-import-title">Manual Lead Import</h2><p>Add one business or import a CSV you already have. Manual entry and CSV import make no Google Places API calls and never scrape Google Maps.</p></div>
+      <div className="manual-tools-actions">
+        <button className="button button-secondary" type="button" onClick={() => { setFormOpen((value) => !value); setPendingManual(null); }}><Plus size={15} /> Add Manual Lead</button>
+        <button className="button button-primary" type="button" onClick={() => fileInput.current?.click()}><Upload size={15} /> Import CSV</button>
+        <input ref={fileInput} className="visually-hidden-file" type="file" accept=".csv,text/csv" aria-label="Choose a CSV file to import" onChange={readCsvFile} />
+      </div>
+    </div>
+    <div className="manual-free-note"><ShieldCheck size={14} /><span>Manual leads are saved in this browser, use the existing CRM and follow-up workflow, and stay separate from Google Places results.</span><a href="https://www.google.com/maps" target="_blank" rel="noreferrer"><MapPin size={13} /> Open Google Maps <ExternalLink size={11} /></a></div>
+    {importError && <div className="inline-error" role="alert"><Info size={15} />{importError}</div>}
+
+    {formOpen && <form className="manual-lead-form" onSubmit={submitManualForm} noValidate>
+      <div className="manual-form-heading"><div><div className="card-kicker">NEW CRM RECORD</div><h3>Add a business manually</h3></div><span className="manual-source-pill">Manual</span></div>
+      <div className="manual-form-grid">
+        <label className="field-group"><span>Business Name <b>*</b></span><input className="field-input" value={formValues.name} onChange={(event) => updateForm('name', event.target.value)} maxLength={160} autoComplete="organization" required aria-invalid={Boolean(formErrors.name)} />{formErrors.name && <small className="manual-field-error">{formErrors.name}</small>}</label>
+        <label className="field-group"><span>Industry <b>*</b></span><input className="field-input" value={formValues.category} onChange={(event) => updateForm('category', event.target.value)} maxLength={100} placeholder="e.g. Dental clinic" required aria-invalid={Boolean(formErrors.category)} />{formErrors.category && <small className="manual-field-error">{formErrors.category}</small>}</label>
+        <label className="field-group"><span>City <b>*</b></span><input className="field-input" value={formValues.city} onChange={(event) => updateForm('city', event.target.value)} maxLength={160} autoComplete="address-level2" required aria-invalid={Boolean(formErrors.city)} />{formErrors.city && <small className="manual-field-error">{formErrors.city}</small>}</label>
+        <label className="field-group"><span>Website <small>optional</small></span><input className="field-input" value={formValues.website} onChange={(event) => updateForm('website', event.target.value)} maxLength={2048} placeholder="https://example.com" inputMode="url" aria-invalid={Boolean(formErrors.website)} />{formErrors.website && <small className="manual-field-error">{formErrors.website}</small>}</label>
+        <label className="field-group"><span>Phone <small>optional</small></span><input className="field-input" value={formValues.phone} onChange={(event) => updateForm('phone', event.target.value)} maxLength={64} autoComplete="tel" placeholder="+91 …" aria-invalid={Boolean(formErrors.phone)} />{formErrors.phone && <small className="manual-field-error">{formErrors.phone}</small>}</label>
+        <label className="field-group"><span>Email <small>optional</small></span><input className="field-input" type="email" value={formValues.email} onChange={(event) => updateForm('email', event.target.value)} maxLength={254} autoComplete="email" placeholder="name@business.com" aria-invalid={Boolean(formErrors.email)} />{formErrors.email && <small className="manual-field-error">{formErrors.email}</small>}</label>
+        <label className="field-group"><span>Google Maps URL <small>optional</small></span><input className="field-input" value={formValues.mapsUrl} onChange={(event) => updateForm('mapsUrl', event.target.value)} maxLength={2048} placeholder="Paste a public Google Maps link" inputMode="url" aria-invalid={Boolean(formErrors.mapsUrl)} />{formErrors.mapsUrl && <small className="manual-field-error">{formErrors.mapsUrl}</small>}<small className="manual-field-help"><a href="https://www.google.com/maps" target="_blank" rel="noreferrer">Open Google Maps <ExternalLink size={10} /></a> to copy a public link. No scraping or automation is performed.</small></label>
+        <label className="field-group"><span>Address <small>optional</small></span><input className="field-input" value={formValues.address} onChange={(event) => updateForm('address', event.target.value)} maxLength={500} autoComplete="street-address" aria-invalid={Boolean(formErrors.address)} />{formErrors.address && <small className="manual-field-error">{formErrors.address}</small>}</label>
+        <label className="field-group"><span>Rating <small>optional · 0–5</small></span><input className="field-input" type="number" min="0" max="5" step="0.1" value={formValues.rating} onChange={(event) => updateForm('rating', event.target.value)} placeholder="Not provided" aria-invalid={Boolean(formErrors.rating)} />{formErrors.rating && <small className="manual-field-error">{formErrors.rating}</small>}</label>
+        <label className="field-group"><span>Review Count <small>optional</small></span><input className="field-input" type="number" min="0" step="1" value={formValues.reviews} onChange={(event) => updateForm('reviews', event.target.value)} placeholder="Not provided" aria-invalid={Boolean(formErrors.reviews)} />{formErrors.reviews && <small className="manual-field-error">{formErrors.reviews}</small>}</label>
+        <label className="field-group"><span>Instagram <small>optional · profile URL</small></span><input className="field-input" value={formValues.instagram} onChange={(event) => updateForm('instagram', event.target.value)} maxLength={2048} placeholder="https://instagram.com/business" inputMode="url" aria-invalid={Boolean(formErrors.instagram)} />{formErrors.instagram && <small className="manual-field-error">{formErrors.instagram}</small>}</label>
+        <label className="field-group"><span>Facebook <small>optional · profile URL</small></span><input className="field-input" value={formValues.facebook} onChange={(event) => updateForm('facebook', event.target.value)} maxLength={2048} placeholder="https://facebook.com/business" inputMode="url" aria-invalid={Boolean(formErrors.facebook)} />{formErrors.facebook && <small className="manual-field-error">{formErrors.facebook}</small>}</label>
+        <label className="field-group manual-notes-field"><span>Notes <small>optional · private to this browser</small></span><textarea className="field-input" rows={3} value={formValues.notes} onChange={(event) => updateForm('notes', event.target.value)} maxLength={5000} placeholder="Context, source, or next steps" /></label>
+      </div>
+      <div className="manual-form-footer"><span><Info size={13} /> Blank optional fields remain “Not provided” and are not scored as business weaknesses.</span><div><button className="button button-quiet" type="button" onClick={closeManualForm}>Cancel</button><button className="button button-primary" type="submit"><Plus size={15} /> Add to CRM</button></div></div>
+    </form>}
+
+    {pendingManual && <div className="manual-duplicate-warning" role="alert"><Info size={16} /><div><strong>Possible duplicate: {pendingManual.duplicate.lead.name}</strong><span>Matched by {pendingManual.duplicate.reason}; source: {manualLeadSourceLabel(pendingManual.duplicate.lead)}.{pendingManual.duplicate.lead.source === 'demo' ? ' Fictional demo records are never overwritten; add this as a separate Manual lead.' : ''}</span><div className="manual-duplicate-actions"><button className="button button-quiet button-small" type="button" onClick={() => resolveManualDuplicate('cancel')}>Cancel</button><button className="button button-secondary button-small" type="button" onClick={() => resolveManualDuplicate('add')}>Add anyway</button><button className="button button-primary button-small" type="button" disabled={pendingManual.duplicate.lead.source === 'demo'} onClick={() => resolveManualDuplicate('update')}>Update existing</button></div></div></div>}
+
+    {preview && <div className="csv-import-preview" role="region" aria-label="CSV import preview">
+      <div className="csv-preview-heading"><div><div className="card-kicker">REVIEW BEFORE IMPORT</div><h3>{preview.fileName}</h3><p>{preview.error || `${validRows.length} valid · ${duplicateRows.length} possible duplicates · ${invalidRows.length} rows need correction`}</p></div><span className="csv-preview-badge">PREVIEW</span></div>
+      {preview.error ? <div className="inline-error" role="alert"><Info size={15} />{preview.error}</div> : <div className="csv-preview-list">{preview.rows.map((row) => <div className={`csv-preview-row ${row.valid ? '' : 'csv-row-invalid'}`} key={`${row.rowNumber}-${row.values.name || 'blank'}`}>
+        <span className="csv-row-number">{row.rowNumber}</span><div className="csv-row-business"><strong>{row.values.name || 'Business name missing'}</strong><span>{[row.values.category, row.values.city].filter(Boolean).join(' · ') || 'Industry and city not provided'}</span>{!row.valid && <small>{Object.values(row.errors).join(' ')}</small>}{row.duplicate && <small>Possible duplicate of {row.duplicate.lead.name} ({row.duplicate.reason}; {manualLeadSourceLabel(row.duplicate.lead)}).</small>}</div>
+        <span className={`csv-row-state ${!row.valid ? 'csv-row-state-invalid' : row.duplicate ? 'csv-row-state-duplicate' : 'csv-row-state-ready'}`}>{!row.valid ? 'Fix row' : row.duplicate ? 'Duplicate' : 'Ready'}</span>
+      </div>)}</div>}
+      <div className="csv-preview-footer"><span><ShieldCheck size={13} /> Import reads the file locally. No Places search, website fetch, or message is triggered. Demo samples are never overwritten; an Update existing match to Demo is added as a separate Manual lead.</span><div><button className="button button-quiet" type="button" onClick={() => setPreview(null)}>Cancel</button><button className="button button-secondary" type="button" onClick={() => confirmCsvImport('add')} disabled={!validRows.length}>Add anyway</button><button className="button button-primary" type="button" onClick={() => confirmCsvImport('update')} disabled={!validRows.length}>Update existing</button></div></div>
+    </div>}
+  </section>;
 }
 
 function LeadsPage({ leads, allCount, getCrm, search, setSearch, statusFilter, setStatusFilter, priorityFilter, setPriorityFilter, sortKey, sortDirection, onSort, onOpenLead, onPitch, onStatus, onBulkUpdate, onRemove, onRefreshDetails, refreshingDetailsIds, onExport, onFind }) {
@@ -553,15 +843,17 @@ function LeadsPage({ leads, allCount, getCrm, search, setSearch, statusFilter, s
           <tbody>{leads.map((lead) => {
             const crm = getCrm(lead);
             const rating = Number(lead.rating);
+            const hasRating = lead.source === 'manual' ? lead.rating != null : rating > 0;
+            const hasReviews = lead.source === 'manual' ? lead.reviews != null : Number(lead.reviews) > 0;
             return <tr key={getLeadKey(lead)}>
               <td className="select-column"><input type="checkbox" aria-label={`Select ${lead.name}`} checked={selectedIds.includes(getLeadKey(lead))} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...new Set([...current, getLeadKey(lead)])] : current.filter((id) => id !== getLeadKey(lead)))} /></td>
-              <td className="business-cell"><button className="business-cell-button" type="button" onClick={() => onOpenLead(lead)}><span className="business-avatar table-avatar">{initials(lead.name)}</span><span className="business-cell-copy"><strong>{lead.name}</strong><ModeBadge demo={lead.demo} /></span></button></td>
+              <td className="business-cell"><button className="business-cell-button" type="button" onClick={() => onOpenLead(lead)}><span className="business-avatar table-avatar">{initials(lead.name)}</span><span className="business-cell-copy"><strong>{lead.name}</strong><ModeBadge lead={lead} /></span></button></td>
               <td><span className="category-text">{lead.category || '—'}</span></td>
-              <td><span className="location-cell" title={lead.address || lead.city}><MapPin size={13} />{lead.city || lead.address || '—'}</span></td>
-              <td>{rating > 0 ? <span className="rating-cell"><Star size={13} fill="currentColor" />{rating.toFixed(1)}</span> : <span className="muted-cell">—</span>}</td>
-              <td className="number-cell">{Number(lead.reviews) ? Number(lead.reviews).toLocaleString() : '—'}</td>
-              <td>{lead.needsRefresh ? <span className="muted-cell">Refresh listing</span> : lead.website ? lead.demo ? <span className="demo-site-label">Sample URL</span> : safeHttpUrl(lead.website) ? <a className="table-link" href={safeHttpUrl(lead.website)} target="_blank" rel="noreferrer">Visit <ExternalLink size={12} /></a> : <span className="muted-cell">Invalid URL</span> : <span className="muted-cell">Not listed</span>}</td>
-              <td>{lead.phone ? <span className="phone-cell" title="Public business phone from Google Places"><Phone size={12} />{lead.phone}</span> : <span className="muted-cell">—</span>}</td>
+              <td><span className="location-cell" title={lead.address || lead.city}><MapPin size={13} />{lead.city || lead.address || missingLeadValue(lead, '—')}</span></td>
+              <td>{hasRating ? <span className="rating-cell"><Star size={13} fill="currentColor" />{rating.toFixed(1)}</span> : <span className="muted-cell">{missingLeadValue(lead, '—')}</span>}</td>
+              <td className="number-cell">{hasReviews ? Number(lead.reviews).toLocaleString() : missingLeadValue(lead, '—')}</td>
+              <td>{lead.needsRefresh ? <span className="muted-cell">Refresh listing</span> : lead.website ? lead.demo ? <span className="demo-site-label">Sample URL</span> : safeHttpUrl(lead.website) ? <a className="table-link" href={safeHttpUrl(lead.website)} target="_blank" rel="noreferrer">Visit <ExternalLink size={12} /></a> : <span className="muted-cell">Invalid URL</span> : <span className="muted-cell">{missingLeadValue(lead, 'Not listed')}</span>}</td>
+              <td>{lead.phone ? <span className="phone-cell" title={isUserProvidedManualField(lead, 'phone') ? 'User-entered business phone' : lead.demo ? 'Fictional demo phone' : 'Public business phone from Google Places'}><Phone size={12} />{lead.phone}</span> : <span className="muted-cell">{missingLeadValue(lead, '—')}</span>}</td>
               <td>{crm.email ? <button className="table-email" type="button" onClick={() => onOpenLead(lead)} title={`User-entered business email · ${crm.emailVerifiedByUser ? 'verified by you' : 'unverified'}`}>{crm.email}<small>{crm.emailVerifiedByUser ? 'USER VERIFIED' : 'UNVERIFIED'}</small></button> : <button className="add-email-button" type="button" onClick={() => onOpenLead(lead)}><Plus size={12} /> Add email</button>}</td>
               <td><ScorePill lead={lead} compact /></td>
               <td><select className={`status-select status-${crm.status.toLowerCase().replaceAll(' ', '-')}`} value={crm.status} onChange={(event) => onStatus(lead, event.target.value)} aria-label={`Status for ${lead.name}`}>{LEAD_STATUSES.map((status) => <option key={status} value={status}>{titleCaseStatus(status)}</option>)}</select></td>
@@ -573,7 +865,7 @@ function LeadsPage({ leads, allCount, getCrm, search, setSearch, statusFilter, s
         {hasGoogleData && <GoogleDisclosure />}
       </div>
     </> : <div className="surface-card empty-leads-card"><EmptyState icon={Users} title={allCount ? 'No leads match these filters' : 'Your lead workspace is ready'} body={allCount ? 'Try clearing a status, priority, or search filter.' : 'Use Find Leads to search official Places results, or explore fictional Demo Mode examples.'} actionLabel={allCount ? 'Clear filters' : 'Find leads'} onAction={allCount ? () => { setSearch(''); setStatusFilter('ALL'); setPriorityFilter('ALL'); } : onFind} /></div>}
-    <div className="export-note"><Info size={14} /><span>CSV exports workflow fields and place references only. Google Places business details are intentionally excluded.</span></div>
+    <div className="export-note"><Info size={14} /><span>CSV exports manual user-entered details and CRM workflow fields. Google Places business details are intentionally excluded.</span></div>
   </div>;
 }
 function SortButton({ label, field, current, direction, onClick }) { return <button type="button" className={`sort-button ${current === field ? 'sort-button-active' : ''}`} onClick={() => onClick(field)}>{label}<ArrowDownUp size={12} className={current === field ? `sort-arrow sort-${direction}` : 'sort-arrow'} /></button>; }
@@ -603,11 +895,11 @@ function CampaignsPage({ leads, getCrm, onOpenLead, onPitch }) {
 function SettingsPage({ config, notice, onRefresh, onNavigate }) {
   return <div className="page-stack">
     <PageHeading eyebrow="WORKSPACE PREFERENCES" title="Settings & integrations." description="Know what is connected, where data lives, and what AgencyOS will never do." />
-    <section className={`integration-status-card ${config.googlePlacesConfigured ? 'integration-ready' : ''}`}><div className="integration-icon"><Globe2 size={20} /></div><div className="integration-copy"><div className="card-kicker">GOOGLE PLACES API (NEW)</div><h2>{config.loading ? 'Checking server configuration…' : config.googlePlacesConfigured ? 'Server key configured' : 'Demo Mode is active'}</h2><p>{config.googlePlacesConfigured ? 'The server reports a Google Maps key is present. Credentials are not sent to the browser; a search will confirm the key and API permissions.' : config.reachable ? 'Google Places API not configured — Demo Mode active.' : 'The server status endpoint could not be reached. The fictional preview remains available.'}</p></div><div className={`integration-state ${config.googlePlacesConfigured ? 'integration-state-ready' : ''}`}><span />{config.loading ? 'Checking' : config.googlePlacesConfigured ? 'Configured' : 'Demo Mode'}</div></section>
+    <section className={`integration-status-card ${config.googlePlacesConfigured ? 'integration-ready' : ''}`}><div className="integration-icon"><Globe2 size={20} /></div><div className="integration-copy"><div className="card-kicker">GOOGLE PLACES API (NEW)</div><h2>{config.loading ? 'Checking server configuration…' : config.googlePlacesConfigured ? 'Server key configured' : 'Demo Mode is active'}</h2><p>{config.googlePlacesConfigured ? 'The server reports a Google Maps key is present. Credentials are not sent to the browser; a search will confirm the key and API permissions.' : config.reachable ? 'Google Places is optional. Add a lead manually or import a CSV for free; Manual Lead Import does not call the Places API.' : 'The server status endpoint could not be reached. Manual lead entry and CSV import still work without Google Places.'}</p></div><div className={`integration-state ${config.googlePlacesConfigured ? 'integration-state-ready' : ''}`}><span />{config.loading ? 'Checking' : config.googlePlacesConfigured ? 'Configured' : 'Demo Mode'}</div></section>
     <div className="settings-grid">
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">API CONFIGURATION</div><h2>Connect Google Places</h2></div><button className="icon-button" type="button" aria-label="Refresh API status" onClick={onRefresh} disabled={config.loading}><RefreshCw size={16} className={config.loading ? 'spin' : ''} /></button></div><p className="settings-paragraph">Add your key to the server environment. AgencyOS does not accept or store API keys in the browser.</p><ol className="setup-list"><li><span>1</span><div><strong>Enable Places API (New)</strong><small>In Google Cloud Console, enable Places API and billing for your project.</small></div></li><li><span>2</span><div><strong>Set a server-only environment variable</strong><code>GOOGLE_MAPS_API_KEY=your_key</code></div></li><li><span>3</span><div><strong>Restart the server</strong><small>Restrict the key to Places API (New), plus Geocoding API if used; apply server-side application restrictions where practical.</small></div></li></ol><div className="settings-callout"><Info size={15} /><span>Geocoding API is optional. If enabled, AgencyOS uses it to bias Text Search toward your chosen radius. Without it, the location is still used in the Text Search query.</span></div>{notice && <div className="settings-notice"><CheckCircle2 size={14} />{notice}</div>}</section>
-      <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">EXPLAINABLE AI QUALIFICATION</div><h2>Evidence in, reason out</h2></div><div className="engine-icon"><Sparkles size={16} /></div></div><p className="settings-paragraph">A transparent, rules-based expert system calculates the score and generates a short reason from observable signals. Draft copy uses evidence-bound templates; no external LLM is configured, so unsupported claims are not added.</p><div className="score-rule-list"><div><span>No website listed</span><strong>+30</strong></div><div><span>Weak website checks</span><strong>+20</strong></div><div><span>100+ reviews / 4.5+ rating</span><strong>+15 / +10</strong></div><div><span>Operational / contact gap / social link</span><strong>+10 / +10 / +5</strong></div></div><div className="settings-callout"><Info size={15} /><span>Priority bands: HOT 80–100, WARM 50–79, COLD 0–49. These are deterministic signals, not a forecast of conversion.</span></div><div className="settings-callout"><Info size={15} /><span>Mutually exclusive website signals cap the raw sum at 70. The app normalizes the observed raw score to 0–100 for the requested priority bands and shows both values in lead details.</span></div></section>
-      <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">DATA & RETENTION</div><h2>Minimal by default</h2></div><ShieldCheck size={18} className="muted-icon" /></div><div className="settings-feature-list"><div><CheckCircle2 size={16} /><span>Google Places business content stays in browser memory for this session only.</span></div><div><CheckCircle2 size={16} /><span>Local storage holds CRM fields, saved Google place IDs, and your recent search terms; no listing content is cached.</span></div><div><CheckCircle2 size={16} /><span>Saved place details refresh only on request; the same place ID is not fetched twice in one app session.</span></div><div><CheckCircle2 size={16} /><span>CSV export labels Google place IDs separately from user-entered CRM fields and omits business listing content.</span></div></div><button className="text-button settings-link" type="button" onClick={() => onNavigate('Privacy Policy')}>Read the Privacy Policy <ArrowRight size={14} /></button></section>
+      <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">EXPLAINABLE AI QUALIFICATION</div><h2>Evidence in, reason out</h2></div><div className="engine-icon"><Sparkles size={16} /></div></div><p className="settings-paragraph">A transparent, rules-based expert system calculates the score and generates a short reason from observable signals. Draft copy uses evidence-bound templates; no external LLM is configured, so unsupported claims are not added.</p><div className="score-rule-list"><div><span>No website listed (Google only; manual missing = unknown)</span><strong>+30</strong></div><div><span>Weak website checks</span><strong>+20</strong></div><div><span>100+ reviews / 4.5+ rating</span><strong>+15 / +10</strong></div><div><span>Operational / contact gap / social link</span><strong>+10 / +10 / +5</strong></div></div><div className="settings-callout"><Info size={15} /><span>Priority bands: HOT 80–100, WARM 50–79, COLD 0–49. These are deterministic signals, not a forecast of conversion.</span></div><div className="settings-callout"><Info size={15} /><span>Mutually exclusive website signals cap the raw sum at 70. The app normalizes the observed raw score to 0–100 for the requested priority bands and shows both values in lead details.</span></div></section>
+      <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">DATA & RETENTION</div><h2>Minimal by default</h2></div><ShieldCheck size={18} className="muted-icon" /></div><div className="settings-feature-list"><div><CheckCircle2 size={16} /><span>Google Places business content stays in browser memory for this session only.</span></div><div><CheckCircle2 size={16} /><span>Local storage holds user-entered manual leads, their CRM fields, saved Google place IDs, and recent search terms. Google Places listing content is not cached.</span></div><div><CheckCircle2 size={16} /><span>Saved place details refresh only on request; the same place ID is not fetched twice in one app session.</span></div><div><CheckCircle2 size={16} /><span>CSV export includes user-entered manual lead details and CRM fields; Google Places business listing content remains excluded.</span></div></div><button className="text-button settings-link" type="button" onClick={() => onNavigate('Privacy Policy')}>Read the Privacy Policy <ArrowRight size={14} /></button></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">CONTACT SAFETY</div><h2>You stay in control</h2></div><MessageCircle size={18} className="muted-icon" /></div><div className="settings-feature-list"><div><CheckCircle2 size={16} /><span>No bulk email sending or automated WhatsApp messaging.</span></div><div><CheckCircle2 size={16} /><span>Email copy/open requires a user-entered, user-verified email and a confirmed contact basis; WhatsApp requires a public business phone and explicit per-lead opt-in.</span></div><div><CheckCircle2 size={16} /><span>“Do not contact” disables outreach, bulk selection is CRM-only, and closed/DNC leads leave follow-up suggestions.</span></div></div><button className="text-button settings-link" type="button" onClick={() => onNavigate('Terms')}>Review Terms <ArrowRight size={14} /></button></section>
     </div><div className="settings-readme-note"><FileText size={15} /><span>For full local setup, deployment, and API instructions, see the project README.md.</span></div>
   </div>;
@@ -619,14 +911,14 @@ function LegalPage({ type, onNavigate }) {
     <article className="surface-card legal-card"><div className="legal-updated"><ShieldCheck size={15} /> Last updated October 7, 2026 <span>·</span> MVP version</div>
       {privacy ? <>
         <section><h2>What AgencyOS does</h2><p>AgencyOS helps an agency research local businesses through the official Google Places API, qualify prospects from visible signals, draft outreach for review, and manage a simple CRM workflow. Demo Mode uses fictional sample businesses and reserved example URLs only.</p></section>
-        <section><h2>Information and storage</h2><p>Google Places responses are held in browser memory for the active session and are not written to the AgencyOS server or browser storage. The browser stores CRM fields (status, notes, tags, follow-up dates, assigned service, estimate, a user-entered email and its verification/contact checks) in local storage, keyed by place ID. It also stores saved Google place IDs and recent user-entered search terms—not search results. Place IDs are exempt from Google Places caching restrictions; after a reload, a saved ID is a placeholder until you explicitly refresh its current listing details. Avoid putting sensitive personal information in notes.</p><p>CSV export contains labeled CRM workflow fields and Google place IDs, not Google Places business details. A user-initiated export creates a file on your device.</p></section>
+        <section><h2>Information and storage</h2><p>Google Places responses are held in browser memory for the active session and are not written to the AgencyOS server or browser storage. The browser stores manually entered leads, explicit user-entered overrides, CRM fields (status, notes, tags, follow-up dates, assigned service, estimate, a user-entered email and its verification/contact checks), saved Google place IDs, and recent user-entered search terms. Manual lead details are stored locally in this browser. Place IDs are exempt from Google Places caching restrictions; after a reload, a saved ID is a placeholder until you explicitly refresh its current listing details. Avoid putting sensitive personal information in notes.</p><p>CSV export contains manual/user-entered lead details, labeled CRM workflow fields, and Google place IDs, not Google Places business details. A user-initiated export creates a file on your device.</p></section>
         <section><h2>Website checks and external actions</h2><p>Website analysis makes a limited server-side request to the submitted public website, follows only a small number of safe redirects, and returns basic HTML signals. It does not attempt a visual audit. Email and WhatsApp buttons open your own applications only after you click; the MVP does not send messages, schedule sends, scrape Maps pages, or automate WhatsApp.</p></section>
         <section><h2>Credentials and service providers</h2><p>Google credentials are read by the server from environment variables and are never returned to the browser. Search requests are sent to Google Maps Platform. Your use of Google data is also subject to <a href="https://cloud.google.com/maps-platform/terms" target="_blank" rel="noreferrer">Google Maps Platform terms</a> and <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Google’s privacy practices</a>. This MVP does not include accounts, passwords, an email provider, or an external AI model.</p></section>
         <section><h2>Your responsibilities and choices</h2><p>You decide whether and how to contact a prospect. Confirm an appropriate legal basis for email and the recipient’s WhatsApp opt-in before using those channels. Use “Do not contact” when appropriate, honor opt-outs, and follow applicable privacy, marketing, and platform rules. You can clear local CRM data by clearing this site’s browser storage.</p></section>
         <section><h2>Contact and changes</h2><p>This policy is a product MVP summary, not legal advice. Replace it with a reviewed policy and a real contact address before public deployment. The workspace owner is responsible for publishing accurate contact information and updating this notice.</p></section>
       </> : <>
         <section><h2>Use of prospect data</h2><p>Use AgencyOS only for lawful, appropriate prospect research. You are responsible for confirming a lawful basis for outreach, honoring contact preferences and opt-outs, and complying with email, privacy, consumer-protection, and WhatsApp Business policies.</p></section>
-        <section><h2>No scraping or automatic messaging</h2><p>The product uses official Google Places API endpoints when configured; it is not designed to scrape Google Maps webpages. AgencyOS does not send bulk email, automatically message WhatsApp numbers, bypass WhatsApp opt-in, or send follow-ups in the background. You must review every draft and explicitly choose whether to contact a prospect.</p></section>
+        <section><h2>No scraping or automatic messaging</h2><p>Google-backed search uses official Google Places API endpoints when configured; manual lead entry and CSV import are local-only and do not make Places API calls. AgencyOS is not designed to scrape or automate Google Maps webpages. It does not send bulk email, automatically message WhatsApp numbers, bypass WhatsApp opt-in, or send follow-ups in the background. You must review every draft and explicitly choose whether to contact a prospect.</p></section>
         <section><h2>Google Maps Platform</h2><p>Google Places data is subject to <a href="https://cloud.google.com/maps-platform/terms" target="_blank" rel="noreferrer">Google Maps Platform terms</a>, attribution, retention, and display requirements. Configure your Google Cloud project and API key securely, avoid storing restricted Google content, and review current provider policies before deployment or export use.</p></section>
         <section><h2>Website analysis</h2><p>Website checks are limited automated HTML observations, not legal, security, accessibility, visual design, or conversion guarantees. Dynamic content can be missed, and results should be reviewed before relying on them.</p></section>
         <section><h2>Availability and responsibility</h2><p>This MVP is provided as-is, without a guarantee that third-party APIs are configured or available. Scores and suggestions are decision support, not verified claims about a business or a promise of results. Verify important details and keep personal information out of notes.</p></section>
@@ -653,7 +945,7 @@ function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, o
         <div className="drawer-scroll">
           <div className="drawer-hero">
             <div className="business-avatar business-avatar-hero">{initials(lead.name)}</div>
-            <div className="drawer-hero-copy"><div className="drawer-hero-badges"><ModeBadge demo={lead.demo} />{lead.businessStatus === 'OPERATIONAL' && <span className="operational-tag"><span /> Operational</span>}</div><h2 id="drawer-title">{lead.name}</h2><p>{lead.category} <span>·</span> {lead.city || lead.address || 'Location unavailable'}</p></div>
+            <div className="drawer-hero-copy"><div className="drawer-hero-badges"><ModeBadge lead={lead} />{lead.businessStatus === 'OPERATIONAL' && <span className="operational-tag"><span /> Operational</span>}</div><h2 id="drawer-title">{lead.name}</h2><p>{lead.category} <span>·</span> {lead.city || lead.address || 'Location unavailable'}</p></div>
           </div>
           <div className="drawer-hero-actions"><button className="button button-primary" type="button" onClick={onPitch} disabled={dnc || lead.needsRefresh}><Sparkles size={15} /> Generate pitch</button><button className="button button-secondary" type="button" onClick={recordContacted} disabled={dnc}><Check size={15} /> Mark contacted</button></div>
           {lead.needsRefresh && <div className="refresh-place-callout"><Info size={15} /><div><strong>Only the Google Place ID was saved.</strong><span>Refresh this listing to view current details. Place content is kept in memory for this session only.</span></div><button className="button button-secondary button-small" type="button" onClick={onRefreshPlace} disabled={refreshingPlace}>{refreshingPlace ? <LoaderCircle size={13} className="spin" /> : <RefreshCw size={13} />}{refreshingPlace ? 'Refreshing…' : 'Refresh details'}</button></div>}
@@ -665,21 +957,27 @@ function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, o
             <div className="drawer-service-recommendation"><Tag size={14} /><div><strong>Potential service · {recommendService(lead)[0].service}</strong><span>{recommendService(lead)[0].reason}</span></div>{SERVICES.includes(recommendService(lead)[0].service) && <button className="text-button" type="button" onClick={() => onUpdate({ assignedService: recommendService(lead)[0].service })}>Assign</button>}</div>
             <div className="raw-score-note"><Info size={13} /><span>{score.rawScore}/{score.maxRawScore} observed raw points, normalized to 0–100. Mutually exclusive website signals limit the raw maximum.</span></div>
             <div className="score-signal-list">{score.signals.map((signal) => <div className={`score-signal ${signal.active ? 'signal-active' : ''}`} key={signal.key}><span className="signal-check">{signal.active ? <Check size={11} /> : null}</span><span>{signal.label}</span><strong>{signal.active ? `+${signal.points}` : '—'}</strong></div>)}</div>
-            <div className="demo-score-note"><ShieldCheck size={13} /> {lead.demo ? 'Fictional sample signals. Not a real business assessment.' : 'Only returned fields and completed page checks contribute to this score.'}</div>
+            <div className="demo-score-note"><ShieldCheck size={13} /> {lead.demo ? 'Fictional sample signals. Not a real business assessment.' : lead.source === 'manual' || lead.manualUserFields?.length ? 'User-entered details are not independently verified; missing fields remain unknown, not business weaknesses.' : 'Only returned fields and completed page checks contribute to this score.'}</div>
           </section>
 
           <section className="drawer-section">
             <div className="drawer-section-heading"><div><div className="card-kicker">PUBLIC PROFILE</div><h3>Business details</h3></div><button type="button" className="icon-button small-icon-button" onClick={() => setOpenSection(openSection === 'profile' ? '' : 'profile')} aria-label="Toggle business details"><ChevronDown size={15} className={openSection === 'profile' ? '' : 'chevron-collapsed'} /></button></div>
             {openSection === 'profile' && <div className="profile-facts">
-              <div className="profile-fact"><MapPin size={15} /><div><span>Address</span><strong>{lead.needsRefresh ? 'Refresh to load current address' : lead.address || lead.city || 'Not available'}</strong></div></div>
-              <div className="profile-fact"><Star size={15} /><div><span>Google rating and review count</span><strong>{lead.needsRefresh ? 'Refresh to load current rating and review count' : Number(lead.rating) > 0 ? `${Number(lead.rating).toFixed(1)} rating${Number(lead.reviews) > 0 ? ` · ${Number(lead.reviews).toLocaleString()} reviews` : ''}` : Number(lead.reviews) > 0 ? `${Number(lead.reviews).toLocaleString()} reviews · rating not returned` : 'Not returned by Google'}</strong></div></div>
-              <div className="profile-fact"><Phone size={15} /><div><span>Public business phone · Google listing</span><strong>{lead.demo ? 'Not available in demo' : lead.needsRefresh ? 'Refresh to load current public phone' : lead.phone || 'Not returned by Google'}</strong></div></div>
-              <div className="profile-fact"><Globe2 size={15} /><div><span>Website · Google listing</span><strong>{lead.needsRefresh ? 'Refresh to load current website field' : lead.website ? safeHttpUrl(lead.website) ? (lead.demo ? `${new URL(safeHttpUrl(lead.website)).hostname} · sample only` : new URL(safeHttpUrl(lead.website)).hostname) : 'Invalid URL' : 'Not listed on profile'}</strong></div></div>
+              <div className="profile-fact"><MapPin size={15} /><div><span>{isUserProvidedManualField(lead, 'address') ? 'User-provided address' : 'Address'}</span><strong>{lead.needsRefresh ? 'Refresh to load current address' : lead.source === 'manual' ? lead.address || 'Not provided' : lead.address || lead.city || 'Not available'}</strong></div></div>
+              <div className="profile-fact"><Star size={15} /><div><span>{isUserProvidedManualField(lead, 'rating') || isUserProvidedManualField(lead, 'reviews') ? 'Rating and review count' : 'Google rating and review count'}</span><strong>{leadRatingSummary(lead)}</strong></div></div>
+              <div className="profile-fact"><Phone size={15} /><div><span>{isUserProvidedManualField(lead, 'phone') ? 'User-provided phone' : 'Public business phone · Google listing'}</span><strong>{lead.needsRefresh ? 'Refresh to load current public phone' : isUserProvidedManualField(lead, 'phone') ? lead.phone || 'Not provided' : lead.demo ? 'Not available in demo' : lead.phone || 'Not returned by Google'}</strong></div></div>
+              <div className="profile-fact"><Globe2 size={15} /><div><span>{isUserProvidedManualField(lead, 'website') ? 'User-provided website' : 'Website · Google listing'}</span><strong>{lead.needsRefresh ? 'Refresh to load current website field' : lead.website ? safeHttpUrl(lead.website) ? (lead.demo ? `${new URL(safeHttpUrl(lead.website)).hostname} · sample only` : new URL(safeHttpUrl(lead.website)).hostname) : 'Invalid URL' : lead.source === 'manual' ? 'Not provided' : 'Not listed on profile'}</strong></div></div>
+              {isUserProvidedManualField(lead, 'mapsUrl') && <div className="profile-fact"><MapPin size={15} /><div><span>Google Maps URL</span><strong>{lead.mapsUrl ? 'User-provided link' : 'Not provided'}</strong></div></div>}
+              {lead.source === 'manual' && <div className="profile-fact"><Mail size={15} /><div><span>User-provided email</span><strong>{crm.email || 'Not provided'}</strong></div></div>}
+              {isUserProvidedManualField(lead, 'instagram') && <div className="profile-fact"><ExternalLink size={15} /><div><span>Instagram</span><strong>{lead.instagram ? 'User-provided profile link' : 'Not provided'}</strong></div></div>}
+              {isUserProvidedManualField(lead, 'facebook') && <div className="profile-fact"><ExternalLink size={15} /><div><span>Facebook</span><strong>{lead.facebook ? 'User-provided profile link' : 'Not provided'}</strong></div></div>}
               {safeHttpUrl(lead.website) && !lead.demo && <a className="profile-map-link" href={safeHttpUrl(lead.website)} target="_blank" rel="noreferrer"><Globe2 size={14} /> Open business website <ExternalLink size={12} /></a>}
               {safeHttpUrl(lead.mapsUrl) && <a className="profile-map-link" href={safeHttpUrl(lead.mapsUrl)} target="_blank" rel="noreferrer"><MapPin size={14} /> Open Google Maps <ExternalLink size={12} /></a>}
+              {safeHttpUrl(lead.instagram) && <a className="profile-map-link" href={safeHttpUrl(lead.instagram)} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Instagram profile <ExternalLink size={12} /></a>}
+              {safeHttpUrl(lead.facebook) && <a className="profile-map-link" href={safeHttpUrl(lead.facebook)} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Facebook profile <ExternalLink size={12} /></a>}
               {lead.placeId && !lead.demo && <div className="profile-place-id"><span>Google Place ID · retained reference</span><code>{lead.placeId}</code></div>}
             </div>}
-            {!lead.demo && <GoogleDisclosure compact />}
+            {lead.source === 'google' && <GoogleDisclosure compact />}
           </section>
 
           {lead.website && <section className="drawer-section website-audit-section">
@@ -695,11 +993,11 @@ function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, o
               <label className="field-group"><span>Last contacted</span><input className="field-input" type="date" value={crm.lastContacted} onChange={(event) => { const value = event.target.value; onUpdate({ lastContacted: value, lastContactedAt: '', followUpAnchorDate: value, followUpStep: value ? 1 : 0, nextFollowUp: value ? addDays(value, 3) : '' }); }} /></label>
               <label className="field-group"><span>Next follow-up</span><input className="field-input" type="date" value={crm.nextFollowUp} onChange={(event) => onUpdate({ nextFollowUp: event.target.value })} /></label>
               <label className="field-group"><span>Estimated deal value (₹)</span><input className="field-input" inputMode="numeric" type="number" min="0" value={crm.estimatedDealValue} onChange={(event) => onUpdate({ estimatedDealValue: event.target.value })} placeholder="Not set" /></label>
-              <label className="field-group"><span>Business email <small>user-entered, not from Google</small></span><input className="field-input" type="email" value={crm.email} onChange={(event) => onUpdate({ email: event.target.value, emailVerifiedByUser: false, emailPermissionConfirmed: false })} placeholder="Enter a business email" maxLength={254} /></label>
+              <label className="field-group"><span>Business email <small>user-entered, not from Google</small></span><input className="field-input" type="email" value={crm.email} onChange={(event) => onUpdate({ email: event.target.value, emailVerifiedByUser: false, emailPermissionConfirmed: false })} placeholder={lead.source === 'manual' ? 'Not provided' : 'Enter a business email'} maxLength={254} /></label>
             </div>
             <label className={`consent-row email-verified-row ${dnc || !crm.email ? 'consent-disabled' : ''}`}><input type="checkbox" checked={crm.emailVerifiedByUser} disabled={dnc || !crm.email} onChange={(event) => onUpdate({ emailVerifiedByUser: event.target.checked, ...(event.target.checked ? {} : { emailPermissionConfirmed: false }) })} /><span className="consent-check" /><span><strong>{crm.emailVerifiedByUser ? 'Business email verified by you' : 'I verified this business email'}</strong><small>Email is user-entered and {crm.emailVerifiedByUser ? 'marked verified by you.' : 'unverified until you confirm it.'}</small></span></label>
             <label className="field-group tags-field"><span>Tags <small>Comma-separated labels</small></span><input className="field-input" value={crm.tags.join(', ')} onChange={(event) => onUpdate({ tags: event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 20) })} placeholder="e.g. Pune, priority, referral" maxLength={400} /></label>
-            <label className="field-group notes-field"><span>Notes <small>Keep sensitive personal data out.</small></span><textarea value={crm.notes} onChange={(event) => onUpdate({ notes: event.target.value })} maxLength={5000} rows={3} placeholder="Add context for your next conversation…" /></label>
+            <label className="field-group notes-field"><span>Notes <small>Keep sensitive personal data out.</small></span><textarea value={crm.notes} onChange={(event) => onUpdate({ notes: event.target.value })} maxLength={5000} rows={3} placeholder={lead.source === 'manual' ? 'Not provided' : 'Add context for your next conversation…'} /></label>
           </section>
 
           <section className="drawer-section contact-preferences-section">
@@ -777,13 +1075,13 @@ function OutreachModal({ lead, crm, onClose, onToast, onMarkContacted, onReviewL
     <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="outreach-modal" role="dialog" aria-modal="true" aria-labelledby="outreach-title">
         <div className="modal-header"><div><div className="card-kicker">PERSONALIZED OUTREACH</div><h2 id="outreach-title">A message that sounds like you.</h2><p>Drafted from available public details. Edit it freely before using.</p></div><button className="icon-button" type="button" aria-label="Close pitch composer" onClick={onClose}><X size={18} /></button></div>
-        <div className="pitch-recipient"><div className="business-avatar">{initials(lead.name)}</div><div><strong>{lead.name}</strong><span>{lead.category} · {lead.city || lead.address || 'Location not returned'}</span></div><ModeBadge demo={lead.demo} /></div>
+        <div className="pitch-recipient"><div className="business-avatar">{initials(lead.name)}</div><div><strong>{lead.name}</strong><span>{lead.category} · {lead.city || lead.address || 'Location not returned'}</span></div><ModeBadge lead={lead} /></div>
         <div className="pitch-recipient-links">{!lead.demo && safeHttpUrl(lead.website) && <a href={safeHttpUrl(lead.website)} target="_blank" rel="noreferrer"><Globe2 size={13} /> Open website <ExternalLink size={11} /></a>}{!lead.demo && safeHttpUrl(lead.mapsUrl) && <a href={safeHttpUrl(lead.mapsUrl)} target="_blank" rel="noreferrer"><MapPin size={13} /> Google Maps <ExternalLink size={11} /></a>}</div>
-        {!lead.demo && <GoogleDisclosure compact />}
+        {lead.source === 'google' && <GoogleDisclosure compact />}
         <div className="pitch-tabs"><button type="button" className={tab === 'email' ? 'pitch-tab active' : 'pitch-tab'} onClick={() => setTab('email')}><Mail size={15} /> Email draft</button><button type="button" className={tab === 'whatsapp' ? 'pitch-tab active' : 'pitch-tab'} onClick={() => setTab('whatsapp')}><MessageCircle size={15} /> WhatsApp draft</button></div>
-        <div className={`outreach-contact-status ${tab === 'email' ? (emailAllowed ? 'contact-basis-ready' : 'contact-basis-blocked') : (whatsappAllowed ? 'contact-basis-ready' : 'contact-basis-blocked')}`}><ShieldCheck size={14} /><span>{tab === 'email' ? emailAllowed ? 'Email address is user-entered, verified by you, and contact basis confirmed.' : emailValidation.reason : whatsappAllowed ? 'Public business phone available and explicit WhatsApp opt-in confirmed.' : whatsappValidation.reason}{tab === 'whatsapp' && lead.phone && <small>Phone source: public business number from Google Places.</small>}</span></div>
+        <div className={`outreach-contact-status ${tab === 'email' ? (emailAllowed ? 'contact-basis-ready' : 'contact-basis-blocked') : (whatsappAllowed ? 'contact-basis-ready' : 'contact-basis-blocked')}`}><ShieldCheck size={14} /><span>{tab === 'email' ? emailAllowed ? 'Email address is user-entered, verified by you, and contact basis confirmed.' : emailValidation.reason : whatsappAllowed ? `${isUserProvidedManualField(lead, 'phone') ? 'User-entered' : 'Public'} business phone available and explicit WhatsApp opt-in confirmed.` : whatsappValidation.reason}{tab === 'whatsapp' && lead.phone && <small>Phone source: {isUserProvidedManualField(lead, 'phone') ? 'user-entered business number.' : lead.demo ? 'fictional demo sample.' : 'public business number from Google Places.'}</small>}</span></div>
         {tab === 'email' ? <div className="pitch-editor"><label className="field-group"><span>Subject</span><input className="field-input" value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={160} /></label><label className="field-group"><span>Email body</span><textarea rows={10} value={emailBody} onChange={(event) => setEmailBody(event.target.value)} maxLength={4000} /></label><div className="pitch-editor-foot"><span>{emailBody.length} / 4,000 characters</span><button className="text-button" type="button" onClick={() => copy(`${subject}\n\n${emailBody}`, 'Email draft')} disabled={!emailAllowed}><Copy size={14} /> Copy email</button></div></div> : <div className="pitch-editor"><label className="field-group"><span>WhatsApp message</span><textarea rows={7} value={whatsappBody} onChange={(event) => setWhatsappBody(event.target.value)} maxLength={1500} /></label><div className="pitch-editor-foot"><span>{whatsappBody.length} / 1,500 characters</span><button className="text-button" type="button" onClick={() => copy(whatsappBody, 'WhatsApp draft')} disabled={!whatsappAllowed}><Copy size={14} /> Copy message</button></div></div>}
-        <div className="pitch-evidence"><ShieldCheck size={14} /><span>{lead.demo ? 'Fictional demo details. The sample cannot be contacted.' : 'Draft uses only returned listing details and any completed page check. No unsupported business claims are added.'}</span></div>
+        <div className="pitch-evidence"><ShieldCheck size={14} /><span>{lead.demo ? 'Fictional demo details. The sample cannot be contacted.' : lead.source === 'manual' || lead.manualUserFields?.length ? 'Draft uses details entered by you and any completed page check. User-entered claims are not independently verified.' : 'Draft uses only returned listing details and any completed page check. No unsupported business claims are added.'}</span></div>
         {isDnc && <div className="dnc-notice modal-dnc"><ShieldCheck size={14} /> Do Not Contact is active. Draft copy and channel actions are disabled.</div>}
         <div className="modal-actions">
           {tab === 'email' ? <>
