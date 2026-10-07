@@ -12,7 +12,7 @@ import { addDays, followUpPlan, formatDate, localDateString } from './lib/dates.
 import { buildOutreach } from './lib/outreach.js';
 import { getWebsiteAudit, opportunityReason, scoreOpportunity } from './lib/qualification.js';
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
-import { markLeadContacted, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
+import { enrichmentCrmPatch, markLeadContacted, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
 import { getOrCreateCachedRequest } from './lib/placeDetailsCache.js';
 import {
   OSM_ATTRIBUTION, OSM_LICENSE_URL, buildFreeSearchPayload, freeSearchHint, isOsmLead, listingSourceNoun,
@@ -22,7 +22,7 @@ import {
   manualLeadOverrideFields, manualLeadSourceLabel, parseManualLeadCsv, validateManualLead,
 } from './lib/manualLeads.js';
 
-const DEFAULT_CRM = { status: 'NEW', notes: '', lastContacted: '', lastContactedAt: '', followUpAnchorDate: '', followUpStep: 0, nextFollowUp: '', assignedService: 'Website', estimatedDealValue: '', email: '', emailVerifiedByUser: false, emailPermissionConfirmed: false, whatsappOptInConfirmed: false, tags: [] };
+const DEFAULT_CRM = { status: 'NEW', notes: '', lastContacted: '', lastContactedAt: '', followUpAnchorDate: '', followUpStep: 0, nextFollowUp: '', assignedService: 'Website', estimatedDealValue: '', email: '', emailVerifiedByUser: false, emailPermissionConfirmed: false, whatsappOptInConfirmed: false, enrichmentStatus: 'not_enriched', enrichmentTimestamp: '', enrichmentSource: '', enrichmentConfidence: '', enrichmentEmail: '', enrichmentPhone: '', enrichmentWhatsappUrl: '', enrichmentSocialLinks: [], enrichmentAddress: '', enrichmentBusinessName: '', enrichmentServices: [], enrichmentOpeningHours: '', enrichmentContactPage: '', discoveredWebsite: '', enrichmentEvidence: [], tags: [] };
 const WORKFLOW_STORAGE_KEY = 'agencyos:workflow:v1';
 const SAVED_PLACE_IDS_KEY = 'agencyos:saved-place-ids:v1';
 const SEARCH_HISTORY_KEY = 'agencyos:search-history:v1';
@@ -111,6 +111,21 @@ function cleanCrmRecord(record) {
     emailVerifiedByUser: Boolean(next.emailVerifiedByUser),
     emailPermissionConfirmed: Boolean(next.emailPermissionConfirmed),
     whatsappOptInConfirmed: Boolean(next.whatsappOptInConfirmed),
+    enrichmentStatus: typeof next.enrichmentStatus === 'string' ? next.enrichmentStatus.slice(0, 40) : 'not_enriched',
+    enrichmentTimestamp: typeof next.enrichmentTimestamp === 'string' ? next.enrichmentTimestamp.slice(0, 40) : '',
+    enrichmentSource: typeof next.enrichmentSource === 'string' ? next.enrichmentSource.slice(0, 80) : '',
+    enrichmentConfidence: ['high', 'medium', 'low'].includes(next.enrichmentConfidence) ? next.enrichmentConfidence : '',
+    enrichmentEmail: typeof next.enrichmentEmail === 'string' ? next.enrichmentEmail.slice(0, 254) : '',
+    enrichmentPhone: typeof next.enrichmentPhone === 'string' ? next.enrichmentPhone.slice(0, 80) : '',
+    enrichmentWhatsappUrl: typeof next.enrichmentWhatsappUrl === 'string' ? next.enrichmentWhatsappUrl.slice(0, 2000) : '',
+    enrichmentSocialLinks: [...new Set((Array.isArray(next.enrichmentSocialLinks) ? next.enrichmentSocialLinks : []).filter((value) => typeof value === 'string').map((value) => value.slice(0, 2000)).filter(Boolean))].slice(0, 8),
+    enrichmentAddress: typeof next.enrichmentAddress === 'string' ? next.enrichmentAddress.slice(0, 300) : '',
+    enrichmentBusinessName: typeof next.enrichmentBusinessName === 'string' ? next.enrichmentBusinessName.slice(0, 160) : '',
+    enrichmentServices: [...new Set((Array.isArray(next.enrichmentServices) ? next.enrichmentServices : []).filter((value) => typeof value === 'string').map((value) => value.trim().slice(0, 120)).filter(Boolean))].slice(0, 12),
+    enrichmentOpeningHours: typeof next.enrichmentOpeningHours === 'string' ? next.enrichmentOpeningHours.slice(0, 300) : '',
+    enrichmentContactPage: typeof next.enrichmentContactPage === 'string' ? next.enrichmentContactPage.slice(0, 2000) : '',
+    discoveredWebsite: typeof next.discoveredWebsite === 'string' ? next.discoveredWebsite.slice(0, 2000) : '',
+    enrichmentEvidence: (Array.isArray(next.enrichmentEvidence) ? next.enrichmentEvidence : []).slice(0, 40).filter((item) => item && typeof item === 'object' && typeof item.field === 'string' && typeof item.value === 'string').map((item) => ({ field: item.field.slice(0, 40), value: item.value.slice(0, 240), source: typeof item.source === 'string' ? item.source.slice(0, 160) : '', evidence: typeof item.evidence === 'string' ? item.evidence.slice(0, 240) : '', confidence: ['high', 'medium', 'low'].includes(item.confidence) ? item.confidence : 'low' })),
     tags: [...new Set((Array.isArray(next.tags) ? next.tags : []).map((tag) => String(tag).trim().slice(0, 40)).filter(Boolean))].slice(0, 20),
   };
 }
@@ -148,18 +163,18 @@ function App() {
   const [apiConfig, setApiConfig] = useState({ loading: true, googlePlacesConfigured: false, freeSearchEnabled: false, reachable: true });
   const [manualLeads, setManualLeads] = useState(readManualLeads);
   const [manualOverrides, setManualOverrides] = useState(readManualLeadOverrides);
-  const [leads, setLeads] = useState(() => dedupeLeads([...DEMO_LEADS, ...manualLeads].map((lead) => applyManualLeadOverride(lead, manualOverrides))));
+  const [leads, setLeads] = useState(() => dedupeLeads(manualLeads.map((lead) => applyManualLeadOverride(lead, manualOverrides))));
   const [workflow, setWorkflow] = useState(readWorkflow);
   const [savedPlaceIds, setSavedPlaceIds] = useState(readSavedPlaceIds);
   const [searchHistory, setSearchHistory] = useState(readSearchHistory);
   const [finderResults, setFinderResults] = useState([]);
-  const [finderSource, setFinderSource] = useState('demo');
+  const [finderSource, setFinderSource] = useState('osm');
   const [finderWarnings, setFinderWarnings] = useState([]);
   const [finderQuery, setFinderQuery] = useState('');
   const [finderRequests, setFinderRequests] = useState(0);
   const [finderGeocodingRequests, setFinderGeocodingRequests] = useState(0);
   const [refreshingDetailsIds, setRefreshingDetailsIds] = useState({});
-  const [searchForm, setSearchForm] = useState({ category: '', city: 'Pune', radiusKm: '10', maxResults: '10', source: 'demo' });
+  const [searchForm, setSearchForm] = useState({ category: '', city: 'Pune', radiusKm: '10', maxResults: '10', source: 'osm' });
   const [osmMeta, setOsmMeta] = useState({ queriedTags: [], matchedCategory: '', resolvedLocation: '' });
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -173,6 +188,7 @@ function App() {
   const [outreachLeadId, setOutreachLeadId] = useState('');
   const [auditLoadingIds, setAuditLoadingIds] = useState({});
   const [auditRevealedIds, setAuditRevealedIds] = useState({});
+  const [enrichmentLoadingIds, setEnrichmentLoadingIds] = useState({});
   const [toast, setToast] = useState('');
   const [settingsNotice, setSettingsNotice] = useState('');
   const initialConfigLoaded = useRef(false);
@@ -194,21 +210,22 @@ function App() {
         setApiConfig({ loading: false, reachable: true, ...data });
         if (!initialConfigLoaded.current) {
           initialConfigLoaded.current = true;
-          // Preserve the previous default: Google when a key exists, demo otherwise.
-          setSearchForm((current) => ({ ...current, source: data.googlePlacesConfigured ? 'google' : 'demo' }));
+          // Prefer live OpenStreetMap prospecting when Google Places is not configured.
+          setSearchForm((current) => ({ ...current, source: data.googlePlacesConfigured ? 'google' : 'osm' }));
           const savedReferences = savedPlaceIds.map((id) => savedLeadPlaceholder(id));
           setLeads((current) => {
-            const retainedManual = [...manualLeads, ...current.filter((lead) => lead.source === 'manual')];
-            const base = data.googlePlacesConfigured ? [] : DEMO_LEADS;
-            return dedupeLeads([...base, ...savedReferences, ...retainedManual].map((lead) => applyManualLeadOverride(lead, manualOverrides)));
+            const retained = current.filter((lead) => !lead.demo);
+            const retainedManual = [...manualLeads, ...retained.filter((lead) => lead.source === 'manual')];
+            return dedupeLeads([...savedReferences, ...retained, ...retainedManual].map((lead) => applyManualLeadOverride(lead, manualOverrides)));
           });
         }
       } catch {
         if (!alive) return;
-        setApiConfig({ loading: false, reachable: false, googlePlacesConfigured: false, demoMode: true });
+        setApiConfig({ loading: false, reachable: false, googlePlacesConfigured: false, freeSearchEnabled: false });
         if (!initialConfigLoaded.current) {
           initialConfigLoaded.current = true;
-          setLeads((current) => dedupeLeads([...DEMO_LEADS, ...manualLeads, ...current.filter((lead) => lead.source === 'manual')].map((lead) => applyManualLeadOverride(lead, manualOverrides))));
+          setSearchForm((current) => ({ ...current, source: 'osm' }));
+          setLeads((current) => dedupeLeads([...manualLeads, ...current.filter((lead) => lead.source === 'manual')].map((lead) => applyManualLeadOverride(lead, manualOverrides))));
         }
       }
     })();
@@ -287,12 +304,13 @@ function App() {
       const response = await fetch('/api/config', { cache: 'no-store' });
       const data = await response.json();
       setApiConfig({ loading: false, reachable: true, ...data });
+      setSearchForm((current) => ({ ...current, source: data.googlePlacesConfigured ? 'google' : 'osm' }));
       const savedReferences = savedPlaceIds.map((id) => savedLeadPlaceholder(id));
       setLeads((current) => {
         const retained = current.filter((lead) => !lead.demo && !lead.needsRefresh);
         const manual = [...manualLeads, ...retained.filter((lead) => lead.source === 'manual')];
-        const base = data.googlePlacesConfigured ? retained.filter((lead) => lead.source !== 'manual') : [...DEMO_LEADS, ...retained.filter((lead) => lead.source !== 'manual')];
-        return dedupeLeads([...base, ...savedReferences, ...manual].map((lead) => applyManualLeadOverride(lead, manualOverrides)));
+        const liveLeads = retained.filter((lead) => lead.source !== 'manual');
+        return dedupeLeads([...liveLeads, ...savedReferences, ...manual].map((lead) => applyManualLeadOverride(lead, manualOverrides)));
       });
       setSettingsNotice('Configuration status refreshed.');
     } catch {
@@ -310,7 +328,7 @@ function App() {
     setOsmMeta({ queriedTags: [], matchedCategory: '', resolvedLocation: '' });
     try {
       if (searchForm.source === 'osm') {
-        if (!apiConfig.freeSearchEnabled) { setSearchError('Free OpenStreetMap search is unavailable on this server.'); return; }
+        if (!apiConfig.freeSearchEnabled) { setSearchError('OpenStreetMap search is unavailable on this server.'); return; }
         const built = buildFreeSearchPayload({ category, city, radiusKm: searchForm.radiusKm, maxResults: searchForm.maxResults });
         if (!built.valid) { setSearchError(built.errors[0]); return; }
         const response = await fetch('/api/free/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(built.payload) });
@@ -332,7 +350,7 @@ function App() {
       } else {
         setFinderResults(dedupeLeads(demoSearch(category, city).slice(0, Number(searchForm.maxResults) || 10)).map((lead) => applyManualLeadOverride(lead, manualOverrides)));
         setFinderSource('demo');
-        setFinderWarnings(['The sample set contains fictional Pune businesses only. Search radius is illustrative in Demo Mode.']);
+        setFinderWarnings(['The sample set contains fictional Pune businesses only. Search radius is illustrative for these sample records.']);
       }
     } catch (error) { setSearchError(error.message || 'Search failed. Please try again.'); }
     finally { setSearching(false); }
@@ -440,7 +458,7 @@ function App() {
       return;
     }
     if (!key || lead.demo || !apiConfig.googlePlacesConfigured) {
-      showToast(apiConfig.googlePlacesConfigured ? 'Demo sample records cannot be refreshed.' : 'Google Places API not configured — Demo Mode active.');
+      showToast(apiConfig.googlePlacesConfigured ? 'Demo sample records cannot be refreshed.' : 'Google Places is not configured; saved place IDs need a server-side Places key to refresh.');
       return;
     }
     setRefreshingDetailsIds((current) => ({ ...current, [key]: true }));
@@ -497,6 +515,29 @@ function App() {
     } catch (error) { showToast(error.message || 'Website analysis failed.'); }
     finally { setAuditLoadingIds((current) => ({ ...current, [key]: false })); }
   }
+  async function enrichLead(lead) {
+    if (!isOsmLead(lead)) return;
+    const key = getLeadKey(lead);
+    setEnrichmentLoadingIds((current) => ({ ...current, [key]: true }));
+    try {
+      const response = await fetch('/api/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead: {
+          id: lead.id, placeId: lead.placeId, source: lead.source, name: lead.name,
+          category: lead.category, city: lead.city, website: lead.website,
+        } }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Lead enrichment failed.');
+      const result = data.result;
+      if (!result) throw new Error('The enrichment response was incomplete.');
+      updateCrm(lead, enrichmentCrmPatch(result));
+      if (result.status === 'complete') showToast(data.cached ? 'Showing the saved enrichment result (cached for 24 hours).' : 'Public business details enriched. Review the evidence and verify contacts before use.');
+      else showToast(result.message || 'No additional public business details were found.');
+    } catch (error) { showToast(error.message || 'Lead enrichment failed.'); }
+    finally { setEnrichmentLoadingIds((current) => ({ ...current, [key]: false })); }
+  }
   function exportCsv(records = leads) {
     const csv = buildWorkflowCsv(records, getCrm);
     const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
@@ -542,10 +583,10 @@ function App() {
         <header className="topbar">
           <button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Menu size={19} /></button>
           <div className="topbar-context"><span className="topbar-kicker">WORKSPACE</span><span className="topbar-separator">/</span><span className="topbar-page">{activePage}</span></div>
-          <div className="topbar-actions"><span className={`environment-pill ${apiConfig.googlePlacesConfigured ? 'is-connected' : ''}`}><span className="status-dot" />{apiConfig.loading ? 'Checking setup' : apiConfig.googlePlacesConfigured ? 'Places configured' : 'Demo Mode'}</span><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
+          <div className="topbar-actions"><span className={`environment-pill ${apiConfig.googlePlacesConfigured || apiConfig.freeSearchEnabled ? 'is-connected' : ''}`}><span className="status-dot" />{apiConfig.loading ? 'Checking setup' : apiConfig.googlePlacesConfigured ? 'Places configured' : apiConfig.freeSearchEnabled ? 'OpenStreetMap available' : apiConfig.reachable ? 'Manual entry available' : 'Server unavailable'}</span><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
         </header>
         <main className="main-content">
-          {!apiConfig.loading && !apiConfig.googlePlacesConfigured && <div className={`mode-notice ${apiConfig.reachable ? '' : 'notice-warning'}`} role="status"><span className="notice-icon"><Info size={16} /></span><span>{apiConfig.reachable ? 'Google Places API is optional. Search OpenStreetMap for free, add manual leads, or import a CSV — none of these make Places API calls.' : 'API status could not be reached. OpenStreetMap search, manual lead entry, and CSV import still work without Google Places.'}</span><button type="button" onClick={() => setActivePage('Find Leads')}>Manual lead options <ArrowRight size={14} /></button><button type="button" onClick={() => setActivePage('Settings')}>Configure API <ArrowRight size={14} /></button></div>}
+
           {activePage === 'Dashboard' && <DashboardPage leads={leads} getCrm={getCrm} onNavigate={setActivePage} onOpenLead={openLead} onExport={() => exportCsv(leads)} />}
           {activePage === 'Find Leads' && <FinderPage searchForm={searchForm} setSearchForm={setSearchForm} onSearch={runLeadSearch} searching={searching} searchError={searchError} results={finderResults} source={finderSource} warnings={finderWarnings} requests={finderRequests} geocodingRequests={finderGeocodingRequests} history={searchHistory} onSelectHistory={(entry) => setSearchForm((current) => ({ ...current, ...entry }))} hasRun={searchHasRun} query={finderQuery} configLoading={apiConfig.loading} leads={leads} onAdd={addLeadToWorkspace} onOpenLead={openLead} onManualEntries={addManualLeadEntries} config={apiConfig} osmMeta={osmMeta} />}
           {activePage === 'Leads' && <LeadsPage leads={sortedLeads} allCount={leads.length} getCrm={getCrm} search={leadSearch} setSearch={setLeadSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} priorityFilter={priorityFilter} setPriorityFilter={setPriorityFilter} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort} onOpenLead={openLead} onPitch={handleOpenPitch} onStatus={updateStatus} onBulkUpdate={updateCrmBulk} onRemove={removeSavedLead} onRefreshDetails={refreshSavedPlace} refreshingDetailsIds={refreshingDetailsIds} onExport={() => exportCsv(leads)} onFind={() => setActivePage('Find Leads')} />}
@@ -556,7 +597,7 @@ function App() {
         </main>
         <footer className="app-footer"><span>AgencyOS <i>·</i> Evidence-led prospecting</span><div><button type="button" onClick={() => setActivePage('Privacy Policy')}>Privacy</button><button type="button" onClick={() => setActivePage('Terms')}>Terms</button><span className="footer-version">V1.0</span></div></footer>
       </div>
-      {selectedLead && <LeadDrawer key={getLeadKey(selectedLead)} lead={selectedLead} crm={getCrm(selectedLead)} onClose={() => setSelectedLeadId('')} onUpdate={(patch) => updateCrm(selectedLead, patch)} onStatus={(status) => updateStatus(selectedLead, status)} onMarkContacted={() => markContacted(selectedLead)} onRemove={() => removeSavedLead(selectedLead)} onRefreshPlace={() => refreshSavedPlace(selectedLead)} refreshingPlace={Boolean(refreshingDetailsIds[getLeadKey(selectedLead)])} onAnalyze={() => analyzeWebsite(selectedLead)} analyzing={Boolean(auditLoadingIds[getLeadKey(selectedLead)])} auditRevealed={Boolean(auditRevealedIds[getLeadKey(selectedLead)])} onPitch={() => handleOpenPitch(selectedLead)} />}
+      {selectedLead && <LeadDrawer key={getLeadKey(selectedLead)} lead={selectedLead} crm={getCrm(selectedLead)} onClose={() => setSelectedLeadId('')} onUpdate={(patch) => updateCrm(selectedLead, patch)} onStatus={(status) => updateStatus(selectedLead, status)} onMarkContacted={() => markContacted(selectedLead)} onRemove={() => removeSavedLead(selectedLead)} onRefreshPlace={() => refreshSavedPlace(selectedLead)} refreshingPlace={Boolean(refreshingDetailsIds[getLeadKey(selectedLead)])} onAnalyze={() => analyzeWebsite(selectedLead)} analyzing={Boolean(auditLoadingIds[getLeadKey(selectedLead)])} auditRevealed={Boolean(auditRevealedIds[getLeadKey(selectedLead)])} onEnrich={() => enrichLead(selectedLead)} enriching={Boolean(enrichmentLoadingIds[getLeadKey(selectedLead)])} onPitch={() => handleOpenPitch(selectedLead)} />}
       {outreachLead && <OutreachModal key={getLeadKey(outreachLead)} lead={outreachLead} crm={getCrm(outreachLead)} onClose={() => setOutreachLeadId('')} onToast={showToast} onMarkContacted={() => markContacted(outreachLead)} onReviewLead={() => { setOutreachLeadId(''); setSelectedLeadId(getLeadKey(outreachLead)); }} />}
       {toast && <div className="toast-message" role="status"><CheckCircle2 size={17} />{toast}</div>}
     </div>
@@ -669,15 +710,15 @@ function DashboardPage({ leads, getCrm, onNavigate, onOpenLead, onExport }) {
 function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchError, results, source, warnings, requests, geocodingRequests, history, onSelectHistory, hasRun, query, configLoading, leads, onAdd, onOpenLead, onManualEntries, config, osmMeta }) {
   const updateField = (key, value) => setSearchForm((current) => ({ ...current, [key]: value }));
   const added = (lead) => leads.some((item) => getLeadKey(item) === getLeadKey(lead));
-  const sourceChoice = searchForm.source || 'demo';
+  const sourceChoice = searchForm.source || 'osm';
   const sourceOptions = [
-    { id: 'osm', title: 'OpenStreetMap', detail: 'Free · no API key', disabled: false },
+    { id: 'osm', title: 'OpenStreetMap', detail: 'No API key · shared services', disabled: false },
     { id: 'google', title: 'Google Places', detail: config?.googlePlacesConfigured ? 'Uses your configured key' : 'Not configured', disabled: !config?.googlePlacesConfigured },
     { id: 'demo', title: 'Demo sample', detail: 'Fictional Pune businesses', disabled: false },
   ];
   return <div className="page-stack">
     <PageHeading eyebrow="PROSPECTING" title="Find the right businesses." description="Search local businesses, then decide which ones belong in your pipeline."><span className="privacy-chip"><ShieldCheck size={14} /> Official sources. Manual outreach.</span></PageHeading>
-    <section className="surface-card finder-form-card"><div className="finder-form-top"><div><div className="card-kicker">BUSINESS SEARCH</div><h2>Where should we look?</h2><p>OpenStreetMap search is free and needs no API key. Google Places is used when configured; Demo Mode uses fictional sample businesses.</p></div><div className="finder-search-icon"><Search size={21} /></div></div>
+    <section className="surface-card finder-form-card"><div className="finder-form-top"><div><div className="card-kicker">BUSINESS SEARCH</div><h2>Where should we look?</h2><p>OpenStreetMap needs no API key, but its public services are shared and rate-limited. Google Places is used when configured; the fictional sample set is an explicit source choice.</p></div><div className="finder-search-icon"><Search size={21} /></div></div>
       <div className="source-choice-row">
         <span>Data source</span>
         <div className="source-choice-group" role="radiogroup" aria-label="Lead data source">
@@ -703,7 +744,7 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
     {hasRun ? <section className={`finder-results-section ${source === 'google' ? 'google-results-container' : ''}`}><div className="results-heading"><div><div className="card-kicker">SEARCH RESULTS</div><h2>{results.length} {results.length === 1 ? 'business' : 'businesses'} <span>for “{query}”</span></h2></div><ModeBadge lead={source} /></div>
       {warnings.map((warning) => <div className="results-note" key={warning}><Info size={14} />{warning}</div>)}
       {source === 'google' && <div className="results-note request-cost-note"><Info size={14} />{requests} Text Search {requests === 1 ? 'request' : 'requests'} used{geocodingRequests ? ` + ${geocodingRequests} Geocoding request for radius bias` : ''}. Place Details are requested only when you manually refresh a saved place, at most once per place per app session.</div>}
-      {source === 'osm' && <div className="results-note request-cost-note"><Info size={14} />{requests} Overpass {requests === 1 ? 'request' : 'requests'} used{geocodingRequests ? ` + ${geocodingRequests} Nominatim place lookup to resolve the city` : ''}. Free and unmetered; no per-place follow-up requests are made.</div>}
+      {source === 'osm' && <div className="results-note request-cost-note"><Info size={14} />{requests} Overpass {requests === 1 ? 'request' : 'requests'} used{geocodingRequests ? ` + ${geocodingRequests} Nominatim place lookup to resolve the city` : ''}. Public OpenStreetMap services are shared and rate-limited; no API key is required. No per-place follow-up requests are made.</div>}
       {results.length ? <div className="finder-results-grid">{results.map((lead) => { const isAdded = added(lead); const ratingText = [Number(lead.rating) > 0 ? `${Number(lead.rating).toFixed(1)} rating${isUserProvidedManualField(lead, 'rating') ? ' · user-provided' : ''}` : '', Number(lead.reviews) > 0 ? `${Number(lead.reviews).toLocaleString()} reviews${isUserProvidedManualField(lead, 'reviews') ? ' · user-provided' : ''}` : ''].filter(Boolean).join(' · ') || 'Rating and review count not available'; const reasons = whyThisLead(lead).slice(0, 3); const recommendations = recommendService(lead).slice(0, 2); return <article className="finder-result-card" key={getLeadKey(lead)}>
         <div className="result-card-head"><div className="business-avatar business-avatar-large">{initials(lead.name)}</div><div className="result-title"><h3>{lead.name}</h3><span>{lead.category || 'Category not returned'}</span></div><ScorePill lead={lead} compact /></div>
         <div className="result-detail"><MapPin size={14} /><span>{lead.address || lead.city || 'Address not returned'}</span></div>
@@ -714,7 +755,7 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
         {lead.placeId && !lead.demo && <div className="place-id-line"><span>{isOsmLead(lead) ? 'OpenStreetMap object' : 'Google Place ID'}</span><code title={lead.placeId}>{lead.placeId}</code></div>}
         {lead.demo && <div className="demo-disclaimer"><Info size={13} /> Fictional demo business. Not contactable.</div>}
         <div className="result-card-actions"><button className={`button ${isAdded ? 'button-secondary' : 'button-primary'} button-small`} onClick={() => onAdd(lead)} type="button">{isAdded ? <><Check size={15} /> {leads.find((item) => getLeadKey(item) === getLeadKey(lead))?.needsRefresh ? 'Refresh from result' : 'In your leads'}</> : <><Plus size={15} /> Add to leads</>}</button>{isAdded && <button className="button button-quiet button-small" type="button" onClick={() => onOpenLead(lead)}>Details <ArrowRight size={14} /></button>}{safeHttpUrl(lead.mapsUrl) && <a className="maps-result-link" href={safeHttpUrl(lead.mapsUrl)} target="_blank" rel="noreferrer"><MapPin size={13} /> {isOsmLead(lead) ? 'OSM' : 'Maps'} <ExternalLink size={12} /></a>}</div>
-      </article>; })}</div> : <EmptyState icon={Search} title="No businesses found in this sample" body={source === 'demo' ? 'Demo Mode includes ten fictional businesses in Pune. Try one of the example searches above.' : source === 'osm' ? 'OpenStreetMap coverage varies by area. Try a larger radius, a nearby city, or a broader category.' : 'Try a broader category or a nearby city. No Google results are cached or invented.'} />}
+      </article>; })}</div> : <EmptyState icon={Search} title="No businesses found" body={source === 'demo' ? 'The explicitly selected sample set contains fictional Pune businesses only. Try one of the example searches above.' : source === 'osm' ? 'OpenStreetMap coverage varies by area. Try a larger radius, a nearby city, or a broader category.' : 'Try a broader category or a nearby city. No Google results are cached or invented.'} />}
       {source === 'google' && <GoogleDisclosure />}{source === 'osm' && <OsmDisclosure matchedCategory={osmMeta?.matchedCategory} queriedTags={osmMeta?.queriedTags} resolvedLocation={osmMeta?.resolvedLocation} />}{source === 'demo' && <div className="demo-result-footnote"><Info size={14} /> Fictional demo dataset · Search details are illustrative and are not Google Places results.</div>}
     </section> : <div className="finder-placeholder"><div className="placeholder-orbit"><Search size={22} /></div><h2>Start with a local search.</h2><p>Choose an industry and a city. AgencyOS will bring the business profile signals into one calm workspace.</p><div className="placeholder-points"><span><CheckCircle2 size={15} /> Evidence-based scoring</span><span><CheckCircle2 size={15} /> No automated outreach</span><span><CheckCircle2 size={15} /> Your choice, every time</span></div></div>}
   </div>;
@@ -917,7 +958,7 @@ function LeadsPage({ leads, allCount, getCrm, search, setSearch, statusFilter, s
         <div className="table-foot"><span>Showing {leads.length} of {allCount} leads</span><span><ShieldCheck size={13} /> CRM data is saved in this browser only.</span></div>
         {hasGoogleData && <GoogleDisclosure />}
       </div>
-    </> : <div className="surface-card empty-leads-card"><EmptyState icon={Users} title={allCount ? 'No leads match these filters' : 'Your lead workspace is ready'} body={allCount ? 'Try clearing a status, priority, or search filter.' : 'Use Find Leads to search official Places results, or explore fictional Demo Mode examples.'} actionLabel={allCount ? 'Clear filters' : 'Find leads'} onAction={allCount ? () => { setSearch(''); setStatusFilter('ALL'); setPriorityFilter('ALL'); } : onFind} /></div>}
+    </> : <div className="surface-card empty-leads-card"><EmptyState icon={Users} title={allCount ? 'No leads match these filters' : 'Your lead workspace is ready'} body={allCount ? 'Try clearing a status, priority, or search filter.' : 'Use Find Leads to search OpenStreetMap or Google Places, or explicitly choose the fictional sample dataset.'} actionLabel={allCount ? 'Clear filters' : 'Find leads'} onAction={allCount ? () => { setSearch(''); setStatusFilter('ALL'); setPriorityFilter('ALL'); } : onFind} /></div>}
     <div className="export-note"><Info size={14} /><span>CSV exports manual user-entered details and CRM workflow fields. Google Places business details are intentionally excluded.</span></div>
   </div>;
 }
@@ -948,7 +989,7 @@ function CampaignsPage({ leads, getCrm, onOpenLead, onPitch }) {
 function SettingsPage({ config, notice, onRefresh, onNavigate }) {
   return <div className="page-stack">
     <PageHeading eyebrow="WORKSPACE PREFERENCES" title="Settings & integrations." description="Know what is connected, where data lives, and what AgencyOS will never do." />
-    <section className={`integration-status-card ${config.googlePlacesConfigured ? 'integration-ready' : ''}`}><div className="integration-icon"><Globe2 size={20} /></div><div className="integration-copy"><div className="card-kicker">GOOGLE PLACES API (NEW)</div><h2>{config.loading ? 'Checking server configuration…' : config.googlePlacesConfigured ? 'Server key configured' : 'Demo Mode is active'}</h2><p>{config.googlePlacesConfigured ? 'The server reports a Google Maps key is present. Credentials are not sent to the browser; a search will confirm the key and API permissions.' : config.reachable ? 'Google Places is optional. Add a lead manually or import a CSV for free; Manual Lead Import does not call the Places API.' : 'The server status endpoint could not be reached. Manual lead entry and CSV import still work without Google Places.'}</p></div><div className={`integration-state ${config.googlePlacesConfigured ? 'integration-state-ready' : ''}`}><span />{config.loading ? 'Checking' : config.googlePlacesConfigured ? 'Configured' : 'Demo Mode'}</div></section>
+    <section className={`integration-status-card ${config.googlePlacesConfigured ? 'integration-ready' : ''}`}><div className="integration-icon"><Globe2 size={20} /></div><div className="integration-copy"><div className="card-kicker">GOOGLE PLACES API (NEW)</div><h2>{config.loading ? 'Checking server configuration…' : config.googlePlacesConfigured ? 'Server key configured' : 'Google Places is not configured'}</h2><p>{config.googlePlacesConfigured ? 'The server reports a Google Maps key is present. Credentials are not sent to the browser; a search will confirm the key and API permissions.' : config.reachable ? 'Google Places is optional. OpenStreetMap search, manual lead entry, and CSV import remain available without a Places key.' : 'The server status endpoint could not be reached. Manual lead entry and CSV import remain available.'}</p></div><div className={`integration-state ${config.googlePlacesConfigured ? 'integration-state-ready' : ''}`}><span />{config.loading ? 'Checking' : config.googlePlacesConfigured ? 'Configured' : 'Not configured'}</div></section>
     <div className="settings-grid">
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">API CONFIGURATION</div><h2>Connect Google Places</h2></div><button className="icon-button" type="button" aria-label="Refresh API status" onClick={onRefresh} disabled={config.loading}><RefreshCw size={16} className={config.loading ? 'spin' : ''} /></button></div><p className="settings-paragraph">Add your key to the server environment. AgencyOS does not accept or store API keys in the browser.</p><ol className="setup-list"><li><span>1</span><div><strong>Enable Places API (New)</strong><small>In Google Cloud Console, enable Places API and billing for your project.</small></div></li><li><span>2</span><div><strong>Set a server-only environment variable</strong><code>GOOGLE_MAPS_API_KEY=your_key</code></div></li><li><span>3</span><div><strong>Restart the server</strong><small>Restrict the key to Places API (New), plus Geocoding API if used; apply server-side application restrictions where practical.</small></div></li></ol><div className="settings-callout"><Info size={15} /><span>Geocoding API is optional. If enabled, AgencyOS uses it to bias Text Search toward your chosen radius. Without it, the location is still used in the Text Search query.</span></div>{notice && <div className="settings-notice"><CheckCircle2 size={14} />{notice}</div>}</section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">EXPLAINABLE AI QUALIFICATION</div><h2>Evidence in, reason out</h2></div><div className="engine-icon"><Sparkles size={16} /></div></div><p className="settings-paragraph">A transparent, rules-based expert system calculates the score and generates a short reason from observable signals. Draft copy uses evidence-bound templates; no external LLM is configured, so unsupported claims are not added.</p><div className="score-rule-list"><div><span>No website listed (Google only; manual missing = unknown)</span><strong>+30</strong></div><div><span>Weak website checks</span><strong>+20</strong></div><div><span>100+ reviews / 4.5+ rating</span><strong>+15 / +10</strong></div><div><span>Operational / contact gap / social link</span><strong>+10 / +10 / +5</strong></div></div><div className="settings-callout"><Info size={15} /><span>Priority bands: HOT 80–100, WARM 50–79, COLD 0–49. These are deterministic signals, not a forecast of conversion.</span></div><div className="settings-callout"><Info size={15} /><span>Mutually exclusive website signals cap the raw sum at 70. The app normalizes the observed raw score to 0–100 for the requested priority bands and shows both values in lead details.</span></div></section>
@@ -963,7 +1004,7 @@ function LegalPage({ type, onNavigate }) {
   return <div className="page-stack legal-page"><PageHeading eyebrow="AGENCYOS POLICIES" title={privacy ? 'Privacy Policy' : 'Terms of Use'} description={privacy ? 'A plain-language summary of what this MVP does with workspace data.' : 'The rules and limits for this early-access prospecting workspace.'}><button className="button button-secondary" type="button" onClick={() => onNavigate('Settings')}><SettingsIcon size={15} /> Settings</button></PageHeading>
     <article className="surface-card legal-card"><div className="legal-updated"><ShieldCheck size={15} /> Last updated October 7, 2026 <span>·</span> MVP version</div>
       {privacy ? <>
-        <section><h2>What AgencyOS does</h2><p>AgencyOS helps an agency research local businesses through the official Google Places API, qualify prospects from visible signals, draft outreach for review, and manage a simple CRM workflow. Demo Mode uses fictional sample businesses and reserved example URLs only.</p></section>
+        <section><h2>What AgencyOS does</h2><p>AgencyOS helps an agency research local businesses through the official Google Places API, qualify prospects from visible signals, draft outreach for review, and manage a simple CRM workflow. The optional sample dataset contains only fictional businesses and reserved example URLs.</p></section>
         <section><h2>Information and storage</h2><p>Google Places responses are held in browser memory for the active session and are not written to the AgencyOS server or browser storage. The browser stores manually entered leads, explicit user-entered overrides, CRM fields (status, notes, tags, follow-up dates, assigned service, estimate, a user-entered email and its verification/contact checks), saved Google place IDs, and recent user-entered search terms. Manual lead details are stored locally in this browser. Place IDs are exempt from Google Places caching restrictions; after a reload, a saved ID is a placeholder until you explicitly refresh its current listing details. Avoid putting sensitive personal information in notes.</p><p>CSV export contains manual/user-entered lead details, labeled CRM workflow fields, and Google place IDs, not Google Places business details. A user-initiated export creates a file on your device.</p></section>
         <section><h2>Website checks and external actions</h2><p>Website analysis makes a limited server-side request to the submitted public website, follows only a small number of safe redirects, and returns basic HTML signals. It does not attempt a visual audit. Email and WhatsApp buttons open your own applications only after you click; the MVP does not send messages, schedule sends, scrape Maps pages, or automate WhatsApp.</p></section>
         <section><h2>Credentials and service providers</h2><p>Google credentials are read by the server from environment variables and are never returned to the browser. Search requests are sent to Google Maps Platform. Your use of Google data is also subject to <a href="https://cloud.google.com/maps-platform/terms" target="_blank" rel="noreferrer">Google Maps Platform terms</a> and <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Google’s privacy practices</a>. This MVP does not include accounts, passwords, an email provider, or an external AI model.</p></section>
@@ -982,7 +1023,59 @@ function LegalPage({ type, onNavigate }) {
   </div>;
 }
 
-function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, onRemove, onRefreshPlace, refreshingPlace, onAnalyze, analyzing, auditRevealed, onPitch }) {
+function EnrichmentEvidence({ label, field, value, crm, href = '' }) {
+  if (!value) return null;
+  const matches = (Array.isArray(crm.enrichmentEvidence) ? crm.enrichmentEvidence : []).filter((item) => item.field === field);
+  const evidence = matches.find((item) => item.value === value) || matches[0];
+  const safeLink = href ? safeHttpUrl(href) : '';
+  return <div className="enrichment-fact">
+    <span className="enrichment-fact-label">{label}</span>
+    {safeLink ? <a className="enrichment-fact-value" href={safeLink} target="_blank" rel="noreferrer">{value}<ExternalLink size={11} /></a> : <strong className="enrichment-fact-value">{value}</strong>}
+    <small>{evidence?.source || crm.enrichmentSource || 'Public website'} · {evidence?.confidence || crm.enrichmentConfidence || 'low'} confidence{evidence?.evidence ? ` · ${evidence.evidence}` : ''}</small>
+  </div>;
+}
+
+function EnrichmentSection({ crm, onUpdate, onEnrich, enriching }) {
+  const timestamp = crm.enrichmentTimestamp ? new Date(crm.enrichmentTimestamp) : null;
+  const timestampLabel = timestamp && Number.isFinite(timestamp.getTime())
+    ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(timestamp)
+    : '';
+  const statusLabel = {
+    complete: 'Enrichment complete', no_website: 'No website listed', no_public_details: 'No verified details found',
+    unavailable: 'Website unavailable', not_enriched: 'Not enriched yet',
+  }[crm.enrichmentStatus] || crm.enrichmentStatus;
+  const socialLinks = Array.isArray(crm.enrichmentSocialLinks) ? crm.enrichmentSocialLinks : [];
+  const services = Array.isArray(crm.enrichmentServices) ? crm.enrichmentServices : [];
+  const useEmail = () => onUpdate({ email: crm.enrichmentEmail, emailVerifiedByUser: false, emailPermissionConfirmed: false });
+
+  return <section className="drawer-section enrichment-section">
+    <div className="drawer-section-heading"><div><div className="card-kicker">PUBLIC BUSINESS ENRICHMENT</div><h3>Enrich Lead</h3></div><button className="button button-secondary button-small" type="button" onClick={onEnrich} disabled={enriching}>{enriching ? <LoaderCircle size={13} className="spin" /> : <Search size={13} />}{enriching ? 'Enriching…' : crm.enrichmentTimestamp ? 'Check again' : 'Enrich Lead'}</button></div>
+    <p className="enrichment-description">Checks the listed business website first, with safe public-page limits. If none is listed, optional website discovery runs only when configured. Results are cached for 24 hours; no Google Maps pages or private contact details are collected.</p>
+    <div className="enrichment-status-row"><strong>{statusLabel}</strong>{timestampLabel && <span>{timestampLabel}</span>}{crm.enrichmentConfidence && <span>{crm.enrichmentConfidence} confidence</span>}{crm.enrichmentSource && <span>Source: {crm.enrichmentSource}</span>}</div>
+    {crm.enrichmentStatus === 'not_enriched' && <div className="enrichment-empty">Only publicly listed business details are shown. Discovered emails remain separate until you choose to use one and verify it.</div>}
+    {crm.enrichmentStatus === 'no_website' && <div className="enrichment-empty">No website was listed in OpenStreetMap. Optional Tavily discovery was not configured, so no search was made.</div>}
+    {crm.enrichmentStatus === 'no_public_details' && <div className="enrichment-empty">No candidate website or supported public business details could be verified. Check the source manually.</div>}
+    {crm.enrichmentStatus === 'unavailable' && <div className="enrichment-empty">{crm.enrichmentSource === 'tavily' ? 'Optional website discovery is unavailable. No candidate website was accepted.' : 'The public website could not be read. No contact details were inferred.'}</div>}
+    <div className="enrichment-facts">
+      <EnrichmentEvidence label="Business name" field="businessName" value={crm.enrichmentBusinessName} crm={crm} />
+      <EnrichmentEvidence label="Discovered website" field="discoveredWebsite" value={crm.discoveredWebsite} href={crm.discoveredWebsite} crm={crm} />
+      <EnrichmentEvidence label="Public business email" field="email" value={crm.enrichmentEmail} crm={crm} />
+      {crm.enrichmentEmail && (crm.email
+        ? <small className="enrichment-preserved-note">Existing CRM email was preserved. The discovered address is not used for outreach unless you replace it yourself.</small>
+        : <button className="text-button enrichment-use-email" type="button" onClick={useEmail}>Use this email in CRM <ArrowRight size={13} /></button>)}
+      <EnrichmentEvidence label="Public business phone" field="phone" value={crm.enrichmentPhone} crm={crm} />
+      <EnrichmentEvidence label="Public WhatsApp link · not contacted" field="whatsappUrl" value={crm.enrichmentWhatsappUrl} crm={crm} />
+      <EnrichmentEvidence label="Business address" field="address" value={crm.enrichmentAddress} crm={crm} />
+      <EnrichmentEvidence label="Opening hours" field="openingHours" value={crm.enrichmentOpeningHours} crm={crm} />
+      <EnrichmentEvidence label="Contact page" field="contactPage" value={crm.enrichmentContactPage} href={crm.enrichmentContactPage} crm={crm} />
+      {socialLinks.map((url) => <EnrichmentEvidence key={url} label="Social profile" field="socialLinks" value={url} href={url} crm={crm} />)}
+      {services.map((service) => <EnrichmentEvidence key={service} label="Publicly listed service" field="services" value={service} crm={crm} />)}
+    </div>
+    <div className="enrichment-privacy-note"><ShieldCheck size={13} /> Enrichment only gathers publicly listed business information. It does not contact the business or change your existing phone, email, or consent settings.</div>
+  </section>;
+}
+
+function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, onRemove, onRefreshPlace, refreshingPlace, onAnalyze, analyzing, auditRevealed, onEnrich, enriching, onPitch }) {
   const score = scoreOpportunity(lead);
   const audit = lead.demo ? (auditRevealed ? lead.demoAudit : null) : getWebsiteAudit(lead);
   const dnc = crm.status === 'DO NOT CONTACT';
@@ -1033,6 +1126,8 @@ function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, o
             {lead.source === 'google' && <GoogleDisclosure compact />}
             {lead.source === 'osm' && <OsmDisclosure />}
           </section>
+
+          {isOsmLead(lead) && <EnrichmentSection crm={crm} onUpdate={onUpdate} onEnrich={onEnrich} enriching={enriching} />}
 
           {lead.website && <section className="drawer-section website-audit-section">
             <div className="drawer-section-heading"><div><div className="card-kicker">WEBSITE CHECK</div><h3>Potential opportunity</h3></div><button className="button button-secondary button-small" type="button" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <LoaderCircle size={14} className="spin" /> : <Globe2 size={14} />}{analyzing ? 'Checking…' : lead.demo ? 'View demo check' : audit ? 'Analyze again' : 'Analyze website'}</button></div>

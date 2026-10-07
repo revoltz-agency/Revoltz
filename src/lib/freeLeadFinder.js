@@ -1,4 +1,4 @@
-// Free lead discovery on top of OpenStreetMap.
+// OpenStreetMap lead discovery helpers.
 //
 // This module is deliberately pure (no fetch, no React, no Node built-ins) so it
 // can be imported by both the browser bundle and the Express server without

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getGooglePlaceDetails, searchGooglePlaces } from './googlePlaces.js';
 import { searchOpenStreetMap } from './overpass.js';
+import { enrichOsmLead } from './enrich.js';
 import { auditWebsite } from './websiteAudit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -33,15 +34,12 @@ app.get('/api/config', (_req, res) => {
   res.json({
     googlePlacesConfigured: Boolean(googleApiKey),
     freeSearchEnabled,
-    // Unchanged: "Demo Mode" means no Places key. Free OSM search is separate.
-    demoMode: !googleApiKey,
-    message: googleApiKey ? null : 'Google Places API not configured — Demo Mode active.',
   });
 });
 
 app.post('/api/free/search', async (req, res) => {
   if (!freeSearchEnabled) {
-    return res.status(503).json({ error: 'Free OpenStreetMap search is disabled on this server.' });
+    return res.status(503).json({ error: 'OpenStreetMap search is disabled on this server.' });
   }
 
   const category = typeof req.body?.category === 'string' ? req.body.category.trim() : '';
@@ -73,7 +71,7 @@ app.post('/api/free/search', async (req, res) => {
 
 app.post('/api/places/search', async (req, res) => {
   if (!googleApiKey) {
-    return res.status(503).json({ error: 'Google Places API not configured — Demo Mode active.' });
+    return res.status(503).json({ error: 'Google Places API is not configured on this server.' });
   }
 
   const category = typeof req.body?.category === 'string' ? req.body.category.trim() : '';
@@ -101,7 +99,7 @@ app.post('/api/places/search', async (req, res) => {
 });
 
 app.post('/api/places/details', async (req, res) => {
-  if (!googleApiKey) return res.status(503).json({ error: 'Google Places API not configured — Demo Mode active.' });
+  if (!googleApiKey) return res.status(503).json({ error: 'Google Places API is not configured on this server.' });
   const placeId = typeof req.body?.placeId === 'string' ? req.body.placeId.trim() : '';
   if (!placeId || placeId.length > 300) return res.status(400).json({ error: 'A valid place ID is required.' });
   try {
@@ -110,6 +108,20 @@ app.post('/api/places/details', async (req, res) => {
     return res.json({ result, attribution: 'Google Maps' });
   } catch (error) {
     return res.status(error.statusCode || 502).json({ error: error.message || 'Saved place refresh failed.' });
+  }
+});
+
+app.post('/api/enrich', async (req, res) => {
+  try {
+    const result = await enrichOsmLead({
+      lead: req.body?.lead,
+      // Website discovery is optional. The secret is read only by this server route.
+      tavilyApiKey: process.env.TAVILY_API_KEY?.trim() || '',
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(result);
+  } catch (error) {
+    return res.status(error.statusCode || 502).json({ error: error.message || 'Lead enrichment failed.' });
   }
 });
 

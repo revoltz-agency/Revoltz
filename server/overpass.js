@@ -1,9 +1,9 @@
-// Free lead discovery using OpenStreetMap:
+// Public OpenStreetMap lead discovery:
 //   * Nominatim  -> resolve the operator's city text to coordinates
 //   * Overpass   -> query businesses around those coordinates
 //
-// No API key and no billing are involved. Both services are community-run, so
-// every request is time-boxed, rate-limit aware, and identifies the client with
+// No API key is required, but both public services are shared and rate-limited.
+// Requests are time-boxed and identify the client with
 // a User-Agent as their usage policies require.
 
 import {

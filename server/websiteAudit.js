@@ -4,9 +4,19 @@ import { Agent } from 'undici';
 
 const MAX_HTML_BYTES = 350_000;
 const MAX_REDIRECTS = 4;
+const DNS_LOOKUP_TIMEOUT_MS = 3_000;
 const REQUEST_TIMEOUT_MS = 8_000;
 
-function publicIPv4(address) {
+export class UnsafeWebsiteError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'UnsafeWebsiteError';
+    this.code = 'UNSAFE_WEBSITE';
+    this.statusCode = 400;
+  }
+}
+
+export function publicIPv4(address) {
   const parts = address.split('.').map(Number);
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
   const [a, b, c] = parts;
@@ -15,13 +25,13 @@ function publicIPv4(address) {
   if (a === 169 && b === 254) return false;
   if (a === 172 && b >= 16 && b <= 31) return false;
   if (a === 192 && (b === 0 || b === 168)) return false;
-  if (a === 192 && b === 0 && c === 2) return false;
+  if (a === 192 && b === 88 && c === 99) return false;
   if (a === 198 && (b === 18 || b === 19 || b === 51)) return false;
   if (a === 203 && b === 0 && c === 113) return false;
   return true;
 }
 
-function publicIPv6(address) {
+export function publicIPv6(address) {
   const value = address.toLowerCase().split('%')[0];
   if (value === '::' || value === '::1' || value.startsWith('fc') || value.startsWith('fd') || value.startsWith('fe8') || value.startsWith('fe9') || value.startsWith('fea') || value.startsWith('feb') || value.startsWith('ff')) return false;
   const mapped = value.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);
@@ -34,7 +44,7 @@ function publicIPv6(address) {
   return true;
 }
 
-function isPublicAddress(address) {
+export function isPublicAddress(address) {
   const family = net.isIP(address);
   if (family === 4) return publicIPv4(address);
   if (family === 6) return publicIPv6(address);
@@ -45,29 +55,68 @@ function normalizeHost(hostname) {
   return hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
 }
 
-async function getPublicAddresses(hostname) {
+export async function getPublicAddresses(hostname, lookup = dns.lookup, timeoutMs = DNS_LOOKUP_TIMEOUT_MS) {
   const host = normalizeHost(hostname);
   const family = net.isIP(host);
-  const records = family
-    ? [{ address: host, family }]
-    : await dns.lookup(host, { all: true, verbatim: true });
+  let records;
+  let timer;
+  try {
+    records = family
+      ? [{ address: host, family }]
+      : await Promise.race([
+        Promise.resolve().then(() => lookup(host, { all: true, verbatim: true })),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('DNS lookup timed out.')), timeoutMs); }),
+      ]);
+  } catch {
+    // If the server cannot establish that a host resolves publicly, fail closed.
+    throw new UnsafeWebsiteError('The website host could not be verified as public.');
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!records.length || records.some((record) => !isPublicAddress(record.address))) {
-    throw new Error('The website host did not resolve to a public address.');
+    throw new UnsafeWebsiteError('The website host did not resolve to a public address.');
   }
   return records;
 }
 
-function assertSafeUrl(url) {
-  if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Only public HTTP or HTTPS websites can be analyzed.');
-  if (url.username || url.password) throw new Error('Website URLs with embedded credentials are not allowed.');
+export function assertSafeUrl(input) {
+  let url;
+  try {
+    url = input instanceof URL ? input : new URL(input);
+  } catch {
+    throw new UnsafeWebsiteError('Enter a valid public website URL.');
+  }
+  if (!['https:', 'http:'].includes(url.protocol)) throw new UnsafeWebsiteError('Only public HTTP or HTTPS websites can be analyzed.');
+  if (url.username || url.password) throw new UnsafeWebsiteError('Website URLs with embedded credentials are not allowed.');
   if (url.port && !((url.protocol === 'https:' && url.port === '443') || (url.protocol === 'http:' && url.port === '80'))) {
-    throw new Error('Non-standard website ports are not allowed.');
+    throw new UnsafeWebsiteError('Non-standard website ports are not allowed.');
   }
-  const host = normalizeHost(url.hostname).toLowerCase();
-  if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
-    throw new Error('Local or private website hosts cannot be analyzed.');
+  const host = normalizeHost(url.hostname).toLowerCase().replace(/\.$/, '');
+  const reservedSuffixes = ['.localhost', '.local', '.internal', '.home', '.lan', '.test', '.invalid', '.example', '.onion'];
+  if (!host || host === 'localhost' || reservedSuffixes.some((suffix) => host.endsWith(suffix))) {
+    throw new UnsafeWebsiteError('Local or private website hosts cannot be analyzed.');
   }
+  const family = net.isIP(host);
+  if (family && !isPublicAddress(host)) throw new UnsafeWebsiteError('The website host did not resolve to a public address.');
+  return url;
+}
+
+export function isGoogleMapsUrl(input) {
+  let url;
+  try { url = input instanceof URL ? input : new URL(input); }
+  catch { return false; }
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
+  return host === 'maps.app.goo.gl'
+    || host === 'goo.gl' && url.pathname.toLowerCase().startsWith('/maps')
+    || host.startsWith('maps.google.')
+    || /(^|\.)google\.[a-z.]+$/i.test(host) && /(^|\/)maps(?:\/|$)/i.test(url.pathname);
+}
+
+export function assertBusinessWebsiteUrl(input) {
+  const url = assertSafeUrl(input);
+  if (isGoogleMapsUrl(url)) throw new UnsafeWebsiteError('Google Maps pages are not business websites and are not analyzed.');
+  return url;
 }
 
 function pinnedAgent(records) {
@@ -89,7 +138,7 @@ function pinnedAgent(records) {
   return new Agent({ connect: { lookup } });
 }
 
-async function readLimitedBody(response) {
+async function readLimitedBody(response, maxBytes) {
   const reader = response.body?.getReader();
   if (!reader) return '';
   const chunks = [];
@@ -99,9 +148,9 @@ async function readLimitedBody(response) {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > MAX_HTML_BYTES) {
+      if (total > maxBytes) {
         await reader.cancel();
-        throw new Error('The website HTML exceeds the 350 KB analysis limit.');
+        throw new Error(`The website response exceeds the ${Math.round(maxBytes / 1_000)} KB analysis limit.`);
       }
       chunks.push(Buffer.from(value));
     }
@@ -111,51 +160,85 @@ async function readLimitedBody(response) {
   return Buffer.concat(chunks, total).toString('utf8');
 }
 
-async function fetchPublicHtml(initialUrl) {
-  let current = initialUrl;
-  for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
-    assertSafeUrl(current);
-    const records = await getPublicAddresses(current.hostname);
+export async function fetchPublicContent(initialUrl, options = {}) {
+  const {
+    maxBytes = MAX_HTML_BYTES,
+    maxRedirects = MAX_REDIRECTS,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+    dnsTimeoutMs = DNS_LOOKUP_TIMEOUT_MS,
+    allowedContentTypes = /(text\/html|application\/xhtml\+xml)/i,
+    accept = 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1',
+    userAgent = 'AgencyOSWebsiteCheck/1.0 (+https://github.com/revoltz-agency/Revoltz; limited public HTML checks)',
+    allowedOrigins = null,
+    validateUrl = assertSafeUrl,
+    fetcher = globalThis.fetch,
+    lookup = dns.lookup,
+  } = options;
+
+  let current = validateUrl(initialUrl);
+  const originAllowlist = allowedOrigins ? new Set(allowedOrigins) : null;
+  if (originAllowlist && !originAllowlist.has(current.origin)) {
+    throw new UnsafeWebsiteError('The requested page is outside the verified website origin.');
+  }
+
+  for (let redirect = 0; redirect <= maxRedirects; redirect += 1) {
+    validateUrl(current);
+    const records = await getPublicAddresses(current.hostname, lookup, dnsTimeoutMs);
     const dispatcher = pinnedAgent(records);
-    let response;
     try {
-      response = await fetch(current, {
+      const response = await fetcher(current, {
         dispatcher,
         redirect: 'manual',
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        headers: {
-          'User-Agent': 'AgencyOSWebsiteCheck/1.0 (+https://agencyos.local; limited HTML checks)',
-          Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1',
-        },
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: { 'User-Agent': userAgent, Accept: accept },
       });
 
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers.get('location');
         await response.body?.cancel();
-        if (!location || redirect === MAX_REDIRECTS) throw new Error('The website redirected too many times or had an invalid redirect.');
-        const next = new URL(location, current);
-        if (current.protocol === 'https:' && next.protocol !== 'https:') throw new Error('Redirects from HTTPS to HTTP are not followed.');
+        if (!location || redirect === maxRedirects) throw new Error('The website redirected too many times or had an invalid redirect.');
+        let next;
+        try { next = new URL(location, current); }
+        catch { throw new UnsafeWebsiteError('The website returned an invalid redirect.'); }
+        if (current.protocol === 'https:' && next.protocol !== 'https:') {
+          throw new UnsafeWebsiteError('Redirects from HTTPS to HTTP are not followed.');
+        }
+        if (originAllowlist && !originAllowlist.has(next.origin)) {
+          throw new UnsafeWebsiteError('A page redirected outside the verified website origin.');
+        }
         current = next;
         continue;
       }
 
-      if (!response.ok) throw new Error(`The website returned HTTP ${response.status}.`);
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new Error(`The website returned HTTP ${response.status}.`);
+      }
       const contentType = response.headers.get('content-type') || '';
-      if (!/(text\/html|application\/xhtml\+xml)/i.test(contentType)) {
-        throw new Error('The website did not return an HTML page that can be analyzed.');
+      const contentTypeMatches = typeof allowedContentTypes === 'function'
+        ? allowedContentTypes(contentType)
+        : allowedContentTypes.test(contentType);
+      if (!contentTypeMatches) {
+        await response.body?.cancel();
+        throw new Error('The website did not return an allowed document type.');
       }
       const declaredLength = Number(response.headers.get('content-length'));
-      if (Number.isFinite(declaredLength) && declaredLength > MAX_HTML_BYTES) {
+      if (response.headers.get('content-length') && Number.isFinite(declaredLength) && declaredLength > maxBytes) {
         await response.body?.cancel();
-        throw new Error('The website HTML exceeds the 350 KB analysis limit.');
+        throw new Error(`The website response exceeds the ${Math.round(maxBytes / 1_000)} KB analysis limit.`);
       }
-      const html = await readLimitedBody(response);
-      return { html, finalUrl: current.href };
+      const content = await readLimitedBody(response, maxBytes);
+      return { content, html: content, finalUrl: current.href, contentType };
     } finally {
       await dispatcher.close().catch(() => {});
     }
   }
   throw new Error('The website redirected too many times.');
+}
+
+export async function fetchPublicHtml(initialUrl, options = {}) {
+  const result = await fetchPublicContent(initialUrl, options);
+  return { html: result.content, finalUrl: result.finalUrl, contentType: result.contentType };
 }
 
 function stripTags(value) {
@@ -216,10 +299,10 @@ export async function auditWebsite(rawWebsite) {
   } catch {
     throw new Error('Enter a valid website URL, including https://.');
   }
-  assertSafeUrl(website);
+  assertBusinessWebsiteUrl(website);
 
   try {
-    const { html, finalUrl } = await fetchPublicHtml(website);
+    const { html, finalUrl } = await fetchPublicHtml(website, { validateUrl: assertBusinessWebsiteUrl });
     return analyzeHtmlSignals(html, finalUrl);
   } catch (error) {
     if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
