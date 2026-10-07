@@ -14,6 +14,21 @@ export const DEFAULT_CRM_RECORD = {
   emailVerifiedByUser: false,
   emailPermissionConfirmed: false,
   whatsappOptInConfirmed: false,
+  enrichmentStatus: 'not_enriched',
+  enrichmentTimestamp: '',
+  enrichmentSource: '',
+  enrichmentConfidence: '',
+  enrichmentEmail: '',
+  enrichmentPhone: '',
+  enrichmentWhatsappUrl: '',
+  enrichmentSocialLinks: [],
+  enrichmentAddress: '',
+  enrichmentBusinessName: '',
+  enrichmentServices: [],
+  enrichmentOpeningHours: '',
+  enrichmentContactPage: '',
+  discoveredWebsite: '',
+  enrichmentEvidence: [],
   tags: [],
 };
 
@@ -24,8 +39,57 @@ export function updateCrmRecord(current, patch) {
     next.whatsappOptInConfirmed = false;
   }
   next.followUpStep = Math.max(0, Math.min(4, Number.parseInt(next.followUpStep, 10) || 0));
+  const enrichmentTextLimits = {
+    enrichmentStatus: 40, enrichmentTimestamp: 40, enrichmentSource: 80, enrichmentConfidence: 16,
+    enrichmentEmail: 254, enrichmentPhone: 80, enrichmentWhatsappUrl: 2_000,
+    enrichmentAddress: 300, enrichmentBusinessName: 160, enrichmentOpeningHours: 300,
+    enrichmentContactPage: 2_000, discoveredWebsite: 2_000,
+  };
+  for (const [field, limit] of Object.entries(enrichmentTextLimits)) {
+    next[field] = typeof next[field] === 'string' ? next[field].slice(0, limit) : '';
+  }
+  next.enrichmentSocialLinks = [...new Set((Array.isArray(next.enrichmentSocialLinks) ? next.enrichmentSocialLinks : [])
+    .filter((value) => typeof value === 'string').map((value) => value.slice(0, 2_000)).filter(Boolean))].slice(0, 8);
+  next.enrichmentServices = [...new Set((Array.isArray(next.enrichmentServices) ? next.enrichmentServices : [])
+    .filter((value) => typeof value === 'string').map((value) => value.trim().slice(0, 120)).filter(Boolean))].slice(0, 12);
+  const evidenceFields = new Set(['email', 'phone', 'whatsappUrl', 'socialLinks', 'address', 'businessName', 'services', 'openingHours', 'contactPage', 'discoveredWebsite']);
+  next.enrichmentEvidence = (Array.isArray(next.enrichmentEvidence) ? next.enrichmentEvidence : []).slice(0, 40)
+    .filter((item) => item && typeof item === 'object' && evidenceFields.has(item.field) && typeof item.value === 'string')
+    .map((item) => ({
+      field: item.field,
+      value: item.value.slice(0, 240),
+      source: typeof item.source === 'string' ? item.source.slice(0, 160) : '',
+      evidence: typeof item.evidence === 'string' ? item.evidence.slice(0, 240) : '',
+      confidence: ['high', 'medium', 'low'].includes(item.confidence) ? item.confidence : 'low',
+    }));
   next.tags = [...new Set((Array.isArray(next.tags) ? next.tags : []).map((tag) => String(tag).trim()).filter(Boolean))].slice(0, 20);
   return next;
+}
+
+export function enrichmentCrmPatch(enrichment = {}) {
+  return {
+    enrichmentStatus: typeof enrichment.status === 'string' ? enrichment.status : 'unavailable',
+    enrichmentTimestamp: typeof enrichment.timestamp === 'string' ? enrichment.timestamp : '',
+    enrichmentSource: typeof enrichment.source === 'string' ? enrichment.source : '',
+    enrichmentConfidence: typeof enrichment.confidence === 'string' ? enrichment.confidence : 'low',
+    enrichmentEmail: typeof enrichment.email === 'string' ? enrichment.email : '',
+    enrichmentPhone: typeof enrichment.phone === 'string' ? enrichment.phone : '',
+    enrichmentWhatsappUrl: typeof enrichment.whatsappUrl === 'string' ? enrichment.whatsappUrl : '',
+    enrichmentSocialLinks: Array.isArray(enrichment.socialLinks) ? enrichment.socialLinks : [],
+    enrichmentAddress: typeof enrichment.address === 'string' ? enrichment.address : '',
+    enrichmentBusinessName: typeof enrichment.businessName === 'string' ? enrichment.businessName : '',
+    enrichmentServices: Array.isArray(enrichment.services) ? enrichment.services : [],
+    enrichmentOpeningHours: typeof enrichment.openingHours === 'string' ? enrichment.openingHours : '',
+    enrichmentContactPage: typeof enrichment.contactPage === 'string' ? enrichment.contactPage : '',
+    discoveredWebsite: typeof enrichment.discoveredWebsite === 'string' ? enrichment.discoveredWebsite : '',
+    enrichmentEvidence: Array.isArray(enrichment.evidence) ? enrichment.evidence : [],
+  };
+}
+
+export function applyEnrichmentToCrm(current, enrichment) {
+  // Enrichment has its own fields; never replace the operator's email, consent,
+  // or verification state with an automatically discovered contact address.
+  return updateCrmRecord(current, enrichmentCrmPatch(enrichment));
 }
 
 export function markLeadContacted(current, date = new Date()) {
