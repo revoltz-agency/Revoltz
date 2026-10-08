@@ -102,16 +102,18 @@ export async function testGeminiApiKey(apiKey) {
   return true;
 }
 
-export async function searchGeminiLeads({ apiKey, category, location, maxResults = 10 }) {
+export async function searchGeminiLeads({ apiKey, category, location, radiusKm = 10, maxResults = 10 }) {
   const safeCategory = clean(category, 100);
   const safeLocation = clean(location, 160);
   const count = Math.max(1, Math.min(30, Number(maxResults) || 10));
+  const radius = Math.max(1, Math.min(50, Number(radiusKm) || 10));
   if (!safeCategory || !safeLocation) throw new Error('Add an industry/category and location to search.');
 
   const prompt = [
     `Find up to ${count} real businesses for the lead-generation workspace.`,
     `Industry/category: ${safeCategory}`,
     `Location: ${safeLocation}`,
+    `Prefer businesses within approximately ${radius} km of the requested location.`,
     '',
     'Use Google Maps grounding for the business discovery. Return only businesses that are actually present in the grounded Maps results.',
     'Do not invent, infer, or guess missing phone numbers, websites, ratings, review counts, addresses, or place IDs. Use an empty string or null when the grounded data does not provide a field.',
