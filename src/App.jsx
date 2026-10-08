@@ -151,7 +151,15 @@ function demoSearch(category, city) {
   });
 }
 function getLeadKey(lead) { return lead?.placeId || lead?.id; }
-function safePhoneDigits(phone) { const value = String(phone || '').trim(); if (!/^\+[1-9]/.test(value)) return ''; const digits = value.replace(/\D/g, ''); return digits.length >= 8 && digits.length <= 15 ? digits : ''; }
+function safePhoneDigits(phone) {
+  const value = String(phone || '').trim();
+  const digits = value.replace(/\D/g, '');
+  // Accept standard Indian 10-digit business numbers from CSV/manual imports and
+  // normalize them to +91 later; also accept already international numbers.
+  if (/^[6-9]\d{9}$/.test(digits)) return digits;
+  if (/^\+?[1-9]\d{7,14}$/.test(value.replace(/[\s()-]/g, ''))) return digits;
+  return '';
+}
 function safeHttpUrl(value) {
   try { const url = new URL(String(value)); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : ''; }
   catch { return ''; }
@@ -1232,7 +1240,7 @@ function OutreachModal({ lead, crm, onClose, onToast, onMarkContacted, onReviewL
         {lead.source === 'google' && <GoogleDisclosure compact />}
         {lead.source === 'osm' && <OsmDisclosure />}
         <div className="pitch-tabs"><button type="button" className={tab === 'email' ? 'pitch-tab active' : 'pitch-tab'} onClick={() => setTab('email')}><Mail size={15} /> Email draft</button><button type="button" className={tab === 'whatsapp' ? 'pitch-tab active' : 'pitch-tab'} onClick={() => setTab('whatsapp')}><MessageCircle size={15} /> WhatsApp draft</button></div>
-        <div className={`outreach-contact-status ${tab === 'email' ? (emailAllowed ? 'contact-basis-ready' : 'contact-basis-blocked') : (whatsappDraftAllowed ? 'contact-basis-ready' : 'contact-basis-blocked')}`}><ShieldCheck size={14} /><span>{tab === 'email' ? emailAllowed ? 'Email address is user-entered, verified by you, and contact basis confirmed.' : emailValidation.reason : whatsappDraftAllowed ? 'WhatsApp draft is ready to copy. Opening WhatsApp requires a valid international phone and confirmed opt-in.' : whatsappValidation.reason}{tab === 'whatsapp' && lead.phone && <small>Phone source: {isUserProvidedManualField(lead, 'phone') ? 'user-entered business number.' : lead.demo ? 'fictional demo sample.' : isOsmLead(lead) ? 'public business number from OpenStreetMap.' : 'public business number from Google Places.'}</small>}</span></div>
+        <div className={`outreach-contact-status ${tab === 'email' ? (emailAllowed ? 'contact-basis-ready' : 'contact-basis-blocked') : (whatsappDraftAllowed ? 'contact-basis-ready' : 'contact-basis-blocked')}`}><ShieldCheck size={14} /><span>{tab === 'email' ? emailAllowed ? 'Email address is user-entered, verified by you, and contact basis confirmed.' : emailValidation.reason : whatsappDraftAllowed ? 'WhatsApp draft is ready to copy. Opening WhatsApp requires a valid business phone number.' : whatsappValidation.reason}{tab === 'whatsapp' && lead.phone && <small>Phone source: {isUserProvidedManualField(lead, 'phone') ? 'user-entered business number.' : lead.demo ? 'fictional demo sample.' : isOsmLead(lead) ? 'public business number from OpenStreetMap.' : 'public business number from Google Places.'}</small>}</span></div>
         {tab === 'email' ? <div className="pitch-editor"><label className="field-group"><span>Subject</span><input className="field-input" value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={160} /></label><label className="field-group"><span>Email body</span><textarea rows={10} value={emailBody} onChange={(event) => setEmailBody(event.target.value)} maxLength={4000} /></label><div className="pitch-editor-foot"><span>{emailBody.length} / 4,000 characters</span><button className="text-button" type="button" onClick={() => copy(`${subject}\n\n${emailBody}`, 'Email draft')} disabled={!emailAllowed}><Copy size={14} /> Copy email</button></div></div> : <div className="pitch-editor"><label className="field-group"><span>WhatsApp message</span><textarea rows={7} value={whatsappBody} onChange={(event) => setWhatsappBody(event.target.value)} maxLength={1500} /></label><div className="pitch-editor-foot"><span>{whatsappBody.length} / 1,500 characters</span><button className="text-button" type="button" onClick={() => copy(whatsappBody, 'WhatsApp draft')} disabled={!whatsappDraftAllowed}><Copy size={14} /> Copy message</button></div></div>}
         <div className="pitch-evidence"><ShieldCheck size={14} /><span>{lead.demo ? 'Fictional demo details. The sample cannot be contacted.' : lead.source === 'manual' || lead.manualUserFields?.length ? 'Draft uses details entered by you and any completed page check. User-entered claims are not independently verified.' : 'Draft uses only returned listing details and any completed page check. No unsupported business claims are added.'}</span></div>
         {isDnc && <div className="dnc-notice modal-dnc"><ShieldCheck size={14} /> Do Not Contact is active. Draft copy and channel actions are disabled.</div>}
