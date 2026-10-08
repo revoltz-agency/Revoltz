@@ -595,7 +595,11 @@ function AgencyOSApp() {
     if (sortKey === key) setSortDirection((value) => value === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDirection(key === 'name' || key === 'status' ? 'asc' : 'desc'); }
   }
-  const handleOpenPitch = (lead) => {\n    // Keep the pitch composer and lead drawer mutually exclusive.\n    setSelectedLeadId('');\n    setOutreachLeadId(getLeadKey(lead));\n  };
+  const handleOpenPitch = (lead) => {
+    // Keep the pitch composer and lead drawer mutually exclusive.
+    setSelectedLeadId('');
+    setOutreachLeadId(getLeadKey(lead));
+  };
 
   useEffect(() => {
     const handleEscape = (event) => {
