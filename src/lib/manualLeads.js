@@ -27,14 +27,14 @@ const EMPTY_VALUES = Object.freeze({
 });
 
 const HEADER_ALIASES = {
-  name: ['businessname', 'business', 'company', 'companyname', 'name', 'leadname'],
+  name: ['businessname', 'business', 'company', 'companyname', 'name', 'leadname', 'title', 'business_title'],
   category: ['industry', 'category', 'businesscategory', 'type'],
-  city: ['city', 'town', 'locality'],
+  city: ['city', 'town', 'locality', 'cityname', 'district', 'area', 'locationcity'],
   website: ['website', 'websiteurl', 'businesswebsite', 'site', 'url'],
   phone: ['phone', 'phonenumber', 'telephone', 'mobile', 'businessphone'],
   email: ['email', 'emailaddress', 'businessemail'],
   mapsUrl: ['googlemapsurl', 'googlemapslink', 'googlemaps', 'mapsurl', 'mapslink', 'mapurl'],
-  address: ['address', 'fulladdress', 'streetaddress'],
+  address: ['address', 'fulladdress', 'streetaddress', 'location', 'businesslocation', 'locationaddress'],
   rating: ['rating', 'googlerating', 'businessrating'],
   reviews: ['reviewcount', 'reviews', 'reviews_count', 'numberofreviews', 'useratingcount'],
   instagram: ['instagram', 'instagramurl', 'instagramprofile'],
@@ -98,8 +98,6 @@ export function validateManualLead(input = {}) {
   const values = normalizeManualInput(input);
   const errors = {};
   if (!values.name) errors.name = 'Business name is required.';
-  if (!values.category) errors.category = 'Industry is required.';
-  if (!values.city) errors.city = 'City is required.';
 
   values.website = normalizeUrl(values.website, 'website', errors);
   values.mapsUrl = normalizeUrl(values.mapsUrl, 'mapsUrl', errors);
@@ -376,7 +374,7 @@ export function parseManualLeadCsv(text) {
     const index = normalizedHeaders.findIndex((header) => aliases.includes(header));
     if (index >= 0) mapping[field] = index;
   }
-  const missingHeaders = ['name', 'category', 'city'].filter((field) => !(field in mapping));
+  const missingHeaders = ['name'].filter((field) => !(field in mapping));
   if (missingHeaders.length) {
     return {
       headers: headerRow.cells,
