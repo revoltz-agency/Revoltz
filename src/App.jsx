@@ -1200,8 +1200,12 @@ function OutreachModal({ lead, crm, onClose, onToast, onMarkContacted, onReviewL
   const whatsappPhoneDigits = phoneDigits.length === 10 ? `91${phoneDigits}` : phoneDigits;
   const whatsappAllowed = whatsappValidation.allowed && Boolean(whatsappPhoneDigits);
   const whatsappDraftAllowed = !isDnc && !lead.demo && !lead.needsRefresh;
+  const whatsappAppAllowed = whatsappDraftAllowed && /^\\d{8,15}$/.test(whatsappPhoneDigits);
   const emailHref = `mailto:${encodeURIComponent(crm.email || '').replaceAll('%40', '@')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
-  const whatsappHref = whatsappAllowed ? `whatsapp://send?phone=${whatsappPhoneDigits}&text=${encodeURIComponent(whatsappBody)}` : '';
+  // Use WhatsApp's universal HTTPS link: on mobile it hands off to the installed app;
+  // otherwise it falls back to WhatsApp Web instead of leaving the site on a blank scheme page.
+  const whatsappHref = whatsappAppAllowed ? `https://wa.me/${whatsappPhoneDigits}?text=${encodeURIComponent(whatsappBody)}` : '';
+  const whatsappOpenReason = whatsappAppAllowed ? 'WhatsApp will open with the message prefilled. Review it and tap Send yourself.' : 'Add a valid phone number to open WhatsApp.';
 
   async function copy(text, label) {
     try {
