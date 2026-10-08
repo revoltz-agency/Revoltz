@@ -860,7 +860,7 @@ function ManualLeadTools({ leads, results, onImport }) {
 
   return <section className="surface-card manual-tools-card" aria-labelledby="manual-import-title">
     <div className="manual-tools-header">
-      <div><div className="card-kicker">FREE · NO API KEY REQUIRED</div><h2 id="manual-import-title">Manual Lead Import</h2><p>Add one business or import a CSV you already have. Manual entry and CSV import make no Google Places API calls and never scrape Google Maps.</p></div>
+      <div><div className="card-kicker">FREE · NO API KEY REQUIRED</div><h2 id="manual-import-title">Manual Lead Import</h2><p>Add one business or import a CSV you already have. Manual entry and CSV import make no Google Places API calls and never scrape Google Maps.</p><small className="manual-import-help"><strong>CSV tip:</strong> Business Name is required. Industry and City are optional for imports, so scraper files with fields like Name, Title, Phone, Website, Address or Location can be imported too.</small></div>
       <div className="manual-tools-actions">
         <button className="button button-secondary" type="button" onClick={() => { setFormOpen((value) => !value); setPendingManual(null); }}><Plus size={15} /> Add Manual Lead</button>
         <button className="button button-primary" type="button" onClick={() => fileInput.current?.click()}><Upload size={15} /> Import CSV</button>
