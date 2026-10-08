@@ -630,7 +630,7 @@ function AgencyOSApp() {
 
           {activePage === 'Dashboard' && <DashboardPage leads={leads} getCrm={getCrm} onNavigate={setActivePage} onOpenLead={openLead} onExport={() => exportCsv(leads)} />}
           {activePage === 'Find Leads' && <FinderPage searchForm={searchForm} setSearchForm={setSearchForm} onSearch={runLeadSearch} searching={searching} searchError={searchError} results={finderResults} source={finderSource} warnings={finderWarnings} requests={finderRequests} geocodingRequests={finderGeocodingRequests} history={searchHistory} onSelectHistory={(entry) => setSearchForm((current) => ({ ...current, ...entry }))} hasRun={searchHasRun} query={finderQuery} configLoading={apiConfig.loading} leads={leads} onAdd={addLeadToWorkspace} onOpenLead={openLead} onManualEntries={addManualLeadEntries} config={apiConfig} osmMeta={osmMeta} />}
-          {activePage === 'Leads' && <LeadsPage leads={sortedLeads} allCount={leads.length} getCrm={getCrm} search={leadSearch} setSearch={setLeadSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} priorityFilter={priorityFilter} setPriorityFilter={setPriorityFilter} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort} onOpenLead={openLead} onPitch={handleOpenPitch} onStatus={updateStatus} onBulkUpdate={updateCrmBulk} onRemove={removeSavedLead} onRefreshDetails={refreshSavedPlace} refreshingDetailsIds={refreshingDetailsIds} onExport={() => exportCsv(leads)} onFind={() => setActivePage('Find Leads')} />}
+          {activePage === 'Leads' && <LeadsPage leads={sortedLeads} allCount={leads.length} getCrm={getCrm} search={leadSearch} setSearch={setLeadSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} priorityFilter={priorityFilter} setPriorityFilter={setPriorityFilter} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort} onOpenLead={openLead} onPitch={handleOpenPitch} onStatus={updateStatus} onBulkUpdate={updateCrmBulk} onBulkRemove={removeSavedLeads} onRemove={removeSavedLead} onRefreshDetails={refreshSavedPlace} refreshingDetailsIds={refreshingDetailsIds} onExport={() => exportCsv(leads)} onFind={() => setActivePage('Find Leads')} />}
           {activePage === 'Campaigns' && <CampaignsPage leads={leads} getCrm={getCrm} onOpenLead={openLead} onPitch={handleOpenPitch} />}
           {activePage === 'Settings' && <SettingsPage config={apiConfig} notice={settingsNotice} onRefresh={refreshConfig} onNavigate={setActivePage} geminiApiKey={geminiApiKey} onGeminiApiKeyChange={(value) => {
             setGeminiApiKey(value);
@@ -943,7 +943,7 @@ function ManualLeadTools({ leads, results, onImport }) {
   </section>;
 }
 
-function LeadsPage({ leads, allCount, getCrm, search, setSearch, statusFilter, setStatusFilter, priorityFilter, setPriorityFilter, sortKey, sortDirection, onSort, onOpenLead, onPitch, onStatus, onBulkUpdate, onRemove, onRefreshDetails, refreshingDetailsIds, onExport, onFind }) {
+function LeadsPage({ leads, allCount, getCrm, search, setSearch, statusFilter, setStatusFilter, priorityFilter, setPriorityFilter, sortKey, sortDirection, onSort, onOpenLead, onPitch, onStatus, onBulkUpdate, onBulkRemove, onRemove, onRefreshDetails, refreshingDetailsIds, onExport, onFind }) {
   const hasGoogleData = leads.some((lead) => lead.source === 'google');
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkStatus, setBulkStatus] = useState('');
@@ -964,6 +964,20 @@ function LeadsPage({ leads, allCount, getCrm, search, setSearch, statusFilter, s
     onBulkUpdate(selectedIds, patch);
     setBulkStatus(''); setBulkService(''); setBulkTag(''); setSelectedIds([]);
   }
+  function removeSavedLeads(ids) {
+    const keys = new Set(ids);
+    if (!keys.size) return;
+    setLeads((current) => current.filter((item) => !keys.has(getLeadKey(item))));
+    setFinderResults((current) => current.filter((item) => !keys.has(getLeadKey(item))));
+    setManualLeads((current) => current.filter((item) => !keys.has(getLeadKey(item))));
+    setSavedPlaceIds((current) => current.filter((id) => !keys.has(id)));
+    setManualOverrides((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !keys.has(id))));
+    setWorkflow((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !keys.has(id))));
+    setSelectedLeadId((current) => keys.has(current) ? '' : current);
+    setOutreachLeadId((current) => keys.has(current) ? '' : current);
+    showToast(`${keys.size} ${keys.size === 1 ? 'lead' : 'leads'} deleted from your workspace.`);
+  }
+
   return <div className="page-stack">
     <PageHeading eyebrow="YOUR CRM" title="Leads, with context." description="Keep your research, notes, and next steps together.">
       <button className="button button-secondary" type="button" onClick={onExport} disabled={!leads.length}><Download size={16} /> Export CSV</button>
@@ -977,7 +991,7 @@ function LeadsPage({ leads, allCount, getCrm, search, setSearch, statusFilter, s
         <div className="select-with-icon"><SlidersHorizontal size={14} /><select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} aria-label="Filter by priority"><option value="ALL">All priorities</option><option value="HOT">HOT · highest signal</option><option value="WARM">WARM · review</option><option value="COLD">COLD · limited signals</option></select><ChevronDown size={13} /></div>
       </div>
     </div>
-    {selectedIds.length > 0 && <section className="bulk-toolbar" aria-label="Bulk CRM actions"><div className="bulk-selection-count"><strong>{selectedIds.length}</strong><span>selected</span></div><label><span>Set status</span><select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">No change</option>{LEAD_STATUSES.map((status) => <option key={status} value={status}>{titleCaseStatus(status)}</option>)}</select></label><label><span>Assign service</span><select value={bulkService} onChange={(event) => setBulkService(event.target.value)}><option value="">No change</option>{SERVICES.map((service) => <option key={service} value={service}>{service}</option>)}</select></label><label><span>Add tag</span><input value={bulkTag} onChange={(event) => setBulkTag(event.target.value)} maxLength={40} placeholder="Tag" /></label><button className="button button-primary button-small" type="button" onClick={applyBulkAction} disabled={!bulkStatus && !bulkService && !bulkTag.trim()}>Apply CRM changes</button><button className="text-button" type="button" onClick={() => setSelectedIds([])}>Clear selection</button></section>}
+    {selectedIds.length > 0 && <section className="bulk-toolbar" aria-label="Bulk CRM actions"><div className="bulk-selection-count"><strong>{selectedIds.length}</strong><span>selected</span></div><label><span>Set status</span><select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">No change</option>{LEAD_STATUSES.map((status) => <option key={status} value={status}>{titleCaseStatus(status)}</option>)}</select></label><label><span>Assign service</span><select value={bulkService} onChange={(event) => setBulkService(event.target.value)}><option value="">No change</option>{SERVICES.map((service) => <option key={service} value={service}>{service}</option>)}</select></label><label><span>Add tag</span><input value={bulkTag} onChange={(event) => setBulkTag(event.target.value)} maxLength={40} placeholder="Tag" /></label><button className="button button-primary button-small" type="button" onClick={applyBulkAction} disabled={!bulkStatus && !bulkService && !bulkTag.trim()}>Apply CRM changes</button><button className="button button-quiet button-small" type="button" onClick={() => { if (!window.confirm(`Delete ${selectedIds.length} selected leads? This removes their saved CRM details from this browser.`)) return; onBulkRemove(selectedIds); setSelectedIds([]); }}><Trash2 size={14} /> Delete selected</button><button className="text-button" type="button" onClick={() => setSelectedIds([])}>Clear selection</button></section>}
     {leads.length ? <>
       <div className="surface-card table-card">
         <div className="table-wrap"><table className="lead-table">
