@@ -232,3 +232,6 @@ a.enrichment-fact-value:hover{color:#d9e8fa}
 /* Gemini BYOK settings */
 .settings-inline-actions{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
 .settings-small-note{font-size:12px;opacity:.78}
+
+/* Mobile modal/drawer controls: keep close targets above touch layers. */
+.drawer-close-button,.modal-close-button{position:relative;z-index:5;pointer-events:auto;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
