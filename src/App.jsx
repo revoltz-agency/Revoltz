@@ -15,6 +15,7 @@ import { initials, ScorePill, titleCaseStatus } from './components/leadPrimitive
 import { isAppPath, navigate, useRouterPath, withBase } from './lib/router.js';
 import RevoltzSite from './site/RevoltzSite.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
+import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
 import { enrichmentCrmPatch, markLeadContacted, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
 import { getOrCreateCachedRequest } from './lib/placeDetailsCache.js';
 import {
@@ -29,6 +30,7 @@ const DEFAULT_CRM = { status: 'NEW', notes: '', lastContacted: '', lastContacted
 const WORKFLOW_STORAGE_KEY = 'agencyos:workflow:v1';
 const SAVED_PLACE_IDS_KEY = 'agencyos:saved-place-ids:v1';
 const SEARCH_HISTORY_KEY = 'agencyos:search-history:v1';
+const GEMINI_API_KEY_STORAGE = GEMINI_KEY_STORAGE;
 const MANUAL_LEADS_STORAGE_KEY = 'agencyos:manual-leads:v1';
 const MANUAL_OVERRIDES_STORAGE_KEY = 'agencyos:manual-lead-overrides:v1';
 const EXAMPLE_SEARCHES = ['Restaurants in Pune', 'Dental clinics in Pune', 'CA firms in Pune', 'Gyms in Pune', 'Salons in Pune', 'Real estate agencies in Pune', 'Cloud kitchens in Pune'];
@@ -180,6 +182,10 @@ function AgencyOSApp() {
   const [activePage, setActivePage] = useState('Dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [apiConfig, setApiConfig] = useState({ loading: true, googlePlacesConfigured: false, freeSearchEnabled: false, reachable: true });
+  const [geminiApiKey, setGeminiApiKey] = useState(() => {
+    try { return window.sessionStorage.getItem(GEMINI_API_KEY_STORAGE) || ''; } catch { return ''; }
+  });
+  const [geminiTesting, setGeminiTesting] = useState(false);
   const [manualLeads, setManualLeads] = useState(readManualLeads);
   const [manualOverrides, setManualOverrides] = useState(readManualLeadOverrides);
   const [leads, setLeads] = useState(() => dedupeLeads(manualLeads.map((lead) => applyManualLeadOverride(lead, manualOverrides))));
@@ -187,13 +193,13 @@ function AgencyOSApp() {
   const [savedPlaceIds, setSavedPlaceIds] = useState(readSavedPlaceIds);
   const [searchHistory, setSearchHistory] = useState(readSearchHistory);
   const [finderResults, setFinderResults] = useState([]);
-  const [finderSource, setFinderSource] = useState('osm');
+  const [finderSource, setFinderSource] = useState('gemini');
   const [finderWarnings, setFinderWarnings] = useState([]);
   const [finderQuery, setFinderQuery] = useState('');
   const [finderRequests, setFinderRequests] = useState(0);
   const [finderGeocodingRequests, setFinderGeocodingRequests] = useState(0);
   const [refreshingDetailsIds, setRefreshingDetailsIds] = useState({});
-  const [searchForm, setSearchForm] = useState({ category: '', city: 'Pune', radiusKm: '10', maxResults: '10', source: 'osm' });
+  const [searchForm, setSearchForm] = useState({ category: '', city: 'Pune', radiusKm: '10', maxResults: '10', source: 'gemini' });
   const [osmMeta, setOsmMeta] = useState({ queriedTags: [], matchedCategory: '', resolvedLocation: '' });
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -229,8 +235,8 @@ function AgencyOSApp() {
         setApiConfig({ loading: false, reachable: true, ...data });
         if (!initialConfigLoaded.current) {
           initialConfigLoaded.current = true;
-          // Prefer live OpenStreetMap prospecting when Google Places is not configured.
-          setSearchForm((current) => ({ ...current, source: data.googlePlacesConfigured ? 'google' : 'osm' }));
+          // Gemini is the primary lead source; Google Places is retained only for legacy saved-place refresh.
+          setSearchForm((current) => ({ ...current, source: 'gemini' }));
           const savedReferences = savedPlaceIds.map((id) => savedLeadPlaceholder(id));
           setLeads((current) => {
             const retained = current.filter((lead) => !lead.demo);
@@ -243,7 +249,7 @@ function AgencyOSApp() {
         setApiConfig({ loading: false, reachable: false, googlePlacesConfigured: false, freeSearchEnabled: false });
         if (!initialConfigLoaded.current) {
           initialConfigLoaded.current = true;
-          setSearchForm((current) => ({ ...current, source: 'osm' }));
+          setSearchForm((current) => ({ ...current, source: 'gemini' }));
           setLeads((current) => dedupeLeads([...manualLeads, ...current.filter((lead) => lead.source === 'manual')].map((lead) => applyManualLeadOverride(lead, manualOverrides))));
         }
       }
@@ -346,20 +352,17 @@ function AgencyOSApp() {
     setSearchError(''); setFinderWarnings([]); setFinderResults([]); setFinderRequests(0); setFinderGeocodingRequests(0); setSearchHasRun(true); setFinderQuery(`${category} in ${city}`); setSearching(true);
     setOsmMeta({ queriedTags: [], matchedCategory: '', resolvedLocation: '' });
     try {
-      if (searchForm.source === 'osm') {
-        if (!apiConfig.freeSearchEnabled) { setSearchError('OpenStreetMap search is unavailable on this server.'); return; }
-        const built = buildFreeSearchPayload({ category, city, radiusKm: searchForm.radiusKm, maxResults: searchForm.maxResults });
-        if (!built.valid) { setSearchError(built.errors[0]); return; }
-        const response = await fetch('/api/free/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(built.payload) });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'OpenStreetMap search failed.');
-        setFinderResults(dedupeLeads(data.results || []).map((lead) => applyManualLeadOverride(lead, manualOverrides)));
-        setFinderWarnings(data.warnings || []);
-        setFinderRequests(Number(data.requests) || 1);
-        setFinderGeocodingRequests(Number(data.geocodingRequests) || 0);
-        setFinderSource('osm');
-        setOsmMeta({ queriedTags: data.queriedTags || [], matchedCategory: data.matchedCategory || '', resolvedLocation: data.resolvedLocation || '' });
-        if (!data.results?.length) showToast('No OpenStreetMap matches. Try a broader category, a larger radius, or a nearby city.');
+      if (searchForm.source === 'gemini') {
+        if (!geminiApiKey) { setSearchError('Add your Gemini API key in Settings before searching.'); return; }
+        const result = await searchGeminiLeads({ apiKey: geminiApiKey, category, location: city, maxResults: Number(searchForm.maxResults) });
+        const results = result.leads || [];
+        setFinderResults(dedupeLeads(results).map((lead) => applyManualLeadOverride(lead, manualOverrides)));
+        setFinderWarnings([]);
+        setFinderRequests(1);
+        setFinderGeocodingRequests(0);
+        setFinderSource('gemini');
+        setOsmMeta({ queriedTags: [], matchedCategory: '', resolvedLocation: city });
+        if (!results.length) showToast('No Gemini/Google Maps matches. Try a broader category or nearby city.');
       } else if (searchForm.source === 'google' && apiConfig.googlePlacesConfigured) {
         const response = await fetch('/api/places/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, location: city, radiusKm: Number(searchForm.radiusKm), maxResults: Number(searchForm.maxResults) }) });
         const data = await response.json();
@@ -610,7 +613,19 @@ function AgencyOSApp() {
           {activePage === 'Find Leads' && <FinderPage searchForm={searchForm} setSearchForm={setSearchForm} onSearch={runLeadSearch} searching={searching} searchError={searchError} results={finderResults} source={finderSource} warnings={finderWarnings} requests={finderRequests} geocodingRequests={finderGeocodingRequests} history={searchHistory} onSelectHistory={(entry) => setSearchForm((current) => ({ ...current, ...entry }))} hasRun={searchHasRun} query={finderQuery} configLoading={apiConfig.loading} leads={leads} onAdd={addLeadToWorkspace} onOpenLead={openLead} onManualEntries={addManualLeadEntries} config={apiConfig} osmMeta={osmMeta} />}
           {activePage === 'Leads' && <LeadsPage leads={sortedLeads} allCount={leads.length} getCrm={getCrm} search={leadSearch} setSearch={setLeadSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} priorityFilter={priorityFilter} setPriorityFilter={setPriorityFilter} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort} onOpenLead={openLead} onPitch={handleOpenPitch} onStatus={updateStatus} onBulkUpdate={updateCrmBulk} onRemove={removeSavedLead} onRefreshDetails={refreshSavedPlace} refreshingDetailsIds={refreshingDetailsIds} onExport={() => exportCsv(leads)} onFind={() => setActivePage('Find Leads')} />}
           {activePage === 'Campaigns' && <CampaignsPage leads={leads} getCrm={getCrm} onOpenLead={openLead} onPitch={handleOpenPitch} />}
-          {activePage === 'Settings' && <SettingsPage config={apiConfig} notice={settingsNotice} onRefresh={refreshConfig} onNavigate={setActivePage} />}
+          {activePage === 'Settings' && <SettingsPage config={apiConfig} notice={settingsNotice} onRefresh={refreshConfig} onNavigate={setActivePage} geminiApiKey={geminiApiKey} onGeminiApiKeyChange={(value) => {
+            setGeminiApiKey(value);
+            try { window.sessionStorage.setItem(GEMINI_API_KEY_STORAGE, value); } catch {}
+          }} geminiTesting={geminiTesting} onTestGemini={async () => {
+            setGeminiTesting(true);
+            setSettingsNotice('');
+            try {
+              await testGeminiApiKey(geminiApiKey);
+              setSettingsNotice('Gemini API key works. Google Maps grounding is ready.');
+            } catch (error) {
+              setSettingsNotice(error?.message || 'Gemini API key test failed.');
+            } finally { setGeminiTesting(false); }
+          }} />}
           {activePage === 'Privacy Policy' && <LegalPage type="privacy" onNavigate={setActivePage} />}
           {activePage === 'Terms' && <LegalPage type="terms" onNavigate={setActivePage} />}
         </main>
@@ -1001,12 +1016,12 @@ function CampaignsPage({ leads, getCrm, onOpenLead, onPitch }) {
   </div>;
 }
 
-function SettingsPage({ config, notice, onRefresh, onNavigate }) {
+function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onGeminiApiKeyChange, geminiTesting, onTestGemini }) {
   return <div className="page-stack">
     <PageHeading eyebrow="WORKSPACE PREFERENCES" title="Settings & integrations." description="Know what is connected, where data lives, and what AgencyOS will never do." />
     <section className={`integration-status-card ${config.googlePlacesConfigured ? 'integration-ready' : ''}`}><div className="integration-icon"><Globe2 size={20} /></div><div className="integration-copy"><div className="card-kicker">GOOGLE PLACES API (NEW)</div><h2>{config.loading ? 'Checking server configuration…' : config.googlePlacesConfigured ? 'Server key configured' : 'Google Places is not configured'}</h2><p>{config.googlePlacesConfigured ? 'The server reports a Google Maps key is present. Credentials are not sent to the browser; a search will confirm the key and API permissions.' : config.reachable ? 'Google Places is optional. OpenStreetMap search, manual lead entry, and CSV import remain available without a Places key.' : 'The server status endpoint could not be reached. Manual lead entry and CSV import remain available.'}</p></div><div className={`integration-state ${config.googlePlacesConfigured ? 'integration-state-ready' : ''}`}><span />{config.loading ? 'Checking' : config.googlePlacesConfigured ? 'Configured' : 'Not configured'}</div></section>
     <div className="settings-grid">
-      <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">API CONFIGURATION</div><h2>Connect Google Places</h2></div><button className="icon-button" type="button" aria-label="Refresh API status" onClick={onRefresh} disabled={config.loading}><RefreshCw size={16} className={config.loading ? 'spin' : ''} /></button></div><p className="settings-paragraph">Add your key to the server environment. AgencyOS does not accept or store API keys in the browser.</p><ol className="setup-list"><li><span>1</span><div><strong>Enable Places API (New)</strong><small>In Google Cloud Console, enable Places API and billing for your project.</small></div></li><li><span>2</span><div><strong>Set a server-only environment variable</strong><code>GOOGLE_MAPS_API_KEY=your_key</code></div></li><li><span>3</span><div><strong>Restart the server</strong><small>Restrict the key to Places API (New), plus Geocoding API if used; apply server-side application restrictions where practical.</small></div></li></ol><div className="settings-callout"><Info size={15} /><span>Geocoding API is optional. If enabled, AgencyOS uses it to bias Text Search toward your chosen radius. Without it, the location is still used in the Text Search query.</span></div>{notice && <div className="settings-notice"><CheckCircle2 size={14} />{notice}</div>}</section>
+      <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">GEMINI LEAD ENGINE</div><h2>Connect Gemini</h2></div><Sparkles size={18} className="muted-icon" /></div><p className="settings-paragraph">Use your own Gemini API key to find real local businesses with Gemini + Google Maps grounding. The key stays in this browser session and is sent only to Google's Gemini API; it is never committed to Revoltz.</p><label className="field-group"><span>Gemini API key</span><input className="field-input" type="password" autoComplete="off" value={geminiApiKey} onChange={(event) => onGeminiApiKeyChange(event.target.value)} placeholder="Paste your Gemini API key" /></label><div className="settings-inline-actions"><button className="button button-secondary" type="button" onClick={onTestGemini} disabled={!geminiApiKey || geminiTesting}>{geminiTesting ? 'Testing…' : 'Test Gemini key'}</button>{geminiApiKey && <button className="text-button" type="button" onClick={() => onGeminiApiKeyChange('')}>Clear key</button>}</div><div className="settings-callout"><Info size={15} /><span>Lead discovery uses Google Maps grounding through Gemini. Google says API keys should be protected; this BYOK mode intentionally keeps the user's key out of the repository and server configuration. Usage/quota is charged to the user's Google project.</span></div>{notice && <div className="settings-notice"><CheckCircle2 size={14} />{notice}</div>}<p className="settings-paragraph settings-small-note">Create/manage the key in Google AI Studio. Use a restricted/auth key where available.</p></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">EXPLAINABLE AI QUALIFICATION</div><h2>Evidence in, reason out</h2></div><div className="engine-icon"><Sparkles size={16} /></div></div><p className="settings-paragraph">A transparent, rules-based expert system calculates the score and generates a short reason from observable signals. Draft copy uses evidence-bound templates; no external LLM is configured, so unsupported claims are not added.</p><div className="score-rule-list"><div><span>No website listed (Google only; manual missing = unknown)</span><strong>+30</strong></div><div><span>Weak website checks</span><strong>+20</strong></div><div><span>100+ reviews / 4.5+ rating</span><strong>+15 / +10</strong></div><div><span>Operational / contact gap / social link</span><strong>+10 / +10 / +5</strong></div></div><div className="settings-callout"><Info size={15} /><span>Priority bands: HOT 80–100, WARM 50–79, COLD 0–49. These are deterministic signals, not a forecast of conversion.</span></div><div className="settings-callout"><Info size={15} /><span>Mutually exclusive website signals cap the raw sum at 70. The app normalizes the observed raw score to 0–100 for the requested priority bands and shows both values in lead details.</span></div></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">DATA & RETENTION</div><h2>Minimal by default</h2></div><ShieldCheck size={18} className="muted-icon" /></div><div className="settings-feature-list"><div><CheckCircle2 size={16} /><span>Google Places business content stays in browser memory for this session only.</span></div><div><CheckCircle2 size={16} /><span>Local storage holds user-entered manual leads, their CRM fields, saved Google place IDs, and recent search terms. Google Places listing content is not cached.</span></div><div><CheckCircle2 size={16} /><span>Saved place details refresh only on request; the same place ID is not fetched twice in one app session.</span></div><div><CheckCircle2 size={16} /><span>CSV export includes user-entered manual lead details and CRM fields; Google Places business listing content remains excluded.</span></div></div><button className="text-button settings-link" type="button" onClick={() => onNavigate('Privacy Policy')}>Read the Privacy Policy <ArrowRight size={14} /></button></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">CONTACT SAFETY</div><h2>You stay in control</h2></div><MessageCircle size={18} className="muted-icon" /></div><div className="settings-feature-list"><div><CheckCircle2 size={16} /><span>No bulk email sending or automated WhatsApp messaging.</span></div><div><CheckCircle2 size={16} /><span>Email copy/open requires a user-entered, user-verified email and a confirmed contact basis; WhatsApp requires a public business phone and explicit per-lead opt-in.</span></div><div><CheckCircle2 size={16} /><span>“Do not contact” disables outreach, bulk selection is CRM-only, and closed/DNC leads leave follow-up suggestions.</span></div></div><button className="text-button settings-link" type="button" onClick={() => onNavigate('Terms')}>Review Terms <ArrowRight size={14} /></button></section>
