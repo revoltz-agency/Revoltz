@@ -168,7 +168,7 @@ function IntakeForm() {
       '',
       'What I want to improve:',
       form.goal,
-    ].join('\\n');
+    ].join('\n');
     window.location.href = `${mailtoHref('Free AI Audit Request')}&body=${encodeURIComponent(body)}`;
   };
   return <form className="rv-intake" onSubmit={submit}>
@@ -176,7 +176,7 @@ function IntakeForm() {
       <label>Name<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Your name" /></label>
       <label>Business<input required value={form.business} onChange={(e) => setForm({ ...form, business: e.target.value })} placeholder="Company / business name" /></label>
     </div>
-    <label>Email<input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@company.com" /></label>
+    <label>Email<input required type="email" pattern="^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$" title="Please enter a valid email such as you@company.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@company.com" /></label>
     <label>What would you like to improve?<textarea required rows="4" value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} placeholder="e.g. automate lead follow-ups, improve our website, reduce admin..." /></label>
     <button className="rv-btn rv-btn-primary rv-submit" type="submit">Claim My Free AI Audit <ArrowRight size={17} /></button>
     <p className="rv-form-note"><ShieldCheck size={14} /> No spam. No obligation. We will reply with the next practical step.</p>
