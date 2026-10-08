@@ -1112,11 +1112,7 @@ function EnrichmentSection({ crm, onUpdate, onEnrich, enriching }) {
 }
 
 function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, onRemove, onRefreshPlace, refreshingPlace, onAnalyze, analyzing, auditRevealed, onEnrich, enriching, onPitch }) {
-  const closeDrawer = (event) => {
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
-    onClose();
-  };
+  const closeDrawer = () => onClose();
   const score = scoreOpportunity(lead);
   const audit = lead.demo ? (auditRevealed ? lead.demoAudit : null) : getWebsiteAudit(lead);
   const dnc = crm.status === 'DO NOT CONTACT';
@@ -1126,9 +1122,9 @@ function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, o
   const recordContacted = () => onMarkContacted();
 
   return (
-    <div className="drawer-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="drawer-overlay" role="presentation" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} onTouchEnd={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <aside className="lead-drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
-        <div className="drawer-topbar"><span className="drawer-label"><span className="drawer-label-dot" /> LEAD PROFILE</span><button className="icon-button drawer-close-button" type="button" aria-label="Close lead profile" onPointerDown={closeDrawer} onClick={closeDrawer}><X size={18} /></button></div>
+        <div className="drawer-topbar"><span className="drawer-label"><span className="drawer-label-dot" /> LEAD PROFILE</span><button className="icon-button drawer-close-button" type="button" aria-label="Close lead profile" onTouchEnd={closeDrawer} onPointerUp={closeDrawer} onClick={closeDrawer}><X size={18} /></button></div>
         <div className="drawer-scroll">
           <div className="drawer-hero">
             <div className="business-avatar business-avatar-hero">{initials(lead.name)}</div>
@@ -1203,7 +1199,7 @@ function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, o
             <div className="cadence-foot"><Info size={13} /> Dates are suggestions only. AgencyOS will never send a follow-up automatically.</div>
           </section>
         </div>
-        <div className="drawer-bottom-bar"><button className="button button-quiet drawer-remove-button" type="button" onClick={onRemove}><Trash2 size={14} /> Remove saved lead</button><button className="button button-secondary drawer-close-button" type="button" onPointerDown={closeDrawer} onClick={closeDrawer}>Close</button><button className="button button-primary" type="button" onClick={onPitch} disabled={dnc || lead.needsRefresh}><Sparkles size={15} /> Generate pitch</button></div>
+        <div className="drawer-bottom-bar"><button className="button button-quiet drawer-remove-button" type="button" onClick={onRemove}><Trash2 size={14} /> Remove saved lead</button><button className="button button-secondary drawer-close-button" type="button" onTouchEnd={closeDrawer} onPointerUp={closeDrawer} onClick={closeDrawer}>Close</button><button className="button button-primary" type="button" onClick={onPitch} disabled={dnc || lead.needsRefresh}><Sparkles size={15} /> Generate pitch</button></div>
       </aside>
     </div>
   );
