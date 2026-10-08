@@ -228,3 +228,7 @@ a.enrichment-fact-value:hover{color:#d9e8fa}
 .enrichment-privacy-note{display:flex;align-items:flex-start;gap:6px;margin-top:10px;padding:8px;border:1px solid #293d38;border-radius:7px;background:#24544115;color:#8eae9e;font-size:7px;line-height:1.5}
 .enrichment-privacy-note svg{flex:0 0 auto;color:#78b490}
 @media(max-width:680px){.enrichment-status-row{align-items:flex-start}.enrichment-status-row span{padding-left:0;border-left:0}}
+
+/* Gemini BYOK settings */
+.settings-inline-actions{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.settings-small-note{font-size:12px;opacity:.78}
