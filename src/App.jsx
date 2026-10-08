@@ -1197,10 +1197,11 @@ function OutreachModal({ lead, crm, onClose, onToast, onMarkContacted, onReviewL
   const whatsappValidation = validateOutreachContact('whatsapp', lead, crm);
   const emailAllowed = emailValidation.allowed;
   const phoneDigits = safePhoneDigits(lead.internationalPhoneNumber || lead.phone);
-  const whatsappAllowed = whatsappValidation.allowed && Boolean(phoneDigits);
+  const whatsappPhoneDigits = phoneDigits.length === 10 ? `91${phoneDigits}` : phoneDigits;
+  const whatsappAllowed = whatsappValidation.allowed && Boolean(whatsappPhoneDigits);
   const whatsappDraftAllowed = !isDnc && !lead.demo && !lead.needsRefresh;
   const emailHref = `mailto:${encodeURIComponent(crm.email || '').replaceAll('%40', '@')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
-  const whatsappHref = whatsappAllowed ? `whatsapp://send?phone=${phoneDigits}&text=${encodeURIComponent(whatsappBody)}` : '';
+  const whatsappHref = whatsappAllowed ? `whatsapp://send?phone=${whatsappPhoneDigits}&text=${encodeURIComponent(whatsappBody)}` : '';
 
   async function copy(text, label) {
     try {
