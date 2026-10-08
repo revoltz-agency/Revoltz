@@ -595,7 +595,7 @@ function AgencyOSApp() {
     if (sortKey === key) setSortDirection((value) => value === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDirection(key === 'name' || key === 'status' ? 'asc' : 'desc'); }
   }
-  const handleOpenPitch = (lead) => setOutreachLeadId(getLeadKey(lead));
+  const handleOpenPitch = (lead) => {\n    // Keep the pitch composer and lead drawer mutually exclusive.\n    setSelectedLeadId('');\n    setOutreachLeadId(getLeadKey(lead));\n  };
 
   useEffect(() => {
     const handleEscape = (event) => {
