@@ -1238,12 +1238,12 @@ function OutreachModal({ lead, crm, onClose, onToast, onMarkContacted, onReviewL
             {emailAllowed ? <a className="button button-primary" href={emailHref}><Mail size={15} /> Open email app <ArrowUpRight size={14} /></a> : <button className="button button-primary" type="button" disabled title="Add a valid business email and confirm the appropriate contact basis in Lead details."><Mail size={15} /> Open email app</button>}
           </> : <>
             <button className="button button-secondary" type="button" onClick={() => copy(whatsappBody, 'WhatsApp draft')} disabled={!whatsappDraftAllowed}><Copy size={15} /> Copy draft</button>
-            {whatsappAllowed ? <a className="button button-whatsapp" href={whatsappHref}><MessageCircle size={15} /> Open WhatsApp app <ArrowUpRight size={14} /></a> : <button className="button button-whatsapp" type="button" disabled title="A valid phone and explicit WhatsApp opt-in are required."><MessageCircle size={15} /> Open WhatsApp app</button>}
+            {whatsappAppAllowed ? <a className="button button-whatsapp" href={whatsappHref}><MessageCircle size={15} /> Open WhatsApp app <ArrowUpRight size={14} /></a> : <button className="button button-whatsapp" type="button" disabled title={whatsappOpenReason}><MessageCircle size={15} /> Open WhatsApp app</button>}
           </>}
           <button type="button" className="button button-secondary mark-contacted-button" onClick={onMarkContacted} disabled={isDnc || lead.demo}><Check size={14} /> Mark as Contacted</button>
           <button type="button" className="modal-review-link" onClick={onReviewLead}>Review contact details <ArrowRight size={14} /></button>
         </div>
-        <div className="manual-send-note"><Info size={14} /><span>{tab === 'email' ? 'Opening your email app does not send a message. You review and send it yourself.' : 'WhatsApp opens the installed app with a prefilled draft. Review it and tap Send yourself; no automation or bulk messaging.'}</span></div>
+        <div className="manual-send-note"><Info size={14} /><span>{tab === 'email' ? 'Opening your email app does not send a message. You review and send it yourself.' : 'Click Open WhatsApp once to open the installed WhatsApp app with the message prefilled. Then review it and tap Send yourself; AgencyOS never sends automatically.'}</span></div>
       </section>
     </div>
   );
