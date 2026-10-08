@@ -605,8 +605,8 @@ function AgencyOSApp() {
       }
       if (selectedLeadId) setSelectedLeadId('');
     };
-    window.addEventListener('escape', handleEscape);
-    return () => window.removeEventListener('escape', handleEscape);
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
   }, [outreachLeadId, selectedLeadId]);
 
   return (
