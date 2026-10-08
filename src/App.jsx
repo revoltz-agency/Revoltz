@@ -464,6 +464,8 @@ function AgencyOSApp() {
   function removeSavedLead(lead) {
     const key = getLeadKey(lead);
     if (!key) return;
+    const confirmed = window.confirm(`Delete "${lead.name}" from your leads? This removes its saved CRM details from this browser.`);
+    if (!confirmed) return;
     setLeads((current) => current.filter((item) => getLeadKey(item) !== key));
     setFinderResults((current) => current.filter((item) => getLeadKey(item) !== key));
     if (lead.source === 'manual') setManualLeads((current) => current.filter((item) => getLeadKey(item) !== key));
@@ -1220,7 +1222,7 @@ function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, o
             <div className="cadence-foot"><Info size={13} /> Dates are suggestions only. AgencyOS will never send a follow-up automatically.</div>
           </section>
         </div>
-        <div className="drawer-bottom-bar"><button className="button button-quiet drawer-remove-button" type="button" onClick={onRemove}><Trash2 size={14} /> Remove saved lead</button><button className="button button-secondary drawer-close-button" type="button" onClick={closeDrawer}>Close</button><button className="button button-primary" type="button" onClick={onPitch} disabled={dnc || lead.needsRefresh}><Sparkles size={15} /> Generate pitch</button></div>
+        <div className="drawer-bottom-bar"><button className="button button-quiet drawer-remove-button" type="button" onClick={onRemove} title="Delete this lead and its saved CRM details"><Trash2 size={14} /> Delete lead</button><button className="button button-secondary drawer-close-button" type="button" onClick={closeDrawer}>Close</button><button className="button button-primary" type="button" onClick={onPitch} disabled={dnc || lead.needsRefresh}><Sparkles size={15} /> Generate pitch</button></div>
       </aside>
     </div>
   );
