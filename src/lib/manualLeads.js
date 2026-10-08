@@ -27,7 +27,7 @@ const EMPTY_VALUES = Object.freeze({
 });
 
 const HEADER_ALIASES = {
-  name: ['businessname', 'business', 'company', 'companyname', 'name', 'leadname', 'title', 'business_title'],
+  name: ['businessname', 'business', 'businessnameorname', 'company', 'companyname', 'name', 'leadname', 'title', 'businesstitle', 'business_title', 'placename', 'placetitle', 'storename', 'shopname', 'restaurantname', 'venuename'],
   category: ['industry', 'category', 'businesscategory', 'type'],
   city: ['city', 'town', 'locality', 'cityname', 'district', 'area', 'locationcity'],
   website: ['website', 'websiteurl', 'businesswebsite', 'site', 'url'],
@@ -315,8 +315,18 @@ function normalizeHeader(value) {
     .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '');
 }
 
+export function detectCsvDelimiter(input) {
+  const sample = String(input || '').split(/\r?\n/).slice(0, 5).filter(Boolean).join('\n');
+  const candidates = [',', ';', '\\t', '|'];
+  return candidates.sort((a, b) => {
+    const count = (value, delimiter) => value.split(delimiter).length - 1;
+    return count(sample, b) - count(sample, a);
+  })[0] || ',';
+}
+
 export function parseCsv(text) {
   const input = String(text ?? '').replace(/^\uFEFF/, '');
+  const delimiter = detectCsvDelimiter(input);
   const rows = [];
   let row = [];
   let cell = '';
@@ -340,7 +350,7 @@ export function parseCsv(text) {
     }
     if (char === '"' && cell === '') {
       quoted = true;
-    } else if (char === ',') {
+    } else if (char === delimiter) {
       row.push(cell);
       cell = '';
     } else if (char === '\r' || char === '\n') {
@@ -374,12 +384,21 @@ export function parseManualLeadCsv(text) {
     const index = normalizedHeaders.findIndex((header) => aliases.includes(header));
     if (index >= 0) mapping[field] = index;
   }
-  const missingHeaders = ['name'].filter((field) => !(field in mapping));
-  if (missingHeaders.length) {
+  // Scrapers are inconsistent: if no recognized business-name header exists,
+  // use the first non-obvious contact/location column as the name rather than
+  // rejecting an otherwise usable CSV.
+  if (!('name' in mapping)) {
+    const fallbackNameIndex = normalizedHeaders.findIndex((header, index) => {
+      if (!header || ['phone', 'phonenumber', 'telephone', 'mobile', 'address', 'location', 'website', 'url', 'email', 'rating', 'reviews'].includes(header)) return false;
+      return index === 0 || /name|title|business|company|place|shop|store|restaurant|venue/.test(header);
+    });
+    if (fallbackNameIndex >= 0) mapping.name = fallbackNameIndex;
+  }
+  if (!('name' in mapping)) {
     return {
       headers: headerRow.cells,
       rows: [],
-      error: `CSV must include columns for ${missingHeaders.map((field) => MANUAL_FIELD_LABELS[field]).join(', ')}.`,
+      error: 'We could not identify the business-name column. Rename the business-name column to Name, Business Name, Company, Title, or Business Title and try again.',
     };
   }
 
