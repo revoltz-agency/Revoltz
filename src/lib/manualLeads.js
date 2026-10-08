@@ -34,7 +34,7 @@ const HEADER_ALIASES = {
   phone: ['phone', 'phonenumber', 'telephone', 'mobile', 'businessphone'],
   email: ['email', 'emailaddress', 'businessemail'],
   mapsUrl: ['googlemapsurl', 'googlemapslink', 'googlemaps', 'mapsurl', 'mapslink', 'mapurl'],
-  address: ['address', 'fulladdress', 'streetaddress'],
+  address: ['address', 'fulladdress', 'streetaddress', 'location', 'businesslocation', 'locationaddress'],
   rating: ['rating', 'googlerating', 'businessrating'],
   reviews: ['reviewcount', 'reviews', 'reviews_count', 'numberofreviews', 'useratingcount'],
   instagram: ['instagram', 'instagramurl', 'instagramprofile'],
