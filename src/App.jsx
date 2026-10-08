@@ -152,12 +152,22 @@ function demoSearch(category, city) {
 }
 function getLeadKey(lead) { return lead?.placeId || lead?.id; }
 function safePhoneDigits(phone) {
-  const value = String(phone || '').trim();
-  const digits = value.replace(/\D/g, '');
-  // Accept standard Indian 10-digit business numbers from CSV/manual imports and
-  // normalize them to +91 later; also accept already international numbers.
+  const raw = String(phone ?? '').trim();
+  const digits = raw.replace(/\D/g, '');
+
+  // Normalize common Indian business-number formats:
+  // 10 digits: 9876543210 -> 9876543210
+  // 11 digits with trunk 0: 09876543210 -> 9876543210
+  // 12 digits with country code: 919876543210 -> 919876543210
+  // +91 formats are handled after punctuation is stripped.
   if (/^[6-9]\d{9}$/.test(digits)) return digits;
-  if (/^\+?[1-9]\d{7,14}$/.test(value.replace(/[\s()-]/g, ''))) return digits;
+  if (/^0[6-9]\d{9}$/.test(digits)) return digits.slice(1);
+  if (/^91[6-9]\d{9}$/.test(digits)) return digits;
+  
+  // Keep valid non-Indian international numbers (8–15 digits).
+  const normalizedInternational = raw.replace(/[\s().-]/g, '');
+  if (/^\+?[1-9]\d{7,14}$/.test(normalizedInternational)) return digits;
+
   return '';
 }
 function safeHttpUrl(value) {
