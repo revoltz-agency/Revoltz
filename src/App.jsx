@@ -1200,7 +1200,7 @@ function OutreachModal({ lead, crm, onClose, onToast, onMarkContacted, onReviewL
   const whatsappPhoneDigits = phoneDigits.length === 10 ? `91${phoneDigits}` : phoneDigits;
   const whatsappAllowed = whatsappValidation.allowed && Boolean(whatsappPhoneDigits);
   const whatsappDraftAllowed = !isDnc && !lead.demo && !lead.needsRefresh;
-  const whatsappAppAllowed = whatsappDraftAllowed && /^\\d{8,15}$/.test(whatsappPhoneDigits);
+  const whatsappAppAllowed = whatsappDraftAllowed && Boolean(whatsappPhoneDigits);
   const emailHref = `mailto:${encodeURIComponent(crm.email || '').replaceAll('%40', '@')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
   // Use WhatsApp's universal HTTPS link: on mobile it hands off to the installed app;
   // otherwise it falls back to WhatsApp Web instead of leaving the site on a blank scheme page.
