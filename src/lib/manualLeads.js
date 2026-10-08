@@ -172,6 +172,7 @@ export function manualLeadSourceLabel(leadOrSource) {
   if (source === 'manual') return 'Manual';
   if (source === 'google') return 'Google Places';
   if (source === 'osm') return 'OpenStreetMap';
+  if (source === 'gemini') return 'Gemini + Google Maps';
   return 'Demo';
 }
 
