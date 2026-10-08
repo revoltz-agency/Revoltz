@@ -597,6 +597,18 @@ function AgencyOSApp() {
   }
   const handleOpenPitch = (lead) => setOutreachLeadId(getLeadKey(lead));
 
+  useEffect(() => {
+    const handleEscape = (event) => {
+      if (outreachLeadId) {
+        setOutreachLeadId('');
+        return;
+      }
+      if (selectedLeadId) setSelectedLeadId('');
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [outreachLeadId, selectedLeadId]);
+
   return (
     <div className="app-shell">
       {sidebarOpen && <button type="button" className="mobile-scrim" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} />}
@@ -1112,7 +1124,11 @@ function EnrichmentSection({ crm, onUpdate, onEnrich, enriching }) {
 }
 
 function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, onRemove, onRefreshPlace, refreshingPlace, onAnalyze, analyzing, auditRevealed, onEnrich, enriching, onPitch }) {
-  const closeDrawer = () => onClose();
+  const closeDrawer = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    onClose();
+  };
   const score = scoreOpportunity(lead);
   const audit = lead.demo ? (auditRevealed ? lead.demoAudit : null) : getWebsiteAudit(lead);
   const dnc = crm.status === 'DO NOT CONTACT';
@@ -1124,7 +1140,7 @@ function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, o
   return (
     <div className="drawer-overlay" role="presentation" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} onTouchEnd={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <aside className="lead-drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
-        <div className="drawer-topbar"><span className="drawer-label"><span className="drawer-label-dot" /> LEAD PROFILE</span><button className="icon-button drawer-close-button" type="button" aria-label="Close lead profile" onTouchEnd={closeDrawer} onPointerUp={closeDrawer} onClick={closeDrawer}><X size={18} /></button></div>
+        <div className="drawer-topbar"><span className="drawer-label"><span className="drawer-label-dot" /> LEAD PROFILE</span><button className="icon-button drawer-close-button" type="button" aria-label="Close lead profile" onTouchStart={closeDrawer} onTouchEnd={(event) => event.stopPropagation()} onPointerUp={closeDrawer} onClick={closeDrawer}><X size={18} /></button></div>
         <div className="drawer-scroll">
           <div className="drawer-hero">
             <div className="business-avatar business-avatar-hero">{initials(lead.name)}</div>
@@ -1264,9 +1280,9 @@ function OutreachModal({ lead, crm, onClose, onToast, onMarkContacted, onReviewL
   }
 
   return (
-    <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="modal-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} onTouchEnd={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="outreach-modal" role="dialog" aria-modal="true" aria-labelledby="outreach-title">
-        <div className="modal-header"><div><div className="card-kicker">PERSONALIZED OUTREACH</div><h2 id="outreach-title">A message that sounds like you.</h2><p>Drafted from available public details. Edit it freely before using.</p></div><button className="icon-button" type="button" aria-label="Close pitch composer" onClick={onClose}><X size={18} /></button></div>
+        <div className="modal-header"><div><div className="card-kicker">PERSONALIZED OUTREACH</div><h2 id="outreach-title">A message that sounds like you.</h2><p>Drafted from available public details. Edit it freely before using.</p></div><button className="icon-button modal-close-button" type="button" aria-label="Close pitch composer" onTouchStart={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }} onClick={(event) => { event.stopPropagation(); onClose(); }}><X size={18} /></button></div>
         <div className="pitch-recipient"><div className="business-avatar">{initials(lead.name)}</div><div><strong>{lead.name}</strong><span>{lead.category} · {lead.city || lead.address || 'Location not returned'}</span></div><ModeBadge lead={lead} /></div>
         <div className="pitch-recipient-links">{!lead.demo && safeHttpUrl(lead.website) && <a href={safeHttpUrl(lead.website)} target="_blank" rel="noreferrer"><Globe2 size={13} /> Open website <ExternalLink size={11} /></a>}{!lead.demo && safeHttpUrl(lead.mapsUrl) && <a href={safeHttpUrl(lead.mapsUrl)} target="_blank" rel="noreferrer"><MapPin size={13} /> {isOsmLead(lead) ? 'OpenStreetMap' : 'Google Maps'} <ExternalLink size={11} /></a>}</div>
         {lead.source === 'google' && <GoogleDisclosure compact />}
