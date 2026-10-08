@@ -125,7 +125,9 @@ export function validateOutreachContact(channel, lead, crm) {
   if (channel === 'whatsapp') {
     const phone = String(lead?.internationalPhoneNumber || lead?.phone || '').trim();
     const digits = phone.replace(/\D/g, '');
-    if (lead?.demo || lead?.needsRefresh || !/^\+[1-9]/.test(phone) || digits.length < 8 || digits.length > 15) return { allowed: false, reason: 'A public business phone in international format is required for WhatsApp.' };
+    const normalizedIndiaPhone = /^\d{10}$/.test(digits) ? `91${digits}` : digits;
+    const hasUsablePhone = /^\+[1-9]/.test(phone) ? digits.length >= 8 && digits.length <= 15 : /^91\d{10}$/.test(normalizedIndiaPhone);
+    if (lead?.demo || lead?.needsRefresh || !hasUsablePhone) return { allowed: false, reason: 'A valid business phone is required for WhatsApp.' };
     if (!crm?.whatsappOptInConfirmed) return { allowed: false, reason: 'Confirm the recipient’s WhatsApp opt-in first.' };
     return { allowed: true, reason: '' };
   }
