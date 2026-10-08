@@ -169,8 +169,7 @@ function IntakeForm() {
       'What I want to improve:',
       form.goal,
     ].join('\\n');
-    window.location.href = mailtoHref('Free AI Audit Request');
-    window.setTimeout(() => { window.location.href = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Free AI Audit Request')}&body=${encodeURIComponent(body)}`; }, 50);
+    window.location.href = `${mailtoHref('Free AI Audit Request')}&body=${encodeURIComponent(body)}`;
   };
   return <form className="rv-intake" onSubmit={submit}>
     <div className="rv-form-grid">
