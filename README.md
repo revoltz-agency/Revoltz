@@ -4,6 +4,18 @@ AgencyOS is a responsive, dark-mode lead research and CRM MVP for an AI/web agen
 
 > **Safety by design:** AgencyOS does not scrape Google Maps webpages, bulk-send email, automatically message WhatsApp numbers, or send follow-ups in the background. Email and WhatsApp actions are explicit, per-lead user clicks. WhatsApp opening is gated on a user-confirmed opt-in.
 
+### Server-side AI provider (BluesMinds)
+
+The Express server exposes `POST /api/ai/generate` for server-side AI requests. This keeps the provider secret out of browser bundles and Git history.
+
+Configure these variables in the **server host's environment** (never in frontend code or committed files):
+
+- `BLUESMINDS_API_KEY` — secret key from your BluesMinds account.
+- `BLUESMINDS_MODEL` — exact model ID enabled for your account.
+- `BLUESMINDS_RESPONSES_URL` — optional override; defaults to `https://api.bluesminds.com/v1/responses`.
+
+Request body: `{"prompt":"Your task..." }`. The endpoint returns `text`, `model`, and `usage`. Prompts are limited to 12,000 characters and the endpoint applies a basic per-IP limit of 12 requests/minute per server process. This in-memory guard is only a fallback; use deployment-level authentication and rate limiting before exposing the endpoint publicly. GitHub Pages is static hosting and cannot run this Express route by itself; deploy the server to a backend host and configure these environment variables there.
+
 ## Routes
 
 | Route | What it is |
