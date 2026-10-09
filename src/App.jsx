@@ -356,24 +356,34 @@ function AgencyOSApp() {
     setSearchError(''); setFinderWarnings([]); setFinderResults([]); setFinderRequests(0); setFinderGeocodingRequests(0); setSearchHasRun(true); setFinderQuery(`${category} in ${city}`); setSearching(true);
     setOsmMeta({ queriedTags: [], matchedCategory: '', resolvedLocation: '' });
     try {
-      const result = await searchBrowserOpenStreetMap({
-        category,
-        location: city,
-        radiusKm: Number(searchForm.radiusKm),
-        maxResults: Number(searchForm.maxResults),
-      });
-      const results = result.results || [];
-      setFinderResults(dedupeLeads(results).map((lead) => applyManualLeadOverride(lead, manualOverrides)));
-      setFinderWarnings(result.warnings || []);
-      setFinderRequests(Number(result.requests) || 1);
-      setFinderGeocodingRequests(Number(result.geocodingRequests) || 1);
-      setFinderSource('osm');
-      setOsmMeta({
-        queriedTags: result.queriedTags || [],
-        matchedCategory: result.matchedCategory || '',
-        resolvedLocation: result.resolvedLocation || city,
-      });
-      if (!results.length) showToast('No OpenStreetMap matches found. Try a broader category or larger radius.');
+      if (searchForm.source === 'demo') {
+        const results = demoSearch(category, city).slice(0, Number(searchForm.maxResults) || 10);
+        setFinderResults(dedupeLeads(results).map((lead) => applyManualLeadOverride(lead, manualOverrides)));
+        setFinderSource('demo');
+        setFinderWarnings(['The sample set contains fictional Pune businesses only. Search radius is illustrative for these sample records.']);
+        setFinderRequests(0);
+        setFinderGeocodingRequests(0);
+        if (!results.length) showToast('No sample matches found. Try another category.');
+      } else {
+        const result = await searchBrowserOpenStreetMap({
+          category,
+          location: city,
+          radiusKm: Number(searchForm.radiusKm),
+          maxResults: Number(searchForm.maxResults),
+        });
+        const results = result.results || [];
+        setFinderResults(dedupeLeads(results).map((lead) => applyManualLeadOverride(lead, manualOverrides)));
+        setFinderWarnings(result.warnings || []);
+        setFinderRequests(Number(result.requests) || 1);
+        setFinderGeocodingRequests(Number(result.geocodingRequests) || 1);
+        setFinderSource('osm');
+        setOsmMeta({
+          queriedTags: result.queriedTags || [],
+          matchedCategory: result.matchedCategory || '',
+          resolvedLocation: result.resolvedLocation || city,
+        });
+        if (!results.length) showToast('No OpenStreetMap matches found. Try a broader category or larger radius.');
+      }
     } catch (error) { setSearchError(error.message || 'Search failed. Please try again.'); }
     finally { setSearching(false); }
   }
