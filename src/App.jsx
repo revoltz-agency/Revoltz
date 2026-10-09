@@ -772,23 +772,17 @@ function DashboardPage({ leads, getCrm, onNavigate, onOpenLead, onExport }) {
   </div>;
 }
 
-function geminiConfiguredForFinder(config, searchForm) {
-  return searchForm.source === 'gemini';
-}
-function geminiFinderHint() {
-  return 'Gemini will use Google Maps grounding to find real businesses matching this category and location.';
-}
 function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchError, results, source, warnings, requests, geocodingRequests, history, onSelectHistory, hasRun, query, configLoading, leads, onAdd, onOpenLead, onManualEntries, config, osmMeta }) {
   const updateField = (key, value) => setSearchForm((current) => ({ ...current, [key]: value }));
   const added = (lead) => leads.some((item) => getLeadKey(item) === getLeadKey(lead));
-  const sourceChoice = searchForm.source || 'gemini';
+  const sourceChoice = searchForm.source || 'osm';
   const sourceOptions = [
-    { id: 'gemini', title: 'Gemini AI', detail: 'Gemini + Google Maps · your key', disabled: false },
+    { id: 'osm', title: 'OpenStreetMap', detail: 'Free · no API key', disabled: false },
     { id: 'demo', title: 'Demo sample', detail: 'Fictional Pune businesses', disabled: false },
   ];
   return <div className="page-stack">
     <PageHeading eyebrow="PROSPECTING" title="Find the right businesses." description="Search local businesses, then decide which ones belong in your pipeline."><span className="privacy-chip"><ShieldCheck size={14} /> Official sources. Manual outreach.</span></PageHeading>
-    <section className="surface-card finder-form-card"><div className="finder-form-top"><div><div className="card-kicker">BUSINESS SEARCH</div><h2>Where should we look?</h2><p>Gemini uses Google Maps grounding to discover current local businesses. Add your own Gemini API key in Settings; the fictional sample set is available for testing.</p></div><div className="finder-search-icon"><Search size={21} /></div></div>
+    <section className="surface-card finder-form-card"><div className="finder-form-top"><div><div className="card-kicker">BUSINESS SEARCH</div><h2>Where should we look?</h2><p>Search real businesses from OpenStreetMap without Google APIs, paid keys, or a backend server. Coverage depends on community-maintained listings; the fictional sample set is available for testing.</p></div><div className="finder-search-icon"><Search size={21} /></div></div>
       <div className="source-choice-row">
         <span>Data source</span>
         <div className="source-choice-group" role="radiogroup" aria-label="Lead data source">
@@ -797,7 +791,7 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
           </button>)}
         </div>
       </div>
-      {sourceChoice === 'gemini' && <div className="results-note free-hint"><Info size={14} />{geminiFinderHint(geminiConfiguredForFinder(config, searchForm), searchForm.category)}</div>}
+      {sourceChoice === 'osm' && <div className="results-note free-hint"><Info size={14} />Free public OpenStreetMap search. No Google Maps/Places API key or paid service is used. Public endpoints are shared and rate-limited.</div>}
       <form className="finder-form" onSubmit={(event) => { event.preventDefault(); onSearch(); }}>
         <label className="field-group"><span>Industry or category</span><div className="input-with-icon"><Building2 size={16} /><input value={searchForm.category} onChange={(event) => updateField('category', event.target.value)} placeholder="e.g. Dental clinics" maxLength={100} /></div></label>
         <label className="field-group"><span>City or location</span><div className="input-with-icon"><MapPin size={16} /><input value={searchForm.city} onChange={(event) => updateField('city', event.target.value)} placeholder="e.g. Pune" maxLength={160} /></div></label>
@@ -808,13 +802,13 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
       {searchError && <div className="inline-error"><Info size={15} />{searchError}</div>}
       <div className="example-row"><span>Try a search</span>{EXAMPLE_SEARCHES.map((example) => <button type="button" key={example} className="example-chip" onClick={() => { const [category, city] = example.split(/\s+in\s+/i); setSearchForm((current) => ({ ...current, category, city })); }}>{example}</button>)}</div>
       {history.length > 0 && <div className="search-history-row"><span><History size={13} /> Recent searches</span>{history.map((entry, index) => <button type="button" key={`${entry.category}-${entry.city}-${index}`} className="history-chip" onClick={() => onSelectHistory(entry)}>{entry.category} · {entry.city}</button>)}</div>}
-      <div className="finder-form-foot"><ShieldCheck size={14} /> No Maps webpage scraping. Gemini uses Google Maps grounding for business discovery; demo results are clearly marked as fictional.</div>
+      <div className="finder-form-foot"><ShieldCheck size={14} /> No Google Maps or Places API is used. OpenStreetMap data is community-maintained; demo results are clearly marked as fictional.</div>
     </section>
     <ManualLeadTools leads={leads} results={results} onImport={onManualEntries} />
     {hasRun ? <section className={`finder-results-section ${source === 'google' ? 'google-results-container' : ''}`}><div className="results-heading"><div><div className="card-kicker">SEARCH RESULTS</div><h2>{results.length} {results.length === 1 ? 'business' : 'businesses'} <span>for “{query}”</span></h2></div><ModeBadge lead={source} /></div>
       {warnings.map((warning) => <div className="results-note" key={warning}><Info size={14} />{warning}</div>)}
       {source === 'google' && <div className="results-note request-cost-note"><Info size={14} />{requests} Text Search {requests === 1 ? 'request' : 'requests'} used{geocodingRequests ? ` + ${geocodingRequests} Geocoding request for radius bias` : ''}. Place Details are requested only when you manually refresh a saved place, at most once per place per app session.</div>}
-      {source === 'gemini' && <div className="results-note request-cost-note"><Info size={14} /><span>Gemini + Google Maps grounding used for this search. Google Maps grounding is billed/quota-counted by the user's Google project; no Revoltz API key is used.</span></div>}
+      {source === 'osm' && <div className="results-note request-cost-note"><Info size={14} /><span>Free OpenStreetMap search. Results may be incomplete and should be verified before outreach.</span></div>}
       {results.length ? <div className="finder-results-grid">{results.map((lead) => { const isAdded = added(lead); const ratingText = [Number(lead.rating) > 0 ? `${Number(lead.rating).toFixed(1)} rating${isUserProvidedManualField(lead, 'rating') ? ' · user-provided' : ''}` : '', Number(lead.reviews) > 0 ? `${Number(lead.reviews).toLocaleString()} reviews${isUserProvidedManualField(lead, 'reviews') ? ' · user-provided' : ''}` : ''].filter(Boolean).join(' · ') || 'Rating and review count not available'; const reasons = whyThisLead(lead).slice(0, 3); const recommendations = recommendService(lead).slice(0, 2); return <article className="finder-result-card" key={getLeadKey(lead)}>
         <div className="result-card-head"><div className="business-avatar business-avatar-large">{initials(lead.name)}</div><div className="result-title"><h3>{lead.name}</h3><span>{lead.category || 'Category not returned'}</span></div><ScorePill lead={lead} compact /></div>
         <div className="result-detail"><MapPin size={14} /><span>{lead.address || lead.city || 'Address not returned'}</span></div>
