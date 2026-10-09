@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, ArrowDownUp, ArrowRight, ArrowUpRight, Award, BarChart3, Building2, CalendarDays, ClipboardList,
-  Check, CheckCircle2, ChevronDown, CircleHelp, Clock3, Copy, Download, ExternalLink, FileText, CircleDollarSign, Gift,
+  Check, CheckCircle2, ChevronDown, CircleHelp, Clock3, Copy, Download, ExternalLink, FileText, CircleDollarSign,
   Filter, Flame, Globe2, LayoutDashboard, LoaderCircle, Mail, MapPin, Menu, MessageCircle,
   MoreHorizontal, Phone, Plus, RefreshCw, Search, Send, Settings as SettingsIcon, ShieldCheck,
   SlidersHorizontal, Sparkles, Star, Target, Users, Upload, X, Zap, Info, History, Trash2, Tag,
@@ -29,7 +29,6 @@ import QuickNotes from './components/QuickNotes.jsx';
 import ExpenseTracker from './components/ExpenseTracker.jsx';
 import ProposalBuilder from './components/ProposalBuilder.jsx';
 import ClientRetention from './components/ClientRetention.jsx';
-import ReferralTracker from './components/ReferralTracker.jsx';
 import PageErrorBoundary from './components/PageErrorBoundary.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
 import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
@@ -62,7 +61,6 @@ const NAV_ITEMS = [
   { label: 'Follow-up Assistant', icon: CalendarDays },
   { label: 'Client Onboarding', icon: ClipboardList },
   { label: 'Client Retention', icon: Users },
-  { label: 'Referral Tracker', icon: Gift },
   { label: 'Invoice Tracker', icon: CircleDollarSign },
   { label: 'Project Tracker', icon: CalendarDays },
   { label: 'Business Reports', icon: BarChart3 },
@@ -685,8 +683,7 @@ function AgencyOSApp() {
           {activePage === 'Follow-up Assistant' && <FollowUpAssistant />}
           {activePage === 'Client Onboarding' && <ClientOnboarding />}
            {activePage === 'Client Retention' && <ClientRetention />}
-           {activePage === 'Referral Tracker' && <ReferralTracker />}
-          {activePage === 'Invoice Tracker' && <InvoiceTracker />}
+               {activePage === 'Invoice Tracker' && <InvoiceTracker />}
           {activePage === 'Project Tracker' && <ProjectTracker />}
           {activePage === 'Business Reports' && <BusinessReports />}
           {activePage === 'Data Backup' && <DataBackup />}
