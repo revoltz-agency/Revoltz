@@ -12,7 +12,6 @@ const BACKUP_KEYS = [
   'agencyos:follow-up-assistant:v1',
   'agencyos:client-onboarding:v1',
   'agencyos:client-retention:v1',
-  'agencyos:referral-tracker:v1',
   'agencyos:invoice-tracker:v1',
   'agencyos:project-tracker:v1',
   'agencyos:quick-notes:v1',
