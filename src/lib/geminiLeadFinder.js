@@ -53,8 +53,15 @@ function parseResponse(data) {
   const text = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim() || '';
   if (!text) throw new Error('Gemini returned no lead data. Try a broader search.');
   let parsed;
-  try { parsed = JSON.parse(text); }
-  catch { throw new Error('Gemini returned an unexpected response format. Please try again.'); }
+  const unfenced = text.replace(/^\`\`\`(?:json)?\\s*/i, '').replace(/\\s*\`\`\`$/, '').trim();
+  try { parsed = JSON.parse(unfenced); }
+  catch {
+    const first = unfenced.indexOf('{');
+    const last = unfenced.lastIndexOf('}');
+    if (first < 0 || last <= first) throw new Error('Gemini returned an unexpected response format. Please try again.');
+    try { parsed = JSON.parse(unfenced.slice(first, last + 1)); }
+    catch { throw new Error('Gemini returned an unexpected response format. Please try again.'); }
+  }
   const raw = Array.isArray(parsed?.leads) ? parsed.leads : [];
   return raw.map((lead, index) => ({
     id: clean(lead.placeId, 300) ? `gemini-${clean(lead.placeId, 300)}` : `gemini-${Date.now()}-${index}`,
@@ -116,10 +123,10 @@ async function callGemini(apiKey, prompt, { mapsGrounding = true } = {}) {
   }
   const message = lastError?.message || 'Gemini request failed.';
   if (/quota|rate.?limit|resource.?exhausted|limit exceeded/i.test(message)) {
-    throw new Error('Gemini quota exceeded for this Google project. Model fallback was attempted, but it cannot bypass a project-wide limit. Check Google AI Studio → Usage and limits, or use Find Leads with OpenStreetMap (free) until quota resets.');
+    throw new Error('Gemini quota or rate limit reached for this Google project. Switching models cannot bypass a project-wide limit. Check Google AI Studio → Usage and limits, or try again after the limit resets.');
   }
   if (/high demand|overloaded|temporarily unavailable/i.test(message)) {
-    throw new Error('Gemini is temporarily busy. Try again later, or switch Find Leads to OpenStreetMap.');
+    throw new Error('Gemini is temporarily busy. Please try again later.');
   }
   throw lastError || new Error('Gemini request failed. Please try again.');
 }
@@ -143,6 +150,7 @@ export async function searchGeminiLeads({ apiKey, category, location, radiusKm =
     `Prefer businesses within approximately ${radius} km of the requested location.`,
     '',
     'Use Google Maps grounding for the business discovery. Return only businesses that are actually present in the grounded Maps results.',
+    'Output only valid JSON with exactly this top-level shape: {"leads":[{"name":"","category":"","city":"","address":"","phone":"","website":"","mapsUrl":"","rating":null,"reviews":null,"placeId":""}]}. Do not use markdown fences or add explanatory text outside the JSON.',
     'Do not invent, infer, or guess missing phone numbers, websites, ratings, review counts, addresses, or place IDs. Use an empty string or null when the grounded data does not provide a field.',
     'Prefer distinct businesses located in the requested city/location. Exclude duplicates, closed/clearly nonexistent businesses, and generic category descriptions.',
     'Return the business name, category, city, full address, public phone if available, public website if available, Google Maps URL if available, rating, review count, and Google Maps place ID when available.',
