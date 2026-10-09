@@ -15,6 +15,7 @@ import { initials, ScorePill, titleCaseStatus } from './components/leadPrimitive
 import { isAppPath, navigate, useRouterPath, withBase } from './lib/router.js';
 import RevoltzSite from './site/RevoltzSite.jsx';
 import BusinessAuditor from './components/BusinessAuditor.jsx';
+import SalesEngine from './components/SalesEngine.jsx';
 import PageErrorBoundary from './components/PageErrorBoundary.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
 import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
@@ -42,6 +43,7 @@ const NAV_ITEMS = [
   { label: 'AI Business Auditor', icon: ClipboardList },
   { label: 'Leads', icon: Users },
   { label: 'Campaigns', icon: Send },
+  { label: 'Sales Engine', icon: Target },
   { label: 'Settings', icon: SettingsIcon },
 ];
 
@@ -650,6 +652,7 @@ function AgencyOSApp() {
 
           {activePage === 'Dashboard' && <DashboardPage leads={leads} getCrm={getCrm} onNavigate={setActivePage} onOpenLead={openLead} onExport={() => exportCsv(leads)} />}
           {activePage === 'AI Business Auditor' && <BusinessAuditor apiKey={geminiApiKey} />}
+          {activePage === 'Sales Engine' && <SalesEngine leads={leads} getCrm={getCrm} apiKey={geminiApiKey} />}
           {activePage === 'Find Leads' && <FinderPage searchForm={searchForm} setSearchForm={setSearchForm} onSearch={runLeadSearch} searching={searching} searchError={searchError} results={finderResults} source={finderSource} warnings={finderWarnings} requests={finderRequests} geocodingRequests={finderGeocodingRequests} history={searchHistory} onSelectHistory={(entry) => setSearchForm((current) => ({ ...current, ...entry }))} hasRun={searchHasRun} query={finderQuery} configLoading={apiConfig.loading} leads={leads} onAdd={addLeadToWorkspace} onOpenLead={openLead} onManualEntries={addManualLeadEntries} config={apiConfig} osmMeta={osmMeta} />}
           {activePage === 'Leads' && <PageErrorBoundary><LeadsPage leads={sortedLeads} allCount={leads.length} getCrm={getCrm} search={leadSearch} setSearch={setLeadSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} priorityFilter={priorityFilter} setPriorityFilter={setPriorityFilter} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort} onOpenLead={openLead} onPitch={handleOpenPitch} onStatus={updateStatus} onBulkUpdate={updateCrmBulk} onBulkRemove={removeSavedLeads} onRemove={removeSavedLead} onRefreshDetails={refreshSavedPlace} refreshingDetailsIds={refreshingDetailsIds} onExport={() => exportCsv(leads)} onFind={() => setActivePage('Find Leads')} /></PageErrorBoundary>}
           {activePage === 'Campaigns' && <CampaignsPage leads={leads} getCrm={getCrm} onOpenLead={openLead} onPitch={handleOpenPitch} />}
