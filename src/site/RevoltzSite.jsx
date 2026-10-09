@@ -2,12 +2,10 @@ import { useState } from 'react';
 import { ArrowRight, ArrowUpRight, CheckCircle2, ChevronDown, Clock3, Cpu, Globe2, Mail, Menu, Radar, ShieldCheck, Sparkles, Target, Workflow, Wrench, X, Zap } from 'lucide-react';
 import { goToSection, navigate, withBase } from '../lib/router.js';
 import { CONTACT_EMAIL, CONTACT_SUBJECT } from './siteConfig.js';
-import ProductPreview from './ProductPreview.jsx';
 
 const NAV_LINKS = [
   { id: 'services', label: 'Services' },
   { id: 'process', label: 'Process' },
-  { id: 'agencyos', label: 'AgencyOS' },
   { id: 'contact', label: 'Contact' },
 ];
 
@@ -89,7 +87,6 @@ function Hero() {
         <Reveal><p className="rv-hero-sub">We build AI automation, lead systems and custom business tools for teams that want to save manual hours, respond faster and turn more enquiries into revenue.</p></Reveal>
         <Reveal><div className="rv-hero-actions">
           <a className="rv-btn rv-btn-primary" href="/#contact" onClick={(e) => { e.preventDefault(); goToSection('contact'); }}>Claim Your Free AI Audit <ArrowRight size={17} /></a>
-          <button className="rv-btn rv-btn-ghost" type="button" onClick={() => navigate('/agencyos')}>See AgencyOS <ArrowUpRight size={16} /></button>
         </div></Reveal>
         <Reveal><div className="rv-risk-line"><CheckCircle2 size={15} /> Free first audit <i /> No commitment <i /> Practical recommendations only</div></Reveal>
         <Reveal><div className="rv-proof-strip">
@@ -115,18 +112,6 @@ function ServicesSection() {
     <div className="rv-services-grid">{SERVICES.map(({ icon: Icon, title, copy, outcome }) => <Reveal className="rv-service" key={title}>
       <span className="rv-service-icon"><Icon size={19} /></span><h3>{title}</h3><p>{copy}</p><span className="rv-service-outcome"><CheckCircle2 size={14} /> {outcome}</span>
     </Reveal>)}</div>
-  </div></section>;
-}
-
-function AgencyOsSection() {
-  return <section className="rv-section rv-agencyos" id="agencyos"><div className="rv-shell">
-    <div className="rv-two-col">
-      <Reveal><span className="rv-eyebrow">Our operating system</span><h2 className="rv-h2">Meet AgencyOS.</h2><p className="rv-lead">A focused workspace for finding prospects, qualifying opportunities, enriching public business information and managing your pipeline.</p>
-        <div className="rv-inline-actions"><button className="rv-btn rv-btn-primary" type="button" onClick={() => navigate('/agencyos')}>Explore AgencyOS <ArrowRight size={16} /></button></div>
-        <div className="rv-mini-trust"><ShieldCheck size={16} /><span>Evidence-based scoring · transparent sample data · no bulk outreach</span></div>
-      </Reveal>
-      <Reveal><ProductPreview /></Reveal>
-    </div>
   </div></section>;
 }
 
@@ -193,11 +178,11 @@ function FinalCta() {
 function SiteFooter() {
   return <footer className="rv-footer"><div className="rv-footer-inner">
     <div><span className="rv-brand"><span className="rv-brand-mark"><Zap size={15} /></span><span className="rv-brand-text">REVOLTZ<span>AI</span></span></span><p>AI systems, automation and growth infrastructure for businesses that want more output without more operational drag.</p></div>
-    <div><h4>Explore</h4><a href="/#services" onClick={(e) => { e.preventDefault(); goToSection('services'); }}>Services</a><a href="/#process" onClick={(e) => { e.preventDefault(); goToSection('process'); }}>Process</a><a href="/#agencyos" onClick={(e) => { e.preventDefault(); goToSection('agencyos'); }}>AgencyOS</a></div>
-    <div><h4>Contact</h4><a href="/#contact" onClick={(e) => { e.preventDefault(); goToSection('contact'); }}>Free AI Audit</a><a href={mailtoHref()}>{CONTACT_EMAIL}</a><button type="button" onClick={() => navigate('/agencyos')}>Launch AgencyOS</button></div>
+    <div><h4>Explore</h4><a href="/#services" onClick={(e) => { e.preventDefault(); goToSection('services'); }}>Services</a><a href="/#process" onClick={(e) => { e.preventDefault(); goToSection('process'); }}>Process</a></div>
+    <div><h4>Contact</h4><a href="/#contact" onClick={(e) => { e.preventDefault(); goToSection('contact'); }}>Free AI Audit</a><a href={mailtoHref()}>{CONTACT_EMAIL}</a></div>
   </div><div className="rv-footer-bottom"><span>© {new Date().getFullYear()} REVOLTZ AI. Built with clarity over hype.</span><span>No fabricated client results.</span></div></footer>;
 }
 
 export default function RevoltzSite() {
-  return <div className="rv-root"><a className="rv-skip" href="#main">Skip to content</a><SiteNav /><main id="main"><Hero /><PainSection /><ServicesSection /><AgencyOsSection /><ProcessSection /><TrustSection /><FAQSection /><FinalCta /></main><SiteFooter /></div>;
+  return <div className="rv-root"><a className="rv-skip" href="#main">Skip to content</a><SiteNav /><main id="main"><Hero /><PainSection /><ServicesSection /><ProcessSection /><TrustSection /><FAQSection /><FinalCta /></main><SiteFooter /></div>;
 }
