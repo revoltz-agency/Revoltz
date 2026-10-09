@@ -23,7 +23,7 @@ const CITY_CENTRES = {
   patna: [25.5941, 85.1376], ranchi: [23.3441, 85.3096], dehradun: [30.3165, 78.0322],
 };
 function resolveKnownCity(location) {
-  const normalized = text(location, 160).toLowerCase().replace(/,.*$/, '').replace(/[^a-z ]/g, ' ').replace(/\\s+/g, ' ').trim();
+  const normalized = text(location, 160).toLowerCase().replace(/,.*$/, '').replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
   const point = CITY_CENTRES[normalized];
   return point ? { latitude: point[0], longitude: point[1], displayName: text(location, 160) } : null;
 }
