@@ -32,16 +32,54 @@ export default function BusinessAuditor({ apiKey = '' }) {
       'Return valid JSON with: summary (string), opportunities (array of 3-5 objects with title, problem, solution, tools, difficulty, priority, estimatedSetup), firstStep (string), questionsToAsk (array of strings), proposal (string), caveat (string). Make it useful, non-pushy and realistic.'
     ].join('\n');
     try {
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey.trim() },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0.3 } })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error?.message || ('Gemini request failed (HTTP ' + response.status + ').'));
-      const raw = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim();
-      if (!raw) throw new Error('The AI returned an empty report. Please try again.');
-      const parsed = JSON.parse(raw);
+      const models = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
+      let parsed = null;
+      let lastError = null;
+      for (const model of models) {
+        let response;
+        let data = {};
+        try {
+          response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey.trim() },
+            body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0.3 } })
+          });
+          data = await response.json().catch(() => ({}));
+        } catch (networkError) {
+          lastError = new Error('Could not reach Gemini. Check your internet connection and try again.');
+          break;
+        }
+        if (!response.ok) {
+          const message = data?.error?.message || ('Gemini request failed (HTTP ' + response.status + ').');
+          lastError = new Error(message);
+          const retryable = response.status === 429 || response.status === 500 || response.status === 502 || response.status === 503 || response.status === 504;
+          if (retryable && model !== models[models.length - 1]) continue;
+          break;
+        }
+        const raw = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim();
+        if (!raw) {
+          lastError = new Error('Gemini returned an empty report. Please try again.');
+          if (model !== models[models.length - 1]) continue;
+          break;
+        }
+        try {
+          parsed = JSON.parse(raw);
+          break;
+        } catch {
+          lastError = new Error('Gemini returned an unreadable report. Please try again.');
+          if (model !== models[models.length - 1]) continue;
+        }
+      }
+      if (!parsed) {
+        const message = lastError?.message || 'Audit generation failed. Please try again.';
+        if (/high demand|overloaded|temporarily unavailable|try again later/i.test(message)) {
+          throw new Error('Gemini is busy across the available models right now. Wait a minute and try again; your form details are still here.');
+        }
+        if (/quota|rate.?limit|resource.?exhausted/i.test(message)) {
+          throw new Error('Your Gemini API quota or rate limit has been reached. Check API usage/billing in Google AI Studio, then try again.');
+        }
+        throw lastError || new Error('Audit generation failed. Please try again.');
+      }
       if (!Array.isArray(parsed.opportunities)) throw new Error('The report was incomplete. Please try again.');
       setReport(parsed);
     } catch (e) { setError(String(e?.message || 'Audit failed. Please try again.').slice(0, 500)); }
