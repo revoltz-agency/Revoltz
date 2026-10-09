@@ -55,6 +55,7 @@ app.get('/api/config', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     googlePlacesConfigured: Boolean(googleApiKey),
+    bluesmindsConfigured: Boolean(process.env.BLUESMINDS_API_KEY?.trim() && process.env.BLUESMINDS_MODEL?.trim()),
     freeSearchEnabled,
   });
 });
