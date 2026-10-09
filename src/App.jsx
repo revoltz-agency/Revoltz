@@ -28,6 +28,7 @@ import DailyActionCenter from './components/DailyActionCenter.jsx';
 import QuickNotes from './components/QuickNotes.jsx';
 import ExpenseTracker from './components/ExpenseTracker.jsx';
 import ProposalBuilder from './components/ProposalBuilder.jsx';
+import ClientRetention from './components/ClientRetention.jsx';
 import PageErrorBoundary from './components/PageErrorBoundary.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
 import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
@@ -59,6 +60,7 @@ const NAV_ITEMS = [
   { label: 'Deal Pipeline', icon: Award },
   { label: 'Follow-up Assistant', icon: CalendarDays },
   { label: 'Client Onboarding', icon: ClipboardList },
+  { label: 'Client Retention', icon: Users },
   { label: 'Invoice Tracker', icon: CircleDollarSign },
   { label: 'Project Tracker', icon: CalendarDays },
   { label: 'Business Reports', icon: BarChart3 },
