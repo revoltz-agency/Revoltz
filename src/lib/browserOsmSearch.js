@@ -11,7 +11,7 @@ let lastSearchAt = 0;
 // The radius is measured from these approximate city centres, not city borders.
 const CITY_CENTRES = {
   pune: [18.5204, 73.8567], 'pimpri chinchwad': [18.6298, 73.7997],
-  mumbai: [19.076, 72.8777], thane: [19.2183, 72.9781], navi mumbai: [19.033, 73.0297],
+  mumbai: [19.076, 72.8777], thane: [19.2183, 72.9781], 'navi mumbai': [19.033, 73.0297],
   delhi: [28.6139, 77.209], 'new delhi': [28.6139, 77.209], bengaluru: [12.9716, 77.5946], bangalore: [12.9716, 77.5946],
   hyderabad: [17.385, 78.4867], chennai: [13.0827, 80.2707], kolkata: [22.5726, 88.3639],
   ahmedabad: [23.0225, 72.5714], jaipur: [26.9124, 75.7873], lucknow: [26.8467, 80.9462],
