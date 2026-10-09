@@ -32,6 +32,7 @@ import WebsiteDemoBuilder from './components/WebsiteDemoBuilder.jsx';
 import ClientRetention from './components/ClientRetention.jsx';
 import WebsiteDelivery from './components/WebsiteDelivery.jsx';
 import CashFlowPlanner from './components/CashFlowPlanner.jsx';
+import ClientActivityLog from './components/ClientActivityLog.jsx';
 import PageErrorBoundary from './components/PageErrorBoundary.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
 import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
@@ -67,6 +68,7 @@ const NAV_ITEMS = [
   { label: 'Website Delivery Hub', icon: Globe2 },
   { label: 'Invoice Tracker', icon: CircleDollarSign },
   { label: 'Cash Flow Planner', icon: Activity },
+  { label: 'Client Activity Log', icon: History },
   { label: 'Project Tracker', icon: CalendarDays },
   { label: 'Business Reports', icon: BarChart3 },
   { label: 'Data Backup', icon: ShieldCheck },
@@ -692,6 +694,7 @@ function AgencyOSApp() {
             {activePage === 'Website Delivery Hub' && <WebsiteDelivery />}
                {activePage === 'Invoice Tracker' && <InvoiceTracker />}
           {activePage === 'Cash Flow Planner' && <CashFlowPlanner />}
+          {activePage === 'Client Activity Log' && <ClientActivityLog />}
           {activePage === 'Project Tracker' && <ProjectTracker />}
           {activePage === 'Business Reports' && <BusinessReports />}
           {activePage === 'Data Backup' && <DataBackup />}
