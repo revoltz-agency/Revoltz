@@ -17,8 +17,7 @@ import RevoltzSite from './site/RevoltzSite.jsx';
 import BusinessAuditor from './components/BusinessAuditor.jsx';
 import PageErrorBoundary from './components/PageErrorBoundary.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
-import { GEMINI_KEY_STORAGE, testGeminiApiKey } from './lib/geminiLeadFinder.js';
-import { searchBrowserOpenStreetMap } from './lib/browserOsmSearch.js';
+import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
 import { enrichmentCrmPatch, markLeadContacted, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
 import { getOrCreateCachedRequest } from './lib/placeDetailsCache.js';
 import {
@@ -197,13 +196,13 @@ function AgencyOSApp() {
   const [savedPlaceIds, setSavedPlaceIds] = useState(readSavedPlaceIds);
   const [searchHistory, setSearchHistory] = useState(readSearchHistory);
   const [finderResults, setFinderResults] = useState([]);
-  const [finderSource, setFinderSource] = useState('osm');
+  const [finderSource, setFinderSource] = useState('gemini');
   const [finderWarnings, setFinderWarnings] = useState([]);
   const [finderQuery, setFinderQuery] = useState('');
   const [finderRequests, setFinderRequests] = useState(0);
   const [finderGeocodingRequests, setFinderGeocodingRequests] = useState(0);
   const [refreshingDetailsIds, setRefreshingDetailsIds] = useState({});
-  const [searchForm, setSearchForm] = useState({ category: '', city: 'Pune', radiusKm: '10', maxResults: '10', source: 'osm' });
+  const [searchForm, setSearchForm] = useState({ category: '', city: 'Pune', radiusKm: '10', maxResults: '10', source: 'gemini' });
   const [osmMeta, setOsmMeta] = useState({ queriedTags: [], matchedCategory: '', resolvedLocation: '' });
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -365,25 +364,23 @@ function AgencyOSApp() {
         setFinderGeocodingRequests(0);
         if (!results.length) showToast('No sample matches found. Try another category.');
       } else {
-        const result = await searchBrowserOpenStreetMap({
+        if (!geminiApiKey.trim()) throw new Error('Add your Gemini API key in Settings first, then test it and search again.');
+        const result = await searchGeminiLeads({
+          apiKey: geminiApiKey,
           category,
           location: city,
           radiusKm: Number(searchForm.radiusKm),
           maxResults: Number(searchForm.maxResults),
         });
-        const results = result.results || [];
+        const results = result.leads || [];
         setFinderResults(dedupeLeads(results).map((lead) => applyManualLeadOverride(lead, manualOverrides)));
-        setFinderWarnings(result.warnings || []);
-        setFinderRequests(Number(result.requests) || 1);
-        setFinderGeocodingRequests(Number(result.geocodingRequests ?? 0));
-        setFinderSource('osm');
-        setOsmMeta({
-          queriedTags: result.queriedTags || [],
-          matchedCategory: result.matchedCategory || '',
-          resolvedLocation: result.resolvedLocation || city,
-        });
-        if (!results.length) showToast('No OpenStreetMap matches found. Try a broader category or larger radius.');
+        setFinderWarnings(results.length ? ['Results are grounded with Google Maps when available. Verify contact details and current business status before outreach.'] : ['Gemini returned no matching grounded businesses. Try a broader category or nearby city.']);
+        setFinderRequests(1);
+        setFinderGeocodingRequests(0);
+        setFinderSource('gemini');
+        if (!results.length) showToast('No grounded matches found. Try a broader category or larger radius.');
       }
+    }
     } catch (error) { setSearchError(error.message || 'Search failed. Please try again.'); }
     finally { setSearching(false); }
   }
@@ -785,14 +782,14 @@ function DashboardPage({ leads, getCrm, onNavigate, onOpenLead, onExport }) {
 function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchError, results, source, warnings, requests, geocodingRequests, history, onSelectHistory, hasRun, query, configLoading, leads, onAdd, onOpenLead, onManualEntries, config, osmMeta }) {
   const updateField = (key, value) => setSearchForm((current) => ({ ...current, [key]: value }));
   const added = (lead) => leads.some((item) => getLeadKey(item) === getLeadKey(lead));
-  const sourceChoice = searchForm.source || 'osm';
+  const sourceChoice = searchForm.source || 'gemini';
   const sourceOptions = [
-    { id: 'osm', title: 'OpenStreetMap', detail: 'Free · no API key', disabled: false },
+    { id: 'gemini', title: 'Gemini AI + Google Maps', detail: 'Grounded business discovery', disabled: false },
     { id: 'demo', title: 'Demo sample', detail: 'Fictional Pune businesses', disabled: false },
   ];
   return <div className="page-stack">
     <PageHeading eyebrow="PROSPECTING" title="Find the right businesses." description="Search local businesses, then decide which ones belong in your pipeline."><span className="privacy-chip"><ShieldCheck size={14} /> Official sources. Manual outreach.</span></PageHeading>
-    <section className="surface-card finder-form-card"><div className="finder-form-top"><div><div className="card-kicker">BUSINESS SEARCH</div><h2>Where should we look?</h2><p>Search real businesses from OpenStreetMap without Google APIs, paid keys, or a backend server. Coverage depends on community-maintained listings; the fictional sample set is available for testing.</p></div><div className="finder-search-icon"><Search size={21} /></div></div>
+    <section className="surface-card finder-form-card"><div className="finder-form-top"><div><div className="card-kicker">BUSINESS SEARCH</div><h2>Where should we look?</h2><p>Find real businesses with Gemini AI and Google Maps grounding. Add your Gemini API key in Settings; access and quota depend on your Google AI Studio project. The fictional sample set is available for testing.</p></div><div className="finder-search-icon"><Search size={21} /></div></div>
       <div className="source-choice-row">
         <span>Data source</span>
         <div className="source-choice-group" role="radiogroup" aria-label="Lead data source">
@@ -801,7 +798,7 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
           </button>)}
         </div>
       </div>
-      {sourceChoice === 'osm' && <div className="results-note free-hint"><Info size={14} />Free public OpenStreetMap search. No Google Maps/Places API key or paid service is used. Public endpoints are shared and rate-limited.</div>}
+      {sourceChoice === 'gemini' && <div className="results-note free-hint"><Info size={14} />Uses the Gemini API key saved in Settings and Google Maps grounding. Free-tier eligibility, rate limits, and any billing requirements are controlled by Google for your project.</div>}
       <form className="finder-form" onSubmit={(event) => { event.preventDefault(); onSearch(); }}>
         <label className="field-group"><span>Industry or category</span><div className="input-with-icon"><Building2 size={16} /><input value={searchForm.category} onChange={(event) => updateField('category', event.target.value)} placeholder="e.g. Dental clinics" maxLength={100} /></div></label>
         <label className="field-group"><span>City or location</span><div className="input-with-icon"><MapPin size={16} /><input value={searchForm.city} onChange={(event) => updateField('city', event.target.value)} placeholder="e.g. Pune" maxLength={160} /></div></label>
