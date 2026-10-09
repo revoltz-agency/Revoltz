@@ -1,0 +1,44 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Download, Plus, UsersRound, Trash2, CalendarClock } from 'lucide-react';
+
+const KEY = 'agencyos:client-retention:v1';
+const muted = { color:'var(--viz-muted, #a1a1aa)', fontSize:13, lineHeight:1.55 };
+const field = { width:'100%', boxSizing:'border-box', border:'1px solid var(--viz-border, #333)', borderRadius:9, padding:'10px 11px', background:'var(--viz-card, #151515)', color:'var(--viz-text, #f5f5f5)', font:'inherit' };
+const card = { border:'1px solid var(--viz-border, #333)', borderRadius:12, padding:14 };
+const today = () => { const d=new Date(); return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'); };
+const money = n => '₹'+Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
+const read = () => { try { const v=JSON.parse(localStorage.getItem(KEY)||'[]'); return Array.isArray(v)?v:[]; } catch { return []; } };
+const blank = { client:'', service:'Website maintenance', value:'', renewalDate:'', status:'Active', contact:'', notes:'' };
+const statuses = ['Active','Renewal due','At risk','Paused','Ended'];
+function daysUntil(date){ if(!date)return null; const a=new Date(today()+'T00:00:00'); const b=new Date(date+'T00:00:00'); return Math.round((b-a)/86400000); }
+
+export default function ClientRetention(){
+ const [clients,setClients]=useState(read);
+ const [form,setForm]=useState(blank);
+ const [filter,setFilter]=useState('All');
+ const [notice,setNotice]=useState('');
+ useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(clients))}catch{setNotice('Browser storage is full; changes may not persist.')}},[clients]);
+ const visible=useMemo(()=>clients.filter(x=>filter==='All'||x.status===filter).sort((a,b)=>(a.renewalDate||'9999').localeCompare(b.renewalDate||'9999')),[clients,filter]);
+ const active=clients.filter(x=>['Active','Renewal due','At risk'].includes(x.status));
+ const monthly=active.reduce((s,x)=>s+Number(x.value||0),0);
+ const due=active.filter(x=>daysUntil(x.renewalDate)!==null&&daysUntil(x.renewalDate)<=30);
+ function add(e){e.preventDefault();const value=Number(form.value||0);if(!form.client.trim()||!form.renewalDate||!Number.isFinite(value)||value<0){setNotice('Enter a client name, renewal date, and a valid monthly value.');return}setClients(prev=>[{...form,id:globalThis.crypto?.randomUUID?.()||String(Date.now()),client:form.client.trim(),value:Math.round(value*100)/100,createdAt:new Date().toISOString()},...prev]);setForm(blank);setNotice('Client saved in this browser.');}
+ function update(id,patch){setClients(prev=>prev.map(x=>x.id===id?{...x,...patch}:x))}
+ function exportCsv(){const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const rows=[['Client','Service','Monthly value INR','Renewal date','Status','Contact','Notes'],...clients.map(x=>[x.client,x.service,x.value,x.renewalDate,x.status,x.contact,x.notes])];const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(esc).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='agencyos-client-retention.csv';a.click();URL.revokeObjectURL(url);}
+ return <section style={{display:'grid',gap:16,maxWidth:1100,color:'var(--viz-text, #f5f5f5)'}}>
+  <header style={{display:'flex',gap:12,alignItems:'flex-start'}}><div style={{...card,padding:12}}><UsersRound size={23}/></div><div><div style={{...muted,letterSpacing:'.13em',fontWeight:700}}>REVOLTZ AI · CLIENT SUCCESS</div><h1 style={{fontSize:30,margin:'4px 0 6px'}}>Client Retention</h1><p style={{...muted,margin:0}}>Track active clients, renewal dates, recurring value, and accounts that need attention.</p></div></header>
+  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{[['Clients tracked',clients.length],['Active monthly value',money(monthly)],['Renewals in next 30 days',due.length],['At-risk clients',clients.filter(x=>x.status==='At risk').length]].map(([label,value])=><div key={label} style={card}><div style={muted}>{label}</div><div style={{fontSize:22,fontWeight:750,marginTop:6}}>{value}</div></div>)}</div>
+  {notice&&<p role="status" style={{...muted,...card,margin:0}}>{notice}</p>}
+  <form onSubmit={add} style={{...card,display:'grid',gap:12}}><h2 style={{fontSize:19,margin:0}}>Add client</h2><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,190px),1fr))',gap:10}}>
+   <label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Client / business<input required maxLength={140} style={field} value={form.client} onChange={e=>setForm({...form,client:e.target.value})} placeholder="e.g. Acharya's Kitchen"/></label>
+   <label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Service<input maxLength={120} style={field} value={form.service} onChange={e=>setForm({...form,service:e.target.value})} placeholder="Website maintenance"/></label>
+   <label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Monthly value (₹)<input type="number" min="0" max="100000000" step="0.01" style={field} value={form.value} onChange={e=>setForm({...form,value:e.target.value})} placeholder="0"/></label>
+   <label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Renewal date<input required type="date" style={field} value={form.renewalDate} onChange={e=>setForm({...form,renewalDate:e.target.value})}/></label>
+   <label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Status<select style={field} value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{statuses.map(x=><option key={x}>{x}</option>)}</select></label>
+   <label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Contact (optional)<input maxLength={180} style={field} value={form.contact} onChange={e=>setForm({...form,contact:e.target.value})} placeholder="Name / email / phone"/></label>
+  </div><label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Notes<textarea rows={2} maxLength={1000} style={{...field,resize:'vertical'}} value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="Renewal discussion, feedback, next action..."/></label><button type="submit" style={{justifySelf:'start',display:'inline-flex',gap:7,alignItems:'center',border:0,borderRadius:9,padding:'10px 13px',background:'var(--viz-accent, #3977dc)',color:'#fff',cursor:'pointer'}}><Plus size={16}/> Save client</button></form>
+  <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}><label style={{display:'grid',gap:5,fontSize:13}}>Filter<select style={{...field,width:'auto',minWidth:160}} value={filter} onChange={e=>setFilter(e.target.value)}><option>All</option>{statuses.map(x=><option key={x}>{x}</option>)}</select></label><button type="button" onClick={exportCsv} disabled={!clients.length} style={{...field,width:'auto',display:'inline-flex',gap:7,alignItems:'center',cursor:'pointer',marginLeft:'auto'}}><Download size={15}/> Export CSV</button></div>
+  {!visible.length?<div style={{...card,textAlign:'center',padding:24}}><CalendarClock size={26}/><h2 style={{fontSize:19}}>No clients tracked yet</h2><p style={{...muted,margin:0}}>Add a client to track their renewal date and recurring value.</p></div>:<div style={{display:'grid',gap:10}}>{visible.map(x=>{const days=daysUntil(x.renewalDate);const timing=days===null?'':days<0?'Renewal date passed':days===0?'Renewal today':days<=30?'Renewal in '+days+' day'+(days===1?'':'s'):days+' days left';return <article key={x.id} style={{...card,display:'grid',gap:10}}><div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',flexWrap:'wrap'}}><div style={{minWidth:200,flex:1}}><strong style={{fontSize:17}}>{x.client}</strong><div style={muted}>{x.service} · Renewal {x.renewalDate}</div><div style={{...muted,marginTop:4,color:days!==null&&days<=30?'var(--viz-accent, #8ab4ff)':undefined}}>{timing}</div>{x.contact&&<div style={muted}>Contact: {x.contact}</div>}{x.notes&&<p style={{...muted,margin:'5px 0 0'}}>{x.notes}</p>}</div><div style={{display:'grid',gap:8,minWidth:150}}><strong style={{fontSize:19}}>{money(x.value)}<span style={muted}> / month</span></strong><select aria-label={'Status for '+x.client} style={field} value={x.status} onChange={e=>update(x.id,{status:e.target.value})}>{statuses.map(s=><option key={s}>{s}</option>)}</select><button type="button" onClick={()=>{if(confirm('Delete this client record?'))setClients(prev=>prev.filter(y=>y.id!==x.id))}} style={{...field,display:'inline-flex',gap:7,alignItems:'center',justifyContent:'center',cursor:'pointer'}}><Trash2 size={15}/> Delete client</button></div></div></article>})}</div>}
+  <p style={muted}>Records are stored only in this browser and are not shared across devices. Monthly value is a planning estimate, not verified revenue; update status and renewal dates manually.</p>
+ </section>;
+}
