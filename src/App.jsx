@@ -380,7 +380,6 @@ function AgencyOSApp() {
         setFinderSource('gemini');
         if (!results.length) showToast('No grounded matches found. Try a broader category or larger radius.');
       }
-    }
     } catch (error) { setSearchError(error.message || 'Search failed. Please try again.'); }
     finally { setSearching(false); }
   }
