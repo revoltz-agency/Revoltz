@@ -375,7 +375,7 @@ function AgencyOSApp() {
         setFinderResults(dedupeLeads(results).map((lead) => applyManualLeadOverride(lead, manualOverrides)));
         setFinderWarnings(result.warnings || []);
         setFinderRequests(Number(result.requests) || 1);
-        setFinderGeocodingRequests(Number(result.geocodingRequests) || 1);
+        setFinderGeocodingRequests(Number(result.geocodingRequests ?? 0));
         setFinderSource('osm');
         setOsmMeta({
           queriedTags: result.queriedTags || [],
