@@ -968,20 +968,6 @@ function LeadsPage({ leads, allCount, getCrm, search, setSearch, statusFilter, s
     onBulkUpdate(selectedIds, patch);
     setBulkStatus(''); setBulkService(''); setBulkTag(''); setSelectedIds([]);
   }
-  function removeSavedLeads(ids) {
-    const keys = new Set(ids);
-    if (!keys.size) return;
-    setLeads((current) => current.filter((item) => !keys.has(getLeadKey(item))));
-    setFinderResults((current) => current.filter((item) => !keys.has(getLeadKey(item))));
-    setManualLeads((current) => current.filter((item) => !keys.has(getLeadKey(item))));
-    setSavedPlaceIds((current) => current.filter((id) => !keys.has(id)));
-    setManualOverrides((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !keys.has(id))));
-    setWorkflow((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !keys.has(id))));
-    setSelectedLeadId((current) => keys.has(current) ? '' : current);
-    setOutreachLeadId((current) => keys.has(current) ? '' : current);
-    showToast(`${keys.size} ${keys.size === 1 ? 'lead' : 'leads'} deleted from your workspace.`);
-  }
-
   return <div className="page-stack">
     <PageHeading eyebrow="YOUR CRM" title="Leads, with context." description="Keep your research, notes, and next steps together.">
       <button className="button button-secondary" type="button" onClick={onExport} disabled={!leads.length}><Download size={16} /> Export CSV</button>
