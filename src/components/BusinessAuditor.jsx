@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { generateGeminiJson } from '../lib/geminiLeadFinder.js';
+import { generateAgencyJson } from '../lib/agencyAi.js';
 import { ClipboardList, Sparkles, LoaderCircle, Copy, Check, AlertCircle } from 'lucide-react';
 
 const industries = ['Gaming café', 'Restaurant / café', 'Gym / fitness studio', 'Salon / barber', 'Real estate agency', 'Accounting / CA firm', 'Retail shop', 'Other'];
@@ -33,7 +33,7 @@ export default function BusinessAuditor({ apiKey = '' }) {
       'Return valid JSON with: summary (string), opportunities (array of 3-5 objects with title, problem, solution, tools, difficulty, priority, estimatedSetup), firstStep (string), questionsToAsk (array of strings), proposal (string), caveat (string). Make it useful, non-pushy and realistic.'
     ].join('\n');
     try {
-      const parsed = await generateGeminiJson({ apiKey, prompt });
+      const parsed = await generateAgencyJson({ geminiApiKey: apiKey, prompt });
       if (!Array.isArray(parsed.opportunities)) throw new Error('The report was incomplete. Please try again.');
       setReport(parsed);
     } catch (e) { setError(String(e?.message || 'Audit failed. Please try again.').slice(0, 500)); }
