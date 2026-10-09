@@ -11,6 +11,7 @@ const BACKUP_KEYS = [
   'agencyos:deal-tracker:v1',
   'agencyos:follow-up-assistant:v1',
   'agencyos:client-onboarding:v1',
+  'agencyos:client-retention:v1',
   'agencyos:invoice-tracker:v1',
   'agencyos:project-tracker:v1',
   'agencyos:quick-notes:v1',
@@ -62,7 +63,7 @@ export default function DataBackup() {
   }
   return <section style={{ display:'grid', gap:16, color:'var(--viz-text, #f5f5f5)' }}>
     <div><h2 style={{margin:'0 0 6px'}}>Data Backup & Restore</h2><p style={{margin:0,color:'var(--viz-muted, #a1a1aa)',lineHeight:1.6}}>Download a portable backup of this browser’s AgencyOS records, or restore them from a previous backup.</p></div>
-    <div style={{...style,display:'flex',gap:12,alignItems:'flex-start'}}><ShieldCheck size={24}/><div><strong>Your data stays in your browser</strong><p style={{margin:'6px 0 0',color:'var(--viz-muted, #a1a1aa)',lineHeight:1.6}}>Backups include saved leads, sales packages, deals, onboarding, invoices, projects, notes, revenue goals and expenses where those records use the supported AgencyOS storage keys. The backup file may contain client details; keep it private.</p></div></div>
+    <div style={{...style,display:'flex',gap:12,alignItems:'flex-start'}}><ShieldCheck size={24}/><div><strong>Your data stays in your browser</strong><p style={{margin:'6px 0 0',color:'var(--viz-muted, #a1a1aa)',lineHeight:1.6}}>Backups include saved leads, sales packages, deals, onboarding, client retention, invoices, projects, notes, revenue goals and expenses where those records use the supported AgencyOS storage keys. The backup file may contain client details; keep it private.</p></div></div>
     <div style={{...style,display:'grid',gap:12}}><h3 style={{margin:0}}>Create a backup</h3><p style={{margin:0,color:'var(--viz-muted, #a1a1aa)'}}>Download a JSON file you can keep somewhere safe or use to move data to another browser.</p><div><button style={button} onClick={exportBackup}><Download size={17}/> Download backup</button></div></div>
     <div style={{...style,display:'grid',gap:12}}><h3 style={{margin:0}}>Restore a backup</h3><p style={{margin:0,color:'var(--viz-muted, #a1a1aa)'}}>Choose a JSON backup created by AgencyOS. You will be asked to confirm before saved categories are replaced.</p><div><input ref={fileRef} type="file" accept=".json,application/json" onChange={chooseFile} style={{display:'none'}}/><button style={button} onClick={()=>fileRef.current?.click()}><Upload size={17}/> Choose backup file</button></div>
     {confirmRestore && <div style={{border:'1px solid #b7791f',borderRadius:10,padding:14,display:'grid',gap:10}}><strong style={{display:'flex',gap:8,alignItems:'center'}}><AlertTriangle size={18}/> Confirm restore</strong><p style={{margin:0,lineHeight:1.5}}>This file contains {confirmRestore.count} data categories (exported {confirmRestore.exportedAt}). Values for those categories on this browser will be overwritten. Categories missing from the backup will be left unchanged.</p><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button style={button} onClick={restore}>Confirm restore</button><button style={button} onClick={()=>setConfirmRestore(null)}>Cancel</button></div></div>}</div>
