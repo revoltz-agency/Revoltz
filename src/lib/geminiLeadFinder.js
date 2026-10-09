@@ -53,7 +53,7 @@ function parseResponse(data) {
   const text = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim() || '';
   if (!text) throw new Error('Gemini returned no lead data. Try a broader search.');
   let parsed;
-  const unfenced = text.replace(/^\`\`\`(?:json)?\\s*/i, '').replace(/\\s*\`\`\`$/, '').trim();
+  const unfenced = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
   try { parsed = JSON.parse(unfenced); }
   catch {
     const first = unfenced.indexOf('{');
