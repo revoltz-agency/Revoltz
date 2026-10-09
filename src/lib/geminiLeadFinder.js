@@ -92,7 +92,10 @@ async function callGemini(apiKey, prompt, { mapsGrounding = true } = {}) {
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           ...(mapsGrounding ? { tools: [{ googleMaps: {} }] } : {}),
-          generationConfig: { responseMimeType: 'application/json', responseSchema: LEAD_SCHEMA, maxOutputTokens: 4096 },
+          // Google Maps grounding is incompatible with constrained JSON output mode.
+          generationConfig: mapsGrounding
+            ? { maxOutputTokens: 4096 }
+            : { responseMimeType: 'application/json', responseSchema: LEAD_SCHEMA, maxOutputTokens: 4096 },
         }),
       });
       data = await response.json().catch(() => ({}));
