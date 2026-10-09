@@ -32,22 +32,30 @@ export default function BusinessAuditor({ apiKey = '' }) {
       'Return valid JSON with: summary (string), opportunities (array of 3-5 objects with title, problem, solution, tools, difficulty, priority, estimatedSetup), firstStep (string), questionsToAsk (array of strings), proposal (string), caveat (string). Make it useful, non-pushy and realistic.'
     ].join('\n');
     try {
-      const models = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
+      const models = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
       let parsed = null;
       let lastError = null;
       for (const model of models) {
         let response;
         let data = {};
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
         try {
           response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey.trim() },
+            signal: controller.signal,
             body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0.3 } })
           });
           data = await response.json().catch(() => ({}));
         } catch (networkError) {
-          lastError = new Error('Could not reach Gemini. Check your internet connection and try again.');
+          lastError = networkError?.name === 'AbortError'
+            ? new Error('Gemini took too long to respond. Please try again; your form details are still here.')
+            : new Error('Could not reach Gemini. Check your internet connection and try again.');
+          if (networkError?.name === 'AbortError' && model !== models[models.length - 1]) continue;
           break;
+        } finally {
+          clearTimeout(timeoutId);
         }
         if (!response.ok) {
           const message = data?.error?.message || ('Gemini request failed (HTTP ' + response.status + ').');
