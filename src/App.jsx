@@ -684,6 +684,8 @@ function AgencyOSApp() {
           {activePage === 'Deal Pipeline' && <DealTracker />}
           {activePage === 'Follow-up Assistant' && <FollowUpAssistant />}
           {activePage === 'Client Onboarding' && <ClientOnboarding />}
+           {activePage === 'Client Retention' && <ClientRetention />}
+           {activePage === 'Referral Tracker' && <ReferralTracker />}
           {activePage === 'Invoice Tracker' && <InvoiceTracker />}
           {activePage === 'Project Tracker' && <ProjectTracker />}
           {activePage === 'Business Reports' && <BusinessReports />}
