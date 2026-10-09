@@ -82,7 +82,7 @@ function parseResponse(data) {
   })).filter((lead) => lead.name);
 }
 
-async function callGemini(apiKey, prompt, { mapsGrounding = true } = {}) {
+async function callGemini(apiKey, prompt, { mapsGrounding = true, responseSchema = LEAD_SCHEMA } = {}) {
   const key = String(apiKey || '').trim();
   if (!key) throw new Error('Add your Gemini API key in Settings first.');
   let lastError;
@@ -102,7 +102,7 @@ async function callGemini(apiKey, prompt, { mapsGrounding = true } = {}) {
           // Google Maps grounding is incompatible with constrained JSON output mode.
           generationConfig: mapsGrounding
             ? { maxOutputTokens: 4096 }
-            : { responseMimeType: 'application/json', responseSchema: LEAD_SCHEMA, maxOutputTokens: 4096 },
+            : { responseMimeType: 'application/json', ...(responseSchema ? { responseSchema } : {}), maxOutputTokens: 4096 },
         }),
       });
       data = await response.json().catch(() => ({}));
@@ -159,4 +159,21 @@ export async function searchGeminiLeads({ apiKey, category, location, radiusKm =
   const data = await callGemini(apiKey, prompt);
   const leads = parseResponse(data).slice(0, count);
   return { leads, groundingMetadata: data?.candidates?.[0]?.groundingMetadata || null };
+}
+
+export async function generateGeminiJson({ apiKey, prompt }) {
+  const data = await callGemini(apiKey, prompt, { mapsGrounding: false, responseSchema: null });
+  const text = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim() || '';
+  if (!text) throw new Error('Gemini returned an empty response. Please try again.');
+  let parsed;
+  const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  try { parsed = JSON.parse(cleaned); }
+  catch {
+    const first = cleaned.indexOf('{');
+    const last = cleaned.lastIndexOf('}');
+    if (first < 0 || last <= first) throw new Error('Gemini returned an unreadable JSON response. Please try again.');
+    try { parsed = JSON.parse(cleaned.slice(first, last + 1)); }
+    catch { throw new Error('Gemini returned an unreadable JSON response. Please try again.'); }
+  }
+  return parsed;
 }
