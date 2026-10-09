@@ -1,8 +1,8 @@
 # Builds the Vite SPA and publishes it to GitHub Pages.
 #
-# This is a public marketing-site deployment only. AgencyOS is kept out of
-# the public navigation and its route is disabled in this build. Use a local
-# or separately access-controlled self-hosted deployment for internal work.
+# This temporary public testing deployment includes the AgencyOS frontend.
+# Do not enter sensitive/customer data. GitHub Pages is static hosting only;
+# Express backend features will not work until a separate backend is deployed.
 #
 # GitHub Pages is configured in repository Settings -> Pages with Source =
 # "GitHub Actions".
@@ -47,11 +47,11 @@ jobs:
         # Pages serves this repository at /Revoltz/, so asset URLs and the
         # client router base must match it. Local/Express builds keep the
         # default '/' base from vite.config.js.
-        run: VITE_PUBLIC_SITE_ONLY=true npm run build -- --base=/Revoltz/
+        run: VITE_PUBLIC_SITE_ONLY=false npm run build -- --base=/Revoltz/
 
       - name: Add SPA fallback for history routing
         # GitHub Pages has no SPA rewrite rule; a 404.html copy of index.html
-        # lets deep links on the public marketing site load the bundle.
+        # lets deep links such as /agencyos load the frontend bundle.
         run: cp dist/index.html dist/404.html
 
       - name: Disable Jekyll processing
