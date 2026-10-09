@@ -7,6 +7,7 @@ import { getGooglePlaceDetails, searchGooglePlaces } from './googlePlaces.js';
 import { searchOpenStreetMap } from './overpass.js';
 import { enrichOsmLead } from './enrich.js';
 import { auditWebsite } from './websiteAudit.js';
+import { generateWithBluesMinds } from './bluesminds.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -29,12 +30,52 @@ const googleApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
 // air-gapped or policy-restricted deployment.
 const freeSearchEnabled = (process.env.FREE_LEAD_SEARCH || 'on').trim().toLowerCase() !== 'off';
 
+// Lightweight per-process guardrail for the AI endpoint. Use platform-level rate
+// limiting/authentication as well before exposing this server to public traffic.
+const aiRequestBuckets = new Map();
+function allowAiRequest(ip, now = Date.now()) {
+  const windowMs = 60_000;
+  const limit = 12;
+  const existing = aiRequestBuckets.get(ip);
+  if (!existing || now - existing.startedAt >= windowMs) {
+    aiRequestBuckets.set(ip, { startedAt: now, count: 1 });
+    if (aiRequestBuckets.size > 2000) {
+      for (const [key, value] of aiRequestBuckets) {
+        if (now - value.startedAt >= windowMs) aiRequestBuckets.delete(key);
+      }
+    }
+    return true;
+  }
+  if (existing.count >= limit) return false;
+  existing.count += 1;
+  return true;
+}
+
 app.get('/api/config', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     googlePlacesConfigured: Boolean(googleApiKey),
     freeSearchEnabled,
   });
+});
+
+app.post('/api/ai/generate', async (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  if (!allowAiRequest(ip)) {
+    return res.status(429).json({ error: 'AI request limit reached for this minute. Please wait and try again.' });
+  }
+  const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
+  if (!prompt || prompt.length > 12_000) {
+    return res.status(400).json({ error: 'Provide a prompt between 1 and 12,000 characters.' });
+  }
+  try {
+    const result = await generateWithBluesMinds({ prompt });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(result);
+  } catch (error) {
+    const status = Number.isInteger(error?.statusCode) ? error.statusCode : 502;
+    return res.status(status).json({ error: error?.message || 'AI generation failed. Please try again.' });
+  }
 });
 
 app.post('/api/free/search', async (req, res) => {
