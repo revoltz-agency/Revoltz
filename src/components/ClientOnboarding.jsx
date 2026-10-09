@@ -1,0 +1,35 @@
+import { useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, ClipboardList, Download, Save } from 'lucide-react';
+const PACKAGES_KEY='agencyos:sales-packages:v1';
+const DEALS_KEY='agencyos:deal-tracker:v1';
+const ONBOARD_KEY='agencyos:client-onboarding:v1';
+const TASKS=['Confirm signed scope and deliverables','Confirm final price and payment terms','Collect required content, assets and access','Agree on project timeline and milestones','Create project folder and task list','Send client a written kickoff summary'];
+const muted={color:'var(--viz-muted, #a1a1aa)',fontSize:13,lineHeight:1.55};
+const field={width:'100%',boxSizing:'border-box',border:'1px solid var(--viz-border, #333)',borderRadius:9,padding:'10px 11px',background:'var(--viz-card, #151515)',color:'var(--viz-text, #f5f5f5)',font:'inherit'};
+function read(key,fallback){try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback))??fallback}catch{return fallback}}
+export default function ClientOnboarding(){
+ const [packages,setPackages]=useState(()=>{const v=read(PACKAGES_KEY,[]);return Array.isArray(v)?v:[]});
+ const [deals,setDeals]=useState(()=>{const v=read(DEALS_KEY,{});return v&&typeof v==='object'&&!Array.isArray(v)?v:{}});
+ const [checks,setChecks]=useState(()=>{const v=read(ONBOARD_KEY,{});return v&&typeof v==='object'&&!Array.isArray(v)?v:{}});
+ const [selectedId,setSelectedId]=useState('');
+ const [notice,setNotice]=useState('');
+ const refresh=()=>{const p=read(PACKAGES_KEY,[]),d=read(DEALS_KEY,{});setPackages(Array.isArray(p)?p:[]);setDeals(d&&typeof d==='object'&&!Array.isArray(d)?d:{})};
+ useEffect(()=>{const f=()=>refresh();window.addEventListener('focus',f);return()=>window.removeEventListener('focus',f)},[]);
+ useEffect(()=>{try{localStorage.setItem(ONBOARD_KEY,JSON.stringify(checks))}catch{}},[checks]);
+ const clients=useMemo(()=>packages.filter(p=>(deals[p.id]||{}).stage==='Won'),[packages,deals]);
+ const selected=clients.find(p=>p.id===selectedId)||clients[0]||null;
+ const record=selected?(checks[selected.id]||{done:{},notes:''}):null;
+ const update=(patch)=>{if(!selected)return;setChecks(prev=>({...prev,[selected.id]:{...(prev[selected.id]||{done:{},notes:''}),...patch}}))};
+ const doneCount=selected?TASKS.filter((_,i)=>record.done?.[i]).length:0;
+ function exportSummary(){if(!selected)return;const lines=['REVOLTZ AI — CLIENT ONBOARDING', 'Client: '+selected.businessName,'Service: '+selected.service,'',...TASKS.map((task,i)=>(record.done?.[i]?'[x] ':'[ ] ')+task),'','Notes:',record.notes||''];const blob=new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='client-onboarding-'+String(selected.businessName||'client').toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.txt';a.click();URL.revokeObjectURL(url)}
+ return <div style={{display:'grid',gap:20,maxWidth:1000}}>
+ <header style={{display:'flex',gap:13,alignItems:'flex-start'}}><div style={{border:'1px solid var(--viz-border, #333)',borderRadius:13,padding:12}}><ClipboardList size={23}/></div><div><div style={{...muted,letterSpacing:'.14em',fontWeight:700}}>REVOLTZ AI · CLIENT DELIVERY</div><h1 style={{fontSize:32,margin:'4px 0 7px'}}>Client Onboarding</h1><p style={{...muted,margin:0}}>A simple delivery checklist for deals you have marked Won. Use it to confirm scope and avoid starting work with unclear expectations.</p></div></header>
+ <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{[['Won clients',clients.length],['Checklist tasks',TASKS.length],['Completed',doneCount+'/'+TASKS.length]].map(([k,v])=><div key={k} style={{border:'1px solid var(--viz-border, #333)',borderRadius:12,padding:14}}><div style={muted}>{k}</div><div style={{fontSize:26,fontWeight:750,marginTop:6}}>{v}</div></div>)}</div>
+ {notice&&<div role="status" style={{...muted,border:'1px solid var(--viz-border, #333)',borderRadius:9,padding:10}}>{notice}</div>}
+ {!clients.length?<section style={{border:'1px dashed var(--viz-border, #444)',borderRadius:14,padding:28,textAlign:'center'}}><CheckCircle2 size={25}/><h2 style={{fontSize:20}}>No won deals yet</h2><p style={{...muted,maxWidth:480,margin:'0 auto'}}>When a client confirms the deal, mark it Won in Deal Pipeline. It will appear here. Don't mark a deal Won until the client confirms.</p></section>:<section style={{display:'grid',gap:14}}>
+ <label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Client<select style={field} value={selected?.id||''} onChange={e=>setSelectedId(e.target.value)}>{clients.map(p=><option key={p.id} value={p.id}>{p.businessName||'Business'} — {p.service||'Service'}</option>)}</select></label>
+ {selected&&<article style={{border:'1px solid var(--viz-border, #333)',borderRadius:13,padding:16,display:'grid',gap:13}}><div><h2 style={{fontSize:20,margin:'0 0 4px'}}>{selected.businessName}</h2><p style={{...muted,margin:0}}>{selected.service||'Service'} · {doneCount} of {TASKS.length} tasks complete</p></div><div style={{height:6,background:'var(--viz-border, #333)',borderRadius:99,overflow:'hidden'}}><div style={{height:'100%',width:(doneCount/TASKS.length*100)+'%',background:'var(--viz-accent, #6ea8fe)',transition:'width .2s'}}/></div>{TASKS.map((task,i)=><label key={task} style={{display:'flex',gap:10,alignItems:'flex-start',padding:'10px 0',borderBottom:'1px solid var(--viz-border, #222)',cursor:'pointer'}}><input type="checkbox" checked={Boolean(record.done?.[i])} onChange={e=>update({done:{...(record.done||{}),[i]:e.target.checked}})} style={{marginTop:4,width:16,height:16}}/><span style={{fontSize:14,textDecoration:record.done?.[i]?'line-through':'none',opacity:record.done?.[i]?.7:1}}>{task}</span></label>)}<label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Private onboarding notes<textarea rows={4} maxLength={4000} style={{...field,resize:'vertical'}} value={record.notes||''} onChange={e=>update({notes:e.target.value})} placeholder="Kickoff date, payment status, client preferences, outstanding materials…"/></label><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button type="button" onClick={()=>{try{localStorage.setItem(ONBOARD_KEY,JSON.stringify(checks));setNotice('Checklist saved in this browser.')}catch{setNotice('Could not save in this browser.')}}} style={{display:'inline-flex',gap:7,alignItems:'center',border:'1px solid var(--viz-border, #333)',borderRadius:9,padding:'9px 12px',background:'transparent',color:'var(--viz-text, #fff)',cursor:'pointer'}}><Save size={15}/> Save checklist</button><button type="button" onClick={exportSummary} style={{display:'inline-flex',gap:7,alignItems:'center',border:'1px solid var(--viz-border, #333)',borderRadius:9,padding:'9px 12px',background:'transparent',color:'var(--viz-text, #fff)',cursor:'pointer'}}><Download size={15}/> Export checklist</button></div></article>}
+ </section>}
+ <p style={muted}>Checklist and notes are stored in this browser only. Confirm contracts, payment, permissions and feasibility yourself; this tool does not contact clients or start projects automatically.</p>
+ </div>
+}
