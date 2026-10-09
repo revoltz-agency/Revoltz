@@ -17,7 +17,8 @@ import RevoltzSite from './site/RevoltzSite.jsx';
 import BusinessAuditor from './components/BusinessAuditor.jsx';
 import PageErrorBoundary from './components/PageErrorBoundary.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
-import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
+import { GEMINI_KEY_STORAGE, testGeminiApiKey } from './lib/geminiLeadFinder.js';
+import { searchBrowserOpenStreetMap } from './lib/browserOsmSearch.js';
 import { enrichmentCrmPatch, markLeadContacted, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
 import { getOrCreateCachedRequest } from './lib/placeDetailsCache.js';
 import {
@@ -196,13 +197,13 @@ function AgencyOSApp() {
   const [savedPlaceIds, setSavedPlaceIds] = useState(readSavedPlaceIds);
   const [searchHistory, setSearchHistory] = useState(readSearchHistory);
   const [finderResults, setFinderResults] = useState([]);
-  const [finderSource, setFinderSource] = useState('gemini');
+  const [finderSource, setFinderSource] = useState('osm');
   const [finderWarnings, setFinderWarnings] = useState([]);
   const [finderQuery, setFinderQuery] = useState('');
   const [finderRequests, setFinderRequests] = useState(0);
   const [finderGeocodingRequests, setFinderGeocodingRequests] = useState(0);
   const [refreshingDetailsIds, setRefreshingDetailsIds] = useState({});
-  const [searchForm, setSearchForm] = useState({ category: '', city: 'Pune', radiusKm: '10', maxResults: '10', source: 'gemini' });
+  const [searchForm, setSearchForm] = useState({ category: '', city: 'Pune', radiusKm: '10', maxResults: '10', source: 'osm' });
   const [osmMeta, setOsmMeta] = useState({ queriedTags: [], matchedCategory: '', resolvedLocation: '' });
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -355,28 +356,24 @@ function AgencyOSApp() {
     setSearchError(''); setFinderWarnings([]); setFinderResults([]); setFinderRequests(0); setFinderGeocodingRequests(0); setSearchHasRun(true); setFinderQuery(`${category} in ${city}`); setSearching(true);
     setOsmMeta({ queriedTags: [], matchedCategory: '', resolvedLocation: '' });
     try {
-      if (searchForm.source === 'gemini') {
-        if (!geminiApiKey) { setSearchError('Add your Gemini API key in Settings before searching.'); return; }
-        const result = await searchGeminiLeads({ apiKey: geminiApiKey, category, location: city, radiusKm: Number(searchForm.radiusKm), maxResults: Number(searchForm.maxResults) });
-        const results = result.leads || [];
-        setFinderResults(dedupeLeads(results).map((lead) => applyManualLeadOverride(lead, manualOverrides)));
-        setFinderWarnings([]);
-        setFinderRequests(1);
-        setFinderGeocodingRequests(0);
-        setFinderSource('gemini');
-        setOsmMeta({ queriedTags: [], matchedCategory: '', resolvedLocation: city });
-        if (!results.length) showToast('No Gemini/Google Maps matches. Try a broader category or nearby city.');
-      } else if (searchForm.source === 'google' && apiConfig.googlePlacesConfigured) {
-        const response = await fetch('/api/places/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, location: city, radiusKm: Number(searchForm.radiusKm), maxResults: Number(searchForm.maxResults) }) });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Lead search failed.');
-        setFinderResults(dedupeLeads(data.results || []).map((lead) => applyManualLeadOverride(lead, manualOverrides))); setFinderWarnings(data.warnings || []); setFinderRequests(Number(data.requests) || 1); setFinderGeocodingRequests(Number(data.geocodingRequests) || 0); setFinderSource('google');
-        if (!data.results?.length) showToast('No matches returned. Try a broader category or nearby city.');
-      } else {
-        setFinderResults(dedupeLeads(demoSearch(category, city).slice(0, Number(searchForm.maxResults) || 10)).map((lead) => applyManualLeadOverride(lead, manualOverrides)));
-        setFinderSource('demo');
-        setFinderWarnings(['The sample set contains fictional Pune businesses only. Search radius is illustrative for these sample records.']);
-      }
+      const result = await searchBrowserOpenStreetMap({
+        category,
+        location: city,
+        radiusKm: Number(searchForm.radiusKm),
+        maxResults: Number(searchForm.maxResults),
+      });
+      const results = result.results || [];
+      setFinderResults(dedupeLeads(results).map((lead) => applyManualLeadOverride(lead, manualOverrides)));
+      setFinderWarnings(result.warnings || []);
+      setFinderRequests(Number(result.requests) || 1);
+      setFinderGeocodingRequests(Number(result.geocodingRequests) || 1);
+      setFinderSource('osm');
+      setOsmMeta({
+        queriedTags: result.queriedTags || [],
+        matchedCategory: result.matchedCategory || '',
+        resolvedLocation: result.resolvedLocation || city,
+      });
+      if (!results.length) showToast('No OpenStreetMap matches found. Try a broader category or larger radius.');
     } catch (error) { setSearchError(error.message || 'Search failed. Please try again.'); }
     finally { setSearching(false); }
   }
