@@ -31,6 +31,7 @@ import ProposalBuilder from './components/ProposalBuilder.jsx';
 import WebsiteDemoBuilder from './components/WebsiteDemoBuilder.jsx';
 import ClientRetention from './components/ClientRetention.jsx';
 import WebsiteDelivery from './components/WebsiteDelivery.jsx';
+import CashFlowPlanner from './components/CashFlowPlanner.jsx';
 import PageErrorBoundary from './components/PageErrorBoundary.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
 import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
@@ -65,6 +66,7 @@ const NAV_ITEMS = [
   { label: 'Client Retention', icon: Users },
   { label: 'Website Delivery Hub', icon: Globe2 },
   { label: 'Invoice Tracker', icon: CircleDollarSign },
+  { label: 'Cash Flow Planner', icon: Activity },
   { label: 'Project Tracker', icon: CalendarDays },
   { label: 'Business Reports', icon: BarChart3 },
   { label: 'Data Backup', icon: ShieldCheck },
@@ -676,7 +678,7 @@ function AgencyOSApp() {
         <header className="topbar">
           <button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Menu size={19} /></button>
           <div className="topbar-context"><span className="topbar-kicker">WORKSPACE</span><span className="topbar-separator">/</span><span className="topbar-page">{activePage}</span></div>
-          <div className="topbar-actions"><span className={`environment-pill ${apiConfig.googlePlacesConfigured || apiConfig.freeSearchEnabled ? 'is-connected' : ''}`}><span className="status-dot" />{apiConfig.loading ? 'Checking setup' : apiConfig.googlePlacesConfigured ? 'Places configured' : apiConfig.freeSearchEnabled ? 'OpenStreetMap available' : apiConfig.reachable ? 'Manual entry available' : 'Server unavailable'}</span><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
+          <div className="topbar-actions"><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
         </header>
         <main className="main-content">
 
@@ -689,6 +691,7 @@ function AgencyOSApp() {
            {activePage === 'Client Retention' && <ClientRetention />}
             {activePage === 'Website Delivery Hub' && <WebsiteDelivery />}
                {activePage === 'Invoice Tracker' && <InvoiceTracker />}
+          {activePage === 'Cash Flow Planner' && <CashFlowPlanner />}
           {activePage === 'Project Tracker' && <ProjectTracker />}
           {activePage === 'Business Reports' && <BusinessReports />}
           {activePage === 'Data Backup' && <DataBackup />}
