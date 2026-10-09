@@ -1,4 +1,6 @@
-# AgencyOS
+# REVOLTZ AI + AgencyOS
+
+REVOLTZ AI is the public marketing website. AgencyOS is the internal lead research and CRM workspace and is intended for personal use until it is offered as a paid product.
 
 AgencyOS is a responsive, dark-mode lead research and CRM MVP for an AI/web agency. It helps an operator search local businesses through the **OpenStreetMap lead finder** (no API key required; public services are shared and rate-limited) or the **official Google Places API (New)**, enrich public business details, qualify visible opportunities, review website signals, prepare evidence-based outreach drafts, and track follow-ups.
 
@@ -20,14 +22,12 @@ Request body: `{"prompt":"Your task..." }`. The endpoint returns `text`, `model`
 
 | Route | What it is |
 | --- | --- |
-| `/` | The public **REVOLTZ AI** site: hero, capability strip, the AgencyOS product section (with a live workspace preview), services, process, and contact. |
-| `/agencyos` | The **AgencyOS** workspace: lead finder, CRM, enrichment, website checks, CSV import/export, campaigns and settings. |
+| `/` | Public **REVOLTZ AI** marketing website: services, process, FAQs and contact. No link to the internal workspace. |
+| `/agencyos` | Internal **AgencyOS** workspace in local/self-hosted builds only. The public GitHub Pages build disables this route and displays the marketing site instead. |
 
-Both routes are served from one single-page bundle. Client-side routing is a thin
-History API wrapper in `src/lib/router.js` — no Express routes were added or changed,
-so every path still falls back to `index.html`.
+Local/self-hosted builds can serve both views from one bundle. The GitHub Pages workflow sets `VITE_PUBLIC_SITE_ONLY=true`, so visiting `/agencyos` on the public site shows the marketing site instead. This is a visibility/routing separation, **not a security boundary**: source code remains in the repository. Do not put customer data or secrets into the public build. For genuine paid access, keep the repository private and deploy AgencyOS separately behind server-side authentication before onboarding customers.
 
-- Site components and styles live in `src/site/` (`RevoltzSite.jsx`, `ProductPreview.jsx`, `site.css`).
+- Public site components and styles live in `src/site/` (`RevoltzSite.jsx`, `site.css`).
 - Workspace styles remain in `src/styles.css`; the site styles are scoped under `.rv-root` so neither surface affects the other.
 - `src/components/leadPrimitives.jsx` holds the small lead badges shared by both surfaces.
 
