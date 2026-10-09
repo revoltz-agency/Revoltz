@@ -1,7 +1,8 @@
 // Gemini-powered local lead discovery using Gemini + Google Maps grounding.
 // The API key is supplied by the user at runtime and is never committed.
 
-export const GEMINI_MODEL = 'gemini-3.8-flash';
+export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.7-flash'];
 export const GEMINI_KEY_STORAGE = 'agencyos:gemini-api-key:v1';
 
 const LEAD_SCHEMA = {
@@ -74,27 +75,50 @@ function parseResponse(data) {
   })).filter((lead) => lead.name);
 }
 
-async function callGemini(apiKey, prompt) {
+async function callGemini(apiKey, prompt, { mapsGrounding = true } = {}) {
   const key = String(apiKey || '').trim();
   if (!key) throw new Error('Add your Gemini API key in Settings first.');
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      tools: [{ googleMaps: {} }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema: LEAD_SCHEMA,
-      },
-    }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
+  let lastError;
+  for (const model of GEMINI_MODELS) {
+    let response;
+    let data = {};
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          ...(mapsGrounding ? { tools: [{ googleMaps: {} }] } : {}),
+          generationConfig: { responseMimeType: 'application/json', responseSchema: LEAD_SCHEMA, maxOutputTokens: 4096 },
+        }),
+      });
+      data = await response.json().catch(() => ({}));
+    } catch (error) {
+      lastError = error?.name === 'AbortError'
+        ? new Error('Gemini took too long to respond. Try again; your details are still here.')
+        : new Error('Could not reach Gemini. Check your internet connection.');
+      if (error?.name === 'AbortError') break;
+      continue;
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (response.ok) return data;
     const message = data?.error?.message || `Gemini request failed (HTTP ${response.status}).`;
-    throw new Error(message.slice(0, 500));
+    lastError = new Error(message.slice(0, 500));
+    // Switching models can help with model-specific limits, but cannot bypass a project-wide exhausted quota.
+    if (![429, 500, 502, 503, 504].includes(response.status)) break;
   }
-  return data;
+  const message = lastError?.message || 'Gemini request failed.';
+  if (/quota|rate.?limit|resource.?exhausted|limit exceeded/i.test(message)) {
+    throw new Error('Gemini quota exceeded for this Google project. Model fallback was attempted, but it cannot bypass a project-wide limit. Check Google AI Studio → Usage and limits, or use Find Leads with OpenStreetMap (free) until quota resets.');
+  }
+  if (/high demand|overloaded|temporarily unavailable/i.test(message)) {
+    throw new Error('Gemini is temporarily busy. Try again later, or switch Find Leads to OpenStreetMap.');
+  }
+  throw lastError || new Error('Gemini request failed. Please try again.');
 }
 
 export async function testGeminiApiKey(apiKey) {
@@ -105,7 +129,7 @@ export async function testGeminiApiKey(apiKey) {
 export async function searchGeminiLeads({ apiKey, category, location, radiusKm = 10, maxResults = 10 }) {
   const safeCategory = clean(category, 100);
   const safeLocation = clean(location, 160);
-  const count = Math.max(1, Math.min(30, Number(maxResults) || 10));
+  const count = Math.max(1, Math.min(5, Number(maxResults) || 5));
   const radius = Math.max(1, Math.min(50, Number(radiusKm) || 10));
   if (!safeCategory || !safeLocation) throw new Error('Add an industry/category and location to search.');
 
