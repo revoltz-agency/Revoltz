@@ -1,8 +1,8 @@
 // Gemini-powered local lead discovery using Gemini + Google Maps grounding.
 // The API key is supplied by the user at runtime and is never committed.
 
-export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
-const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.7-flash'];
+export const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 export const GEMINI_KEY_STORAGE = 'agencyos:gemini-api-key:v1';
 
 const LEAD_SCHEMA = {
