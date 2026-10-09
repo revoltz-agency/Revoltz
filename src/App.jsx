@@ -464,6 +464,20 @@ function AgencyOSApp() {
     showToast(`${finalAdded.length} manual ${finalAdded.length === 1 ? 'lead added' : 'leads added'}${updatedCount ? `; ${updatedCount} existing ${updatedCount === 1 ? 'lead updated' : 'leads updated'}` : ''}. No Google Places search was made.`);
   }
 
+  function removeSavedLeads(ids) {
+    const keys = new Set(ids);
+    if (!keys.size) return;
+    setLeads((current) => current.filter((item) => !keys.has(getLeadKey(item))));
+    setFinderResults((current) => current.filter((item) => !keys.has(getLeadKey(item))));
+    setManualLeads((current) => current.filter((item) => !keys.has(getLeadKey(item))));
+    setSavedPlaceIds((current) => current.filter((id) => !keys.has(id)));
+    setManualOverrides((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !keys.has(id))));
+    setWorkflow((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !keys.has(id))));
+    setSelectedLeadId((current) => keys.has(current) ? '' : current);
+    setOutreachLeadId((current) => keys.has(current) ? '' : current);
+    showToast(`${keys.size} ${keys.size === 1 ? 'lead' : 'leads'} deleted from your workspace.`);
+  }
+
   function removeSavedLead(lead) {
     const key = getLeadKey(lead);
     if (!key) return;
