@@ -1339,7 +1339,11 @@ function App() {
     if (window.location.hash) return;
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, [path]);
-  return isAppPath(path) ? <AgencyOSApp /> : <RevoltzSite />;
+
+  // The public GitHub Pages build is intentionally website-only. AgencyOS
+  // remains available in local/self-hosted builds for internal use.
+  const publicSiteOnly = import.meta.env.VITE_PUBLIC_SITE_ONLY === 'true';
+  return !publicSiteOnly && isAppPath(path) ? <AgencyOSApp /> : <RevoltzSite />;
 }
 
 export default App;
