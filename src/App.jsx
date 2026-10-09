@@ -27,6 +27,7 @@ import RevenueGoals from './components/RevenueGoals.jsx';
 import DailyActionCenter from './components/DailyActionCenter.jsx';
 import QuickNotes from './components/QuickNotes.jsx';
 import ExpenseTracker from './components/ExpenseTracker.jsx';
+import ProposalBuilder from './components/ProposalBuilder.jsx';
 import PageErrorBoundary from './components/PageErrorBoundary.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
 import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
@@ -66,6 +67,7 @@ const NAV_ITEMS = [
   { label: 'Daily Action Center', icon: ClipboardList },
   { label: 'Quick Notes', icon: FileText },
   { label: 'Expense Tracker', icon: CircleDollarSign },
+  { label: 'Proposal Builder', icon: FileText },
   { label: 'Settings', icon: SettingsIcon },
 ];
 
@@ -686,6 +688,7 @@ function AgencyOSApp() {
           {activePage === 'Daily Action Center' && <DailyActionCenter />}
           {activePage === 'Quick Notes' && <QuickNotes />}
           {activePage === 'Expense Tracker' && <ExpenseTracker />}
+          {activePage === 'Proposal Builder' && <ProposalBuilder />}
           {activePage === 'Find Leads' && <FinderPage searchForm={searchForm} setSearchForm={setSearchForm} onSearch={runLeadSearch} searching={searching} searchError={searchError} results={finderResults} source={finderSource} warnings={finderWarnings} requests={finderRequests} geocodingRequests={finderGeocodingRequests} history={searchHistory} onSelectHistory={(entry) => setSearchForm((current) => ({ ...current, ...entry }))} hasRun={searchHasRun} query={finderQuery} configLoading={apiConfig.loading} leads={leads} onAdd={addLeadToWorkspace} onOpenLead={openLead} onManualEntries={addManualLeadEntries} config={apiConfig} osmMeta={osmMeta} />}
           {activePage === 'Leads' && <PageErrorBoundary><LeadsPage leads={sortedLeads} allCount={leads.length} getCrm={getCrm} search={leadSearch} setSearch={setLeadSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} priorityFilter={priorityFilter} setPriorityFilter={setPriorityFilter} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort} onOpenLead={openLead} onPitch={handleOpenPitch} onStatus={updateStatus} onBulkUpdate={updateCrmBulk} onBulkRemove={removeSavedLeads} onRemove={removeSavedLead} onRefreshDetails={refreshSavedPlace} refreshingDetailsIds={refreshingDetailsIds} onExport={() => exportCsv(leads)} onFind={() => setActivePage('Find Leads')} /></PageErrorBoundary>}
           {activePage === 'Campaigns' && <CampaignsPage leads={leads} getCrm={getCrm} onOpenLead={openLead} onPitch={handleOpenPitch} />}
