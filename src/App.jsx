@@ -185,7 +185,7 @@ function getDefaultCrm(lead) { return cleanCrmRecord({ ...DEFAULT_CRM, ...(lead?
 function AgencyOSApp() {
   const [activePage, setActivePage] = useState('Dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [apiConfig, setApiConfig] = useState({ loading: true, googlePlacesConfigured: false, freeSearchEnabled: false, reachable: true });
+  const [apiConfig, setApiConfig] = useState({ loading: true, googlePlacesConfigured: false, freeSearchEnabled: true, reachable: true });
   const [geminiApiKey, setGeminiApiKey] = useState(() => {
     try { return window.sessionStorage.getItem(GEMINI_API_KEY_STORAGE) || ''; } catch { return ''; }
   });
@@ -250,7 +250,7 @@ function AgencyOSApp() {
         }
       } catch {
         if (!alive) return;
-        setApiConfig({ loading: false, reachable: false, googlePlacesConfigured: false, freeSearchEnabled: false });
+        setApiConfig({ loading: false, reachable: false, googlePlacesConfigured: false, freeSearchEnabled: true });
         if (!initialConfigLoaded.current) {
           initialConfigLoaded.current = true;
           setSearchForm((current) => ({ ...current, source: 'gemini' }));
