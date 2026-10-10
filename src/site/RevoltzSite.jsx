@@ -6,6 +6,7 @@ import { CONTACT_EMAIL, CONTACT_SUBJECT } from './siteConfig.js';
 const NAV_LINKS = [
   { id: 'services', label: 'Services' },
   { id: 'process', label: 'Process' },
+  { id: 'reviews', label: 'Reviews' },
   { id: 'contact', label: 'Contact' },
 ];
 
@@ -129,6 +130,16 @@ function TrustSection() {
   </div></section>;
 }
 
+function ReviewsSection() {
+  return <section className="rv-section rv-reviews" id="reviews"><div className="rv-shell">
+    <Reveal className="rv-head"><span className="rv-eyebrow">Reviews &amp; feedback</span><h2 className="rv-h2">Trust is earned, not manufactured.</h2><p className="rv-lead">We’re building REVOLTZ through real conversations and real work. As clients share feedback and approve it for publication, their words will appear here.</p></Reveal>
+    <Reveal className="rv-review-empty">
+      <div className="rv-review-mark" aria-hidden="true">“</div>
+      <div><span className="rv-review-label"><span className="rv-review-dot" /> REAL FEEDBACK ONLY</span><h3>Have we worked together?</h3><p>Your honest feedback helps us improve and helps future clients make an informed decision. We’ll only publish a review with your permission.</p><a className="rv-btn rv-btn-primary" href={mailtoHref('REVOLTZ feedback')} >Share your feedback <ArrowRight size={16} /></a></div>
+    </Reveal>
+  </div></section>;
+}
+
 function FAQSection() {
   const [open, setOpen] = useState(0);
   return <section className="rv-section" id="faq"><div className="rv-shell rv-faq-layout">
@@ -201,5 +212,5 @@ export default function RevoltzSite() {
     nodes.forEach((node) => observer.observe(node));
     return () => observer.disconnect();
   }, []);
-  return <div className="rv-root"><a className="rv-skip" href="#main">Skip to content</a><SiteNav /><main id="main"><Hero /><PainSection /><ServicesSection /><ProcessSection /><TrustSection /><FAQSection /><FinalCta /></main><SiteFooter /></div>;
+  return <div className="rv-root"><a className="rv-skip" href="#main">Skip to content</a><SiteNav /><main id="main"><Hero /><PainSection /><ServicesSection /><ProcessSection /><TrustSection /><ReviewsSection /><FAQSection /><FinalCta /></main><SiteFooter /></div>;
 }
