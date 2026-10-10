@@ -732,12 +732,44 @@ function AgencyOSApp() {
   );
 }
 
+const NAV_GROUPS = [
+  { label: 'Sales & follow-ups', icon: Target, items: ['AI Business Auditor', 'Campaigns', 'Sales Engine', 'Deal Pipeline', 'Follow-up Assistant'] },
+  { label: 'Clients & delivery', icon: Users, items: ['Client Onboarding', 'Client Retention', 'Website Delivery Hub', 'Project Tracker', 'Client Activity Log'] },
+  { label: 'Finance & reports', icon: CircleDollarSign, items: ['Invoice Tracker', 'Cash Flow Planner', 'Expense Tracker', 'Revenue Goals', 'Business Reports'] },
+  { label: 'Tools', icon: Zap, items: ['Daily Action Center', 'Quick Notes', 'Website Demo Builder', 'Proposal Builder', 'Data Backup'] },
+];
 function Sidebar({ activePage, onNavigate, open }) {
+  const [expandedGroup, setExpandedGroup] = useState(() => NAV_GROUPS.find(group => group.items.includes(activePage))?.label || '');
+  useEffect(() => {
+    const group = NAV_GROUPS.find(item => item.items.includes(activePage));
+    if (group) setExpandedGroup(group.label);
+  }, [activePage]);
+  const navButton = (item) => {
+    const Icon = item.icon || NAV_ITEMS.find(nav => nav.label === item.label)?.icon || LayoutDashboard;
+    return <button type="button" key={item.label} onClick={() => onNavigate(item.label)} className={`nav-item ${activePage === item.label ? 'nav-item-active' : ''}`} style={{width:'100%'}}><Icon size={18} strokeWidth={1.8} /><span>{item.label}</span>{item.label === 'Leads' && <span className="nav-count">•</span>}</button>;
+  };
   return <aside className={`sidebar ${open ? 'sidebar-open' : ''}`}>
     <div className="brand-lockup"><div className="brand-mark"><Sparkles size={20} strokeWidth={1.8} /></div><div><span className="brand-name">Agency<span>OS</span></span><span className="brand-caption">GROW WITH CLARITY</span></div></div>
     <div className="workspace-switcher"><div className="workspace-monogram">AR</div><div className="workspace-label"><strong>Agency workspace</strong><span>Starter plan</span></div><ChevronDown size={15} /></div>
-    <div className="nav-section-label">WORKSPACE</div><nav className="main-nav" aria-label="Main navigation">{NAV_ITEMS.map(({ label, icon: Icon }) => <button type="button" key={label} onClick={() => onNavigate(label)} className={`nav-item ${activePage === label ? 'nav-item-active' : ''}`}><Icon size={18} strokeWidth={1.8} /><span>{label}</span>{label === 'Leads' && <span className="nav-count">•</span>}</button>)}</nav>
-    <div className="sidebar-spacer" /><div className="sidebar-assist-card"><div className="assist-icon"><Zap size={16} /></div><div><strong>Thoughtful outreach</strong><p>Every message stays yours to review and send.</p></div></div>
+    <div className="nav-section-label">WORKSPACE</div>
+    <nav className="main-nav" aria-label="Main navigation">
+      {navButton({label:'Dashboard',icon:LayoutDashboard})}
+      {navButton({label:'Find Leads',icon:Search})}
+      {navButton({label:'Leads',icon:Users})}
+      {NAV_GROUPS.map(group => {
+        const GroupIcon = group.icon;
+        const expanded = expandedGroup === group.label;
+        const active = group.items.includes(activePage);
+        return <div key={group.label} style={{display:'grid',gap:3}}>
+          <button type="button" aria-expanded={expanded} onClick={() => setExpandedGroup(expanded ? '' : group.label)} className={`nav-item ${active ? 'nav-item-active' : ''}`} style={{width:'100%',background:active?'var(--viz-accent-soft, rgba(88,130,255,.1))':'transparent',border:0,textAlign:'left',cursor:'pointer'}}>
+            <GroupIcon size={18} strokeWidth={1.8}/><span style={{flex:1}}>{group.label}</span><ChevronDown size={14} style={{transform:expanded?'rotate(0deg)':'rotate(-90deg)',transition:'transform .15s'}}/>
+          </button>
+          {expanded && <div style={{display:'grid',gap:2,marginLeft:10,paddingLeft:9,borderLeft:'1px solid var(--viz-border, #333)'}}>{group.items.map(label => navButton({label}))}</div>}
+        </div>;
+      })}
+      {navButton({label:'Settings',icon:SettingsIcon})}
+    </nav>
+    <div className="sidebar-spacer" /><div className="sidebar-assist-card"><div className="assist-icon"><Zap size={16} /></div><div><strong>Less busywork</strong><p>Keep daily work focused and review messages before sending.</p></div></div>
     <div className="sidebar-bottom"><div className="sidebar-privacy"><ShieldCheck size={14} /> Your data stays in your workspace</div><div className="sidebar-user-row"><div className="sidebar-user-avatar">A</div><div className="sidebar-user-copy"><strong>Agency admin</strong><span>Workspace owner</span></div><MoreHorizontal size={18} /></div></div>
   </aside>;
 }
