@@ -8,8 +8,8 @@ function money(n){return '₹'+Number(n||0).toLocaleString('en-IN',{maximumFract
 function dateKey(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')}
 function monthLabel(key){const [y,m]=key.split('-').map(Number);return new Date(y,m-1,1).toLocaleDateString('en-IN',{month:'short',year:'2-digit'})}
 export default function BusinessReports(){
- const [packages,setPackages]=useState([]),[deals,setDeals]=useState({}),[invoices,setInvoices]=useState([]),[projects,setProjects]=useState([]),[expenses,setExpenses]=useState([]),[notice,setNotice]=useState('');
- function refresh(){const p=read(KEYS.packages,[]),d=read(KEYS.deals,{}),i=read(KEYS.invoices,[]),t=read(KEYS.projects,[]),e=read(KEYS.expenses,[]);setPackages(Array.isArray(p)?p:[]);setDeals(d&&typeof d==='object'&&!Array.isArray(d)?d:{});setInvoices(Array.isArray(i)?i:[]);setProjects(Array.isArray(t)?t:[]);setExpenses(Array.isArray(e)?e:[]);setNotice('Reports refreshed from this browser’s saved records.')}
+ const [packages,setPackages]=useState([]),[deals,setDeals]=useState({}),[invoices,setInvoices]=useState([]),[projects,setProjects]=useState([]),[expenses,setExpenses]=useState([]),[activities,setActivities]=useState([]),[notice,setNotice]=useState('');
+ function refresh(){const p=read(KEYS.packages,[]),d=read(KEYS.deals,{}),i=read(KEYS.invoices,[]),t=read(KEYS.projects,[]),e=read(KEYS.expenses,[]),a=read(KEYS.activities,[]);setPackages(Array.isArray(p)?p:[]);setDeals(d&&typeof d==='object'&&!Array.isArray(d)?d:{});setInvoices(Array.isArray(i)?i:[]);setProjects(Array.isArray(t)?t:[]);setExpenses(Array.isArray(e)?e:[]);setActivities(Array.isArray(a)?a:[]);setNotice('Reports refreshed from this browser’s saved records.')}
  useEffect(()=>{refresh();const f=()=>refresh();window.addEventListener('focus',f);return()=>window.removeEventListener('focus',f)},[]);
  const report=useMemo(()=>{
   const validInvoices=invoices.filter(i=>Number.isFinite(Number(i.amount))&&Number(i.amount)>0);
@@ -25,10 +25,13 @@ export default function BusinessReports(){
   const active=projects.filter(p=>!['Completed','On hold'].includes(p.status));
   const completed=projects.filter(p=>p.status==='Completed').length;
   const overdue=projects.filter(p=>p.dueDate&&p.dueDate<new Date().toISOString().slice(0,10)&&p.status!=='Completed').length;
+  const activityOutcomes=['Connected','No response','Interested','Needs follow-up','Proposal requested','Won','Lost','Other'].map(outcome=>({outcome,count:activities.filter(a=>a.outcome===outcome).length}));
+  const nextActions=activities.filter(a=>a.nextAction&&a.nextActionDate&&a.nextActionDate>=new Date().toISOString().slice(0,10));
+  const activityClients=new Set(activities.map(a=>String(a.clientName||a.client||'').trim().toLowerCase()).filter(Boolean)).size;
   const months=[];const now=new Date();for(let offset=5;offset>=0;offset--){const d=new Date(now.getFullYear(),now.getMonth()-offset,1);months.push(dateKey(d))}
   const trend=months.map(key=>({key,label:monthLabel(key),amount:validInvoices.filter(i=>String(i.issueDate||'').slice(0,7)===key).reduce((s,i)=>s+Number(i.amount),0),paid:validInvoices.filter(i=>String(i.issueDate||'').slice(0,7)===key&&i.status==='Paid').reduce((s,i)=>s+Number(i.amount),0)}));
-  return {invoiceCount:invoices.length,paid,outstanding,total:validInvoices.reduce((s,i)=>s+Number(i.amount),0),expenseCount:expenses.length,businessExpenses,personalExpenses,monthPaid,monthBusinessExpenses,monthNet:monthPaid-monthBusinessExpenses,wonCount:won.length,packages:packages.length,activeProjects:active.length,completed,overdue,trend,statuses:['Draft','Sent','Partially paid','Paid','Overdue','Cancelled'].map(status=>({status,count:invoices.filter(i=>i.status===status).length,amount:validInvoices.filter(i=>i.status===status).reduce((s,i)=>s+Number(i.amount),0)}))}
- },[packages,deals,invoices,projects,expenses]);
+  return {invoiceCount:invoices.length,paid,outstanding,total:validInvoices.reduce((s,i)=>s+Number(i.amount),0),expenseCount:expenses.length,businessExpenses,personalExpenses,monthPaid,monthBusinessExpenses,monthNet:monthPaid-monthBusinessExpenses,wonCount:won.length,packages:packages.length,activeProjects:active.length,completed,overdue,activityCount:activities.length,activityClients,nextActions:nextActions.length,activityOutcomes,trend,statuses:['Draft','Sent','Partially paid','Paid','Overdue','Cancelled'].map(status=>({status,count:invoices.filter(i=>i.status===status).length,amount:validInvoices.filter(i=>i.status===status).reduce((s,i)=>s+Number(i.amount),0)}))}
+ },[packages,deals,invoices,projects,expenses,activities]);
  const max=Math.max(1,...report.trend.map(x=>x.amount));
  function exportCsv(){
     const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
