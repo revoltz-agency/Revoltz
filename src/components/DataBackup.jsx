@@ -17,6 +17,7 @@ const BACKUP_KEYS = [
   'agencyos:quick-notes:v1',
   'agencyos:revenue-goals:v1',
   'agencyos:expense-tracker:v1',
+  'agencyos:client-activity-log:v1',
 ];
 const style = { border:'1px solid var(--viz-border, #333)', borderRadius:12, padding:18, background:'var(--viz-card, #151515)' };
 const button = { display:'inline-flex', alignItems:'center', gap:8, border:'1px solid var(--viz-border, #444)', borderRadius:9, padding:'10px 13px', background:'var(--viz-card, #151515)', color:'var(--viz-text, #f5f5f5)', cursor:'pointer', font:'inherit' };
