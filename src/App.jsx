@@ -823,7 +823,7 @@ function EmptyState({ icon: Icon, title, body, actionLabel, onAction }) {
 }
 
 function DashboardPage({ leads, getCrm, onNavigate, onOpenLead, onExport }) {
-  const workspaceLeads = workspaceLeads.filter((lead) => !lead.demo);
+  const workspaceLeads = leads.filter((lead) => !lead.demo);
   const sourceCounts = [
     { source: 'manual', label: 'Manual' },
     { source: 'google', label: 'Google Places' },
