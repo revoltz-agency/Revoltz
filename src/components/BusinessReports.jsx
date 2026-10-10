@@ -26,7 +26,7 @@ export default function BusinessReports(){
   const completed=projects.filter(p=>p.status==='Completed').length;
   const overdue=projects.filter(p=>p.dueDate&&p.dueDate<new Date().toISOString().slice(0,10)&&p.status!=='Completed').length;
   const activityOutcomes=['Connected','No response','Interested','Needs follow-up','Proposal requested','Won','Lost','Other'].map(outcome=>({outcome,count:activities.filter(a=>a.outcome===outcome).length}));
-  const nextActions=activities.filter(a=>a.nextAction&&a.nextActionDate&&a.nextActionDate>=new Date().toISOString().slice(0,10));
+  const nextActions=activities.filter(a=>a.nextAction&&a.nextDate&&a.nextDate>=new Date().toISOString().slice(0,10));
   const activityClients=new Set(activities.map(a=>String(a.clientName||a.client||'').trim().toLowerCase()).filter(Boolean)).size;
   const months=[];const now=new Date();for(let offset=5;offset>=0;offset--){const d=new Date(now.getFullYear(),now.getMonth()-offset,1);months.push(dateKey(d))}
   const trend=months.map(key=>({key,label:monthLabel(key),amount:validInvoices.filter(i=>String(i.issueDate||'').slice(0,7)===key).reduce((s,i)=>s+Number(i.amount),0),paid:validInvoices.filter(i=>String(i.issueDate||'').slice(0,7)===key&&i.status==='Paid').reduce((s,i)=>s+Number(i.amount),0)}));
