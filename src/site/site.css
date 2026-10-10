@@ -309,3 +309,25 @@
 @media (prefers-reduced-motion: reduce) {
   .rv-root *, .rv-root *::before, .rv-root *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+
+/* Scroll-triggered motion and richer dark-theme interactions */
+.rv-root .rv-reveal { opacity: 0; transform: translate3d(0,26px,0) scale(.985); animation: none; transition: opacity .75s cubic-bezier(.2,.7,.2,1), transform .75s cubic-bezier(.2,.7,.2,1); }
+.rv-root .rv-reveal.is-visible { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+.rv-root .rv-hero h1 span { background-size: 200% 100%; animation: rv-text-shimmer 7s ease-in-out infinite alternate; }
+@keyframes rv-text-shimmer { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
+.rv-root .rv-hero-grid { animation: rv-grid-drift 32s linear infinite; }
+@keyframes rv-grid-drift { from { background-position: 0 0, 0 0; } to { background-position: 64px 64px, 64px 64px; } }
+.rv-root .rv-trust-chip { animation: rv-chip-glow 4s ease-in-out infinite; }
+@keyframes rv-chip-glow { 0%,100% { box-shadow: 0 0 0 rgba(109,140,255,0); } 50% { box-shadow: 0 0 26px rgba(109,140,255,.12); } }
+.rv-root .rv-proof-strip { transition: border-color .3s, transform .3s, box-shadow .3s; }
+.rv-root .rv-proof-strip:hover { border-color: rgba(109,140,255,.35); transform: translateY(-3px); box-shadow: 0 18px 45px rgba(0,0,0,.16); }
+.rv-root .rv-service-icon { transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s; }
+.rv-root .rv-service:hover .rv-service-icon { transform: translateY(-3px) rotate(-5deg); box-shadow: 0 8px 25px rgba(109,140,255,.16); }
+.rv-root .rv-btn-primary { position: relative; overflow: hidden; }
+.rv-root .rv-btn-primary::after { content: ""; position: absolute; top: -40%; left: -65%; width: 38%; height: 180%; transform: rotate(22deg); background: linear-gradient(90deg,transparent,rgba(255,255,255,.24),transparent); transition: left .65s ease; pointer-events: none; }
+@media (hover:hover) and (pointer:fine) { .rv-root .rv-btn-primary:hover::after { left: 130%; } }
+@media (prefers-reduced-motion: reduce) {
+  .rv-root .rv-reveal { opacity: 1; transform: none; }
+  .rv-root .rv-hero h1 span,.rv-root .rv-hero-grid,.rv-root .rv-trust-chip { animation: none !important; }
+}
