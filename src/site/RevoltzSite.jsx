@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowRight, ArrowUpRight, CheckCircle2, ChevronDown, Clock3, Cpu, Globe2, Mail, Menu, Radar, ShieldCheck, Sparkles, Target, Workflow, Wrench, X, Zap } from 'lucide-react';
 import { goToSection, navigate, withBase } from '../lib/router.js';
 import { CONTACT_EMAIL, CONTACT_SUBJECT } from './siteConfig.js';
@@ -184,5 +184,22 @@ function SiteFooter() {
 }
 
 export default function RevoltzSite() {
+  useEffect(() => {
+    const nodes = document.querySelectorAll('.rv-root .rv-reveal');
+    if (!('IntersectionObserver' in window)) {
+      nodes.forEach((node) => node.classList.add('is-visible'));
+      return undefined;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -36px 0px' });
+    nodes.forEach((node) => observer.observe(node));
+    return () => observer.disconnect();
+  }, []);
   return <div className="rv-root"><a className="rv-skip" href="#main">Skip to content</a><SiteNav /><main id="main"><Hero /><PainSection /><ServicesSection /><ProcessSection /><TrustSection /><FAQSection /><FinalCta /></main><SiteFooter /></div>;
 }
