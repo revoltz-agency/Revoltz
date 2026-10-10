@@ -10,9 +10,9 @@ const NAV_LINKS = [
 ];
 
 const SERVICES = [
-  { icon: Workflow, title: 'Workflow Automation', copy: 'Remove repetitive admin, follow-ups, routing and reporting that keeps your team busy.', outcome: 'Save hours every week' },
-  { icon: Globe2, title: 'High-Converting Websites', copy: 'Turn your offer into a fast, focused website built to make the next step obvious.', outcome: 'More qualified enquiries' },
-  { icon: Radar, title: 'Lead Generation Systems', copy: 'Find, qualify and organize prospects so your team spends more time on real opportunities.', outcome: 'A cleaner sales pipeline' },
+  { icon: Workflow, title: 'Workflow Automation', copy: 'Identify repetitive admin, follow-ups and reporting that may be easier to manage with a simple workflow.', outcome: 'Less repetitive admin' },
+  { icon: Globe2, title: 'Business Websites', copy: 'Present your services clearly with a fast, focused website that makes the next step easy to understand.', outcome: 'A clearer path to enquire' },
+  { icon: Radar, title: 'Lead & Follow-up Systems', copy: 'Organize prospects and follow-ups so enquiries are easier to track and prioritize.', outcome: 'More organized follow-ups' },
   { icon: Cpu, title: 'Custom AI Systems', copy: 'Connect AI to the workflows you already use instead of forcing your business into a generic tool.', outcome: 'Less manual work' },
 ];
 
@@ -83,15 +83,15 @@ function Hero() {
       <div className="rv-hero-bg" aria-hidden="true"><span className="rv-hero-grid" /><span className="rv-glow rv-glow-a" /><span className="rv-glow rv-glow-b" /></div>
       <div className="rv-shell rv-hero-inner">
         <Reveal><div className="rv-trust-chip"><span /> AI automation for growing businesses</div></Reveal>
-        <Reveal><h1>Scale your output, <span>not your headcount.</span></h1></Reveal>
-        <Reveal><p className="rv-hero-sub">We build AI automation, lead systems and custom business tools for teams that want to save manual hours, respond faster and turn more enquiries into revenue.</p></Reveal>
+        <Reveal><h1>Make everyday business work <span>simpler.</span></h1></Reveal>
+        <Reveal><p className="rv-hero-sub">We help businesses improve their websites, organize leads and explore practical automation—starting with the problem that matters most.</p></Reveal>
         <Reveal><div className="rv-hero-actions">
           <a className="rv-btn rv-btn-primary" href="/#contact" onClick={(e) => { e.preventDefault(); goToSection('contact'); }}>Claim Your Free AI Audit <ArrowRight size={17} /></a>
         </div></Reveal>
         <Reveal><div className="rv-risk-line"><CheckCircle2 size={15} /> Free first audit <i /> No commitment <i /> Practical recommendations only</div></Reveal>
         <Reveal><div className="rv-proof-strip">
           <div><strong>AI + automation</strong><span>Built around your workflows</span></div>
-          <div><strong>Outcome-led</strong><span>Measure hours, leads and response time</span></div>
+          <div><strong>Practical by design</strong><span>Start with one clear business problem</span></div>
           <div><strong>India &amp; remote</strong><span>Built for modern small teams</span></div>
         </div></Reveal>
       </div>
@@ -108,7 +108,7 @@ function PainSection() {
 
 function ServicesSection() {
   return <section className="rv-section" id="services"><div className="rv-shell">
-    <Reveal className="rv-head"><span className="rv-eyebrow">What we build</span><h2 className="rv-h2">Systems that create leverage.</h2><p className="rv-lead">You do not need more AI tools. You need fewer repetitive steps between your team and the result.</p></Reveal>
+    <Reveal className="rv-head"><span className="rv-eyebrow">What we build</span><h2 className="rv-h2">Useful solutions for real business needs.</h2><p className="rv-lead">You do not need more AI tools. You need fewer repetitive steps between your team and the result.</p></Reveal>
     <div className="rv-services-grid">{SERVICES.map(({ icon: Icon, title, copy, outcome }) => <Reveal className="rv-service" key={title}>
       <span className="rv-service-icon"><Icon size={19} /></span><h3>{title}</h3><p>{copy}</p><span className="rv-service-outcome"><CheckCircle2 size={14} /> {outcome}</span>
     </Reveal>)}</div>
@@ -170,14 +170,14 @@ function IntakeForm() {
 
 function FinalCta() {
   return <section className="rv-section rv-cta" id="contact"><div className="rv-cta-bg" aria-hidden="true"><span /><b /></div><div className="rv-shell rv-cta-grid">
-    <Reveal><span className="rv-eyebrow">Start with one workflow</span><h2>Find the AI opportunity hiding in your business.</h2><p>Tell us what is eating your team's time. We will help you identify what to automate first — for free.</p></Reveal>
+    <Reveal><span className="rv-eyebrow">Start with one workflow</span><h2>Find one practical way to improve your business.</h2><p>Tell us what you would like to improve. We will review your request and suggest a practical next step—at no cost for the initial audit.</p></Reveal>
     <Reveal className="rv-booking-wrap"><IntakeForm /><div className="rv-booking-side"><div><Clock3 size={18} /><strong>Simple first step</strong><span>10–15 minutes to understand the problem.</span></div><div><Sparkles size={18} /><strong>Useful even if we do not work together</strong><span>You leave with a clearer automation opportunity.</span></div><div><Mail size={18} /><strong>Prefer email?</strong><a href={mailtoHref()}>{CONTACT_EMAIL}</a></div></div></Reveal>
   </div></section>;
 }
 
 function SiteFooter() {
   return <footer className="rv-footer"><div className="rv-footer-inner">
-    <div><span className="rv-brand"><span className="rv-brand-mark"><Zap size={15} /></span><span className="rv-brand-text">REVOLTZ<span>AI</span></span></span><p>AI systems, automation and growth infrastructure for businesses that want more output without more operational drag.</p></div>
+    <div><span className="rv-brand"><span className="rv-brand-mark"><Zap size={15} /></span><span className="rv-brand-text">REVOLTZ<span>AI</span></span></span><p>Practical digital solutions, useful AI tools and workflow improvements for growing businesses.</p></div>
     <div><h4>Explore</h4><a href="/#services" onClick={(e) => { e.preventDefault(); goToSection('services'); }}>Services</a><a href="/#process" onClick={(e) => { e.preventDefault(); goToSection('process'); }}>Process</a></div>
     <div><h4>Contact</h4><a href="/#contact" onClick={(e) => { e.preventDefault(); goToSection('contact'); }}>Free AI Audit</a><a href={mailtoHref()}>{CONTACT_EMAIL}</a></div>
   </div><div className="rv-footer-bottom"><span>© {new Date().getFullYear()} REVOLTZ AI. Built with clarity over hype.</span><span>No fabricated client results.</span></div></footer>;
