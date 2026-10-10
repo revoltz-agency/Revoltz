@@ -260,7 +260,7 @@ function AgencyOSApp() {
   const detailsRequestsRef = useRef(new Map());
 
   const getCrm = (lead) => cleanCrmRecord({ ...getDefaultCrm(lead), ...(workflow[getLeadKey(lead)] || {}) });
-  const allLeads = useMemo(() => dedupeLeads([...leads, ...finderResults]), [leads, finderResults]);
+  const allLeads = useMemo(() => dedupeLeads([...leads, ...finderResults]).filter((lead) => !lead.demo), [leads, finderResults]);
   const selectedLead = selectedLeadId ? allLeads.find((lead) => getLeadKey(lead) === selectedLeadId) : null;
   const outreachLead = outreachLeadId ? allLeads.find((lead) => getLeadKey(lead) === outreachLeadId) : null;
 
@@ -823,19 +823,19 @@ function EmptyState({ icon: Icon, title, body, actionLabel, onAction }) {
 }
 
 function DashboardPage({ leads, getCrm, onNavigate, onOpenLead, onExport }) {
+  const workspaceLeads = workspaceLeads.filter((lead) => !lead.demo);
   const sourceCounts = [
     { source: 'manual', label: 'Manual' },
     { source: 'google', label: 'Google Places' },
     { source: 'osm', label: 'Local listings' },
-    { source: 'demo', label: 'Demo' },
-  ].map(({ source, label }) => ({ source, label, count: leads.filter((lead) => (lead.source || (lead.demo ? 'demo' : 'google')) === source).length }));
+  ].map(({ source, label }) => ({ source, label, count: workspaceLeads.filter((lead) => (lead.source || (lead.demo ? 'demo' : 'google')) === source).length }));
   const stats = [
-    { label: 'Total leads', value: leads.length, icon: Users, tone: 'blue', caption: 'In your workspace' },
-    { label: 'HOT leads', value: leads.filter((lead) => scoreOpportunity(lead).score >= 80).length, icon: Flame, tone: 'amber', caption: 'Score 80–100' },
-    { label: 'Contacted', value: leads.filter((lead) => !['NEW', 'RESEARCHED', 'DO NOT CONTACT'].includes(getCrm(lead).status)).length, icon: Send, tone: 'violet', caption: 'Manual outreach' },
-    { label: 'Replies', value: leads.filter((lead) => ['REPLIED', 'INTERESTED', 'CALL BOOKED', 'PROPOSAL', 'WON'].includes(getCrm(lead).status)).length, icon: MessageCircle, tone: 'green', caption: 'Pipeline replies' },
-    { label: 'Meetings', value: leads.filter((lead) => ['CALL BOOKED', 'PROPOSAL'].includes(getCrm(lead).status)).length, icon: CalendarDays, tone: 'cyan', caption: 'Booked or proposed' },
-    { label: 'Won', value: leads.filter((lead) => getCrm(lead).status === 'WON').length, icon: Award, tone: 'lime', caption: 'Closed won' },
+    { label: 'Total leads', value: workspaceLeads.length, icon: Users, tone: 'blue', caption: 'In your workspace' },
+    { label: 'HOT leads', value: workspaceLeads.filter((lead) => scoreOpportunity(lead).score >= 80).length, icon: Flame, tone: 'amber', caption: 'Score 80–100' },
+    { label: 'Contacted', value: workspaceLeads.filter((lead) => !['NEW', 'RESEARCHED', 'DO NOT CONTACT'].includes(getCrm(lead).status)).length, icon: Send, tone: 'violet', caption: 'Manual outreach' },
+    { label: 'Replies', value: workspaceLeads.filter((lead) => ['REPLIED', 'INTERESTED', 'CALL BOOKED', 'PROPOSAL', 'WON'].includes(getCrm(lead).status)).length, icon: MessageCircle, tone: 'green', caption: 'Pipeline replies' },
+    { label: 'Meetings', value: workspaceLeads.filter((lead) => ['CALL BOOKED', 'PROPOSAL'].includes(getCrm(lead).status)).length, icon: CalendarDays, tone: 'cyan', caption: 'Booked or proposed' },
+    { label: 'Won', value: workspaceLeads.filter((lead) => getCrm(lead).status === 'WON').length, icon: Award, tone: 'lime', caption: 'Closed won' },
   ];
   const pipeline = [
     { label: 'New & researched', statuses: ['NEW', 'RESEARCHED'], color: 'var(--blue-400)' },
@@ -843,11 +843,11 @@ function DashboardPage({ leads, getCrm, onNavigate, onOpenLead, onExport }) {
     { label: 'In conversation', statuses: ['REPLIED', 'INTERESTED'], color: 'var(--green-400)' },
     { label: 'Meeting / proposal', statuses: ['CALL BOOKED', 'PROPOSAL'], color: 'var(--cyan-400)' },
     { label: 'Won', statuses: ['WON'], color: 'var(--lime-400)' },
-  ].map((stage) => ({ ...stage, count: leads.filter((lead) => stage.statuses.includes(getCrm(lead).status)).length }));
+  ].map((stage) => ({ ...stage, count: workspaceLeads.filter((lead) => stage.statuses.includes(getCrm(lead).status)).length }));
   const maxStage = Math.max(1, ...pipeline.map((stage) => stage.count));
-  const highest = [...leads].sort((a, b) => scoreOpportunity(b).score - scoreOpportunity(a).score).slice(0, 4);
+  const highest = [...workspaceLeads].sort((a, b) => scoreOpportunity(b).score - scoreOpportunity(a).score).slice(0, 4);
   const today = localDateString();
-  const due = leads.filter((lead) => { const crm = getCrm(lead); return crm.nextFollowUp && crm.nextFollowUp <= today && !['WON', 'LOST', 'DO NOT CONTACT'].includes(crm.status); }).sort((a, b) => getCrm(a).nextFollowUp.localeCompare(getCrm(b).nextFollowUp));
+  const due = workspaceLeads.filter((lead) => { const crm = getCrm(lead); return crm.nextFollowUp && crm.nextFollowUp <= today && !['WON', 'LOST', 'DO NOT CONTACT'].includes(crm.status); }).sort((a, b) => getCrm(a).nextFollowUp.localeCompare(getCrm(b).nextFollowUp));
   const dateLabel = new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date()).toUpperCase();
   return <div className="page-stack dashboard-page">
     <section className="dashboard-hero">
@@ -855,7 +855,7 @@ function DashboardPage({ leads, getCrm, onNavigate, onOpenLead, onExport }) {
         <div className="dashboard-eyebrow"><span className="dashboard-live-dot" /> WORKSPACE OVERVIEW <span className="dashboard-date">{dateLabel}</span></div>
         <h1>Your business, <span>in focus.</span></h1>
         <p>See what’s moving, spot your best opportunities, and choose the next action that brings revenue closer.</p>
-        <div className="dashboard-hero-actions"><button className="button button-primary" type="button" onClick={() => onNavigate('Find Leads')}><Plus size={16} /> Find new leads</button><button className="button dashboard-export-button" type="button" onClick={onExport} disabled={!leads.length}><Download size={15} /> Export data</button></div>
+        <div className="dashboard-hero-actions"><button className="button button-primary" type="button" onClick={() => onNavigate('Find Leads')}><Plus size={16} /> Find new leads</button><button className="button dashboard-export-button" type="button" onClick={onExport} disabled={!workspaceLeads.length}><Download size={15} /> Export data</button></div>
       </div>
       <div className="dashboard-hero-art" aria-hidden="true"><div className="hero-orbit hero-orbit-one" /><div className="hero-orbit hero-orbit-two" /><div className="hero-core"><Zap size={27} /></div><span className="hero-float hero-float-one"><Target size={15} /></span><span className="hero-float hero-float-two"><BarChart3 size={15} /></span><span className="hero-float hero-float-three"><Users size={15} /></span></div>
     </section>
@@ -863,8 +863,8 @@ function DashboardPage({ leads, getCrm, onNavigate, onOpenLead, onExport }) {
     <section className="kpi-grid dashboard-kpi-grid" aria-label="Workspace performance">{stats.map(({ label, value, icon: Icon, tone, caption }) => <div className={`kpi-card dashboard-kpi-card dashboard-kpi-${tone}`} key={label}><div className={`kpi-icon kpi-${tone}`}><Icon size={17} strokeWidth={1.8} /></div><div className="kpi-label">{label}</div><div className="kpi-value">{value}</div><div className="kpi-caption">{caption}</div></div>)}</section>
     <section className="surface-card source-counts-card" aria-label="Lead counts by source"><div className="source-counts-heading"><div><div className="card-kicker">LEAD SOURCES</div><h2>Where your leads came from</h2></div><span>Current workspace</span></div><div className="source-counts-grid">{sourceCounts.map(({ source, label, count }) => <div className={`source-count-item source-count-${source}`} key={source}><span className="source-count-dot" /><span>{label}</span><strong>{count}</strong></div>)}</div></section>
     <div className="dashboard-main-grid">
-      <section className="surface-card pipeline-card"><div className="card-heading-row"><div><div className="card-kicker">PIPELINE HEALTH</div><h2>Lead stages</h2></div><span className="quiet-chip"><Activity size={13} /> Workspace snapshot</span></div><div className="pipeline-summary"><strong>{leads.length}</strong><span>leads in the current workspace</span><ArrowUpRight size={16} /></div><div className="pipeline-bars">{pipeline.map((stage) => <div className="pipeline-row" key={stage.label}><div className="pipeline-row-head"><span>{stage.label}</span><strong>{stage.count}</strong></div><div className="pipeline-track"><span style={{ width: `${leads.length ? Math.max(stage.count ? 8 : 0, (stage.count / maxStage) * 100) : 0}%`, background: stage.color }} /></div></div>)}</div><div className="pipeline-footnote"><span className="legend-dot" /> Counts reflect current CRM statuses; no messages are sent automatically.</div></section>
-      <section className="surface-card priority-card"><div className="card-heading-row"><div><div className="card-kicker">BEST NEXT OPPORTUNITIES</div><h2>Worth a closer look</h2></div><button className="text-button" type="button" onClick={() => onNavigate('Leads')}>View all <ArrowRight size={14} /></button></div>{highest.length ? <div className="opportunity-list">{highest.map((lead) => { const crm = getCrm(lead); return <button type="button" className="opportunity-row" key={getLeadKey(lead)} onClick={() => onOpenLead(lead)}><div className="business-avatar">{initials(lead.name)}</div><div className="opportunity-copy"><strong>{lead.name}</strong><span>{lead.category} <i>·</i> {lead.city || lead.address || 'Location not returned'}</span></div><div className="opportunity-right"><ScorePill lead={lead} compact /><span className={`stage-mini stage-${crm.status.toLowerCase().replaceAll(' ', '-')}`}>{titleCaseStatus(crm.status)}</span></div></button>; })}</div> : <EmptyState icon={Target} title="Your shortlist starts here" body="Add a few prospects to see evidence-based opportunities." actionLabel="Find leads" onAction={() => onNavigate('Find Leads')} />}{leads.some((lead) => lead.source === 'google') && <GoogleDisclosure />}</section>
+      <section className="surface-card pipeline-card"><div className="card-heading-row"><div><div className="card-kicker">PIPELINE HEALTH</div><h2>Lead stages</h2></div><span className="quiet-chip"><Activity size={13} /> Workspace snapshot</span></div><div className="pipeline-summary"><strong>{workspaceLeads.length}</strong><span>leads in the current workspace</span><ArrowUpRight size={16} /></div><div className="pipeline-bars">{pipeline.map((stage) => <div className="pipeline-row" key={stage.label}><div className="pipeline-row-head"><span>{stage.label}</span><strong>{stage.count}</strong></div><div className="pipeline-track"><span style={{ width: `${workspaceLeads.length ? Math.max(stage.count ? 8 : 0, (stage.count / maxStage) * 100) : 0}%`, background: stage.color }} /></div></div>)}</div><div className="pipeline-footnote"><span className="legend-dot" /> Counts reflect current CRM statuses; no messages are sent automatically.</div></section>
+      <section className="surface-card priority-card"><div className="card-heading-row"><div><div className="card-kicker">BEST NEXT OPPORTUNITIES</div><h2>Worth a closer look</h2></div><button className="text-button" type="button" onClick={() => onNavigate('Leads')}>View all <ArrowRight size={14} /></button></div>{highest.length ? <div className="opportunity-list">{highest.map((lead) => { const crm = getCrm(lead); return <button type="button" className="opportunity-row" key={getLeadKey(lead)} onClick={() => onOpenLead(lead)}><div className="business-avatar">{initials(lead.name)}</div><div className="opportunity-copy"><strong>{lead.name}</strong><span>{lead.category} <i>·</i> {lead.city || lead.address || 'Location not returned'}</span></div><div className="opportunity-right"><ScorePill lead={lead} compact /><span className={`stage-mini stage-${crm.status.toLowerCase().replaceAll(' ', '-')}`}>{titleCaseStatus(crm.status)}</span></div></button>; })}</div> : <EmptyState icon={Target} title="Your shortlist starts here" body="Add real prospects to see evidence-based opportunities." actionLabel="Find leads" onAction={() => onNavigate('Find Leads')} />}{leads.some((lead) => lead.source === 'google') && <GoogleDisclosure />}</section>
     </div>
     <div className="dashboard-bottom-grid">
       <section className="surface-card followup-card"><div className="card-heading-row"><div><div className="card-kicker">FOLLOW-UP QUEUE</div><h2>Suggested next steps</h2></div><button className="text-button" type="button" onClick={() => onNavigate('Campaigns')}>View cadence <ArrowRight size={14} /></button></div>{due.length ? <div className="followup-list">{due.map((lead) => { const crm = getCrm(lead); return <div className="followup-row" key={getLeadKey(lead)}><div className="followup-date"><CalendarDays size={15} /><span>{formatDate(crm.nextFollowUp)}</span></div><div className="followup-copy"><strong>{lead.name}</strong><span>{crm.nextFollowUp < today ? 'Suggested follow-up is overdue' : 'Suggested follow-up is due today'}</span></div><button className="icon-button small-icon-button" aria-label={`Open ${lead.name}`} onClick={() => onOpenLead(lead)}><ArrowUpRight size={16} /></button></div>; })}</div> : <div className="empty-inline"><div className="empty-inline-icon"><Check size={16} /></div><div><strong>Nothing waiting on you</strong><span>Follow-up dates are suggestions; you choose what to send and when.</span></div></div>}<div className="compliance-note"><ShieldCheck size={14} /> Every follow-up is a draft suggestion. Nothing is sent in the background.</div></section>
@@ -879,7 +879,6 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
   const sourceChoice = searchForm.source || 'gemini';
   const sourceOptions = [
     { id: 'gemini', title: 'Gemini AI + Google Maps', detail: 'Grounded business discovery', disabled: false },
-    { id: 'demo', title: 'Demo sample', detail: 'Fictional Pune businesses', disabled: false },
   ];
   return <div className="page-stack">
     <PageHeading eyebrow="PROSPECTING" title="Find the right businesses." description="Search local businesses, then decide which ones belong in your pipeline."><span className="privacy-chip"><ShieldCheck size={14} /> Official sources. Manual outreach.</span></PageHeading>
@@ -903,7 +902,7 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
       {searchError && <div className="inline-error"><Info size={15} />{searchError}</div>}
       <div className="example-row"><span>Try a search</span>{EXAMPLE_SEARCHES.map((example) => <button type="button" key={example} className="example-chip" onClick={() => { const [category, city] = example.split(/\s+in\s+/i); setSearchForm((current) => ({ ...current, category, city })); }}>{example}</button>)}</div>
       {history.length > 0 && <div className="search-history-row"><span><History size={13} /> Recent searches</span>{history.map((entry, index) => <button type="button" key={`${entry.category}-${entry.city}-${index}`} className="history-chip" onClick={() => onSelectHistory(entry)}>{entry.category} · {entry.city}</button>)}</div>}
-      <div className="finder-form-foot"><ShieldCheck size={14} /> No Google Maps or Places API is used. OpenStreetMap data is community-maintained; demo results are clearly marked as fictional.</div>
+      <div className="finder-form-foot"><ShieldCheck size={14} /> Search real businesses using your configured source. Verify listing details before outreach.</div>
     </section>
     <ManualLeadTools leads={leads} results={results} onImport={onManualEntries} />
     {hasRun ? <section className={`finder-results-section ${source === 'google' ? 'google-results-container' : ''}`}><div className="results-heading"><div><div className="card-kicker">SEARCH RESULTS</div><h2>{results.length} {results.length === 1 ? 'business' : 'businesses'} <span>for “{query}”</span></h2></div><ModeBadge lead={source} /></div>
