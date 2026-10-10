@@ -826,7 +826,7 @@ function DashboardPage({ leads, getCrm, onNavigate, onOpenLead, onExport }) {
   const sourceCounts = [
     { source: 'manual', label: 'Manual' },
     { source: 'google', label: 'Google Places' },
-    { source: 'osm', label: 'OpenStreetMap' },
+    { source: 'osm', label: 'Local listings' },
     { source: 'demo', label: 'Demo' },
   ].map(({ source, label }) => ({ source, label, count: leads.filter((lead) => (lead.source || (lead.demo ? 'demo' : 'google')) === source).length }));
   const stats = [
