@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BarChart3, Download, RefreshCw, TrendingUp } from 'lucide-react';
-const KEYS={packages:'agencyos:sales-packages:v1',deals:'agencyos:deal-tracker:v1',invoices:'agencyos:invoice-tracker:v1',projects:'agencyos:project-tracker:v1',expenses:'agencyos:expense-tracker:v1'};
+const KEYS={packages:'agencyos:sales-packages:v1',deals:'agencyos:deal-tracker:v1',invoices:'agencyos:invoice-tracker:v1',projects:'agencyos:project-tracker:v1',expenses:'agencyos:expense-tracker:v1',activities:'agencyos:client-activity-log:v1'};
 const muted={color:'var(--viz-muted, #a1a1aa)',fontSize:13,lineHeight:1.55};
 const card={border:'1px solid var(--viz-border, #333)',borderRadius:12,padding:15};
 function read(key,fallback){try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback))??fallback}catch{return fallback}}
