@@ -1,216 +1,592 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, ArrowUpRight, CheckCircle2, ChevronDown, Clock3, Cpu, Globe2, Mail, Menu, Radar, ShieldCheck, Sparkles, Target, Workflow, Wrench, X, Zap } from 'lucide-react';
-import { goToSection, navigate, withBase } from '../lib/router.js';
+import {
+  ArrowRight,
+  ArrowUpRight,
+  CalendarCheck,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Clock3,
+  Cpu,
+  FileText,
+  Globe2,
+  Mail,
+  Menu,
+  MessageSquareText,
+  MoveRight,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  Users,
+  Workflow,
+  Wrench,
+  X,
+  Zap,
+} from 'lucide-react';
 import { CONTACT_EMAIL, CONTACT_SUBJECT } from './siteConfig.js';
+import DemosSection from './SiteDemos.jsx';
+import { Reveal } from './SitePrimitives.jsx';
+
+const SITE_ROOT = (import.meta.env?.BASE_URL || '/').replace(/\/?$/, '/');
+
+function scrollToSection(id) {
+  if (typeof window === 'undefined' || !id) return;
+  const target = document.getElementById(id);
+  if (!target) return;
+
+  window.history.replaceState({}, '', `#${id}`);
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  window.requestAnimationFrame(() => target.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' }));
+}
 
 const NAV_LINKS = [
-  { id: 'services', label: 'Services' },
-  { id: 'process', label: 'Process' },
+  { id: 'solutions', label: 'Solutions' },
+  { id: 'demos', label: 'Demos' },
+  { id: 'process', label: 'Our approach' },
   { id: 'reviews', label: 'Reviews' },
-  { id: 'contact', label: 'Contact' },
 ];
 
 const SERVICES = [
-  { icon: Workflow, title: 'Workflow Automation', copy: 'Identify repetitive admin, follow-ups and reporting that may be easier to manage with a simple workflow.', outcome: 'Less repetitive admin' },
-  { icon: Globe2, title: 'Business Websites', copy: 'Present your services clearly with a fast, focused website that makes the next step easy to understand.', outcome: 'A clearer path to enquire' },
-  { icon: Radar, title: 'Lead & Follow-up Systems', copy: 'Organize prospects and follow-ups so enquiries are easier to track and prioritize.', outcome: 'More organized follow-ups' },
-  { icon: Cpu, title: 'Custom AI Systems', copy: 'Connect AI to the workflows you already use instead of forcing your business into a generic tool.', outcome: 'Less manual work' },
-];
-
-const PAINS = [
-  ['Manual work', 'Your team spends hours copying data, replying to the same questions and updating spreadsheets.'],
-  ['Leads go cold', 'Enquiries arrive while nobody is available, follow-ups get forgotten and good prospects disappear.'],
-  ['Growth gets messy', 'More customers create more admin unless the systems behind the business scale with them.'],
+  {
+    number: '01',
+    icon: Globe2,
+    title: 'Websites & Digital Experiences',
+    problem: 'People cannot take the next step if your website is hard to use or hard to understand.',
+    answer: 'We design and build clear, responsive experiences that make your services and next steps easier to find.',
+  },
+  {
+    number: '02',
+    icon: Cpu,
+    title: 'AI Tools & Business Solutions',
+    problem: 'Generic tools often add another screen without fitting the way your team actually works.',
+    answer: 'We explore practical AI for focused tasks, with clear limits and a person in control of important decisions.',
+  },
+  {
+    number: '03',
+    icon: Workflow,
+    title: 'Workflow Automation',
+    problem: 'Repeated copying, hand-offs and reminders can pull attention away from the work that needs it.',
+    answer: 'We map the process first, then connect the steps that are safe and useful to automate.',
+  },
+  {
+    number: '04',
+    icon: MessageSquareText,
+    title: 'Lead Generation & Follow-up Systems',
+    problem: 'Enquiries are easy to lose when they arrive in different places and nobody can see what happens next.',
+    answer: 'We help organize lead capture, ownership and follow-up so conversations are easier to keep track of.',
+  },
 ];
 
 const PROCESS = [
-  ['01', 'Audit', 'We find the highest-value bottleneck and map the workflow before recommending software.'],
-  ['02', 'Build', 'We design the smallest practical system around your existing tools, data and team.'],
-  ['03', 'Launch', 'We put it into production, explain how it works and measure the outcome.'],
-];
-
-const TRUST_POINTS = [
-  { icon: ShieldCheck, title: 'No fabricated results', copy: 'We show real client outcomes when we have them. No fake logos, testimonials or vanity numbers.' },
-  { icon: Target, title: 'Outcome-first', copy: 'Every project starts with a business metric: hours saved, leads handled, response time or enquiries.' },
-  { icon: Wrench, title: 'Practical by design', copy: 'If a simple workflow solves the problem, we do not sell you a complicated AI stack.' },
+  {
+    number: '01',
+    title: 'Discover',
+    icon: MessageSquareText,
+    copy: 'Start with the people, tools and pinch points behind the problem.',
+  },
+  {
+    number: '02',
+    title: 'Plan',
+    icon: FileText,
+    copy: 'Agree on a focused scope, a useful first step and how we will review it.',
+  },
+  {
+    number: '03',
+    title: 'Build',
+    icon: Wrench,
+    copy: 'Create the experience or workflow around the way your business works.',
+  },
+  {
+    number: '04',
+    title: 'Improve',
+    icon: RefreshCw,
+    copy: 'Learn from real use, make thoughtful changes and keep what helps.',
+  },
 ];
 
 const FAQS = [
-  ['What does an AI audit include?', 'We review where your team spends repetitive time, where leads leak and which workflows are easiest to improve. You leave with a prioritized automation opportunity, not a generic AI presentation.'],
-  ['Do I need a large business or technical team?', 'No. REVOLTZ is designed around the business you already have. We can start with one workflow and expand only when the result justifies it.'],
-  ['How much does a project cost?', 'Pricing depends on the workflow, integrations and scope. The first audit is free so we can define the work before discussing a project price.'],
-  ['Do you replace our existing software?', 'Usually not. We prefer connecting and improving the tools you already rely on before introducing another platform.'],
+  [
+    'What happens in the free AI business audit?',
+    'We talk through your website, enquiries and repetitive work, then share practical areas worth exploring. It is an initial review, not a technical guarantee or a commitment to buy.',
+  ],
+  [
+    'Is the AI auditor on this page a live AI tool?',
+    'No. The auditor is an interactive demonstration that uses fixed sample suggestions in your browser. It does not connect to an AI service or assess a real business.',
+  ],
+  [
+    'Will we need to replace the tools we already use?',
+    'Not necessarily. We start by understanding your current setup and look for the simplest fit. If a new tool is not useful, we will say so.',
+  ],
 ];
 
-const mailtoHref = (subject) => `mailto:${CONTACT_EMAIL}${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`;
+function mailtoHref(subject, body = '') {
+  const query = new URLSearchParams();
+  if (subject) query.set('subject', subject);
+  if (body) query.set('body', body);
+  const queryString = query.toString();
+  return `mailto:${CONTACT_EMAIL}${queryString ? `?${queryString}` : ''}`;
+}
 
-function Reveal({ children, className = '' }) {
-  return <div className={`rv-reveal ${className}`}>{children}</div>;
+function handleSectionClick(event, id, onNavigate) {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+  event.preventDefault();
+  onNavigate?.();
+  scrollToSection(id);
 }
 
 function SiteNav() {
   const [open, setOpen] = useState(false);
-  const go = (event, id) => {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-    event.preventDefault();
-    setOpen(false);
-    goToSection(id);
-  };
+  const close = () => setOpen(false);
+
   return (
     <header className="rv-nav">
       <div className="rv-nav-inner">
-        <a className="rv-brand" href={withBase('/')} onClick={(e) => { e.preventDefault(); navigate('/'); }}>
-          <span className="rv-brand-mark"><Zap size={15} /></span><span className="rv-brand-text">REVOLTZ<span>AI</span></span>
+        <a
+          className="rv-brand"
+          href={SITE_ROOT}
+          aria-label="REVOLTZ AI home"
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+            event.preventDefault();
+            close();
+            scrollToSection('top');
+          }}
+        >
+          <span className="rv-brand-mark" aria-hidden="true"><Zap size={16} fill="currentColor" /></span>
+          <span className="rv-brand-lockup">
+            <span className="rv-brand-text">REVOLTZ<span>AI</span></span>
+            <span className="rv-brand-tagline">Build Smarter. Grow Faster.</span>
+          </span>
         </a>
-        <nav className="rv-nav-links" aria-label="Primary">
-          {NAV_LINKS.map(({ id, label }) => <a key={id} href={`/#${id}`} onClick={(e) => go(e, id)}>{label}</a>)}
+
+        <nav className="rv-nav-links" aria-label="Primary navigation">
+          {NAV_LINKS.map(({ id, label }) => (
+            <a key={id} href={`#${id}`} onClick={(event) => handleSectionClick(event, id)}>{label}</a>
+          ))}
         </nav>
+
         <div className="rv-nav-actions">
-          <a className="rv-btn rv-btn-primary rv-btn-sm" href="/#contact" onClick={(e) => go(e, 'contact')}>Get Free Audit <ArrowRight size={15} /></a>
-          <button className="rv-nav-toggle" type="button" aria-label={open ? 'Close menu' : 'Open menu'} onClick={() => setOpen(!open)}>{open ? <X size={18} /> : <Menu size={18} />}</button>
+          <a
+            className="rv-button rv-button-primary rv-nav-cta"
+            href="#contact"
+            onClick={(event) => handleSectionClick(event, 'contact')}
+          >
+            Get a Free AI Audit <ArrowUpRight size={15} />
+          </a>
+          <button
+            className="rv-nav-toggle"
+            type="button"
+            aria-label={open ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={open}
+            aria-controls="rv-mobile-panel"
+            onClick={() => setOpen((isOpen) => !isOpen)}
+          >
+            {open ? <X size={19} /> : <Menu size={19} />}
+          </button>
         </div>
       </div>
-      {open && <div className="rv-mobile-panel"><div className="rv-mobile-links">
-        {NAV_LINKS.map(({ id, label }) => <a key={id} href={`/#${id}`} onClick={(e) => go(e, id)}>{label}<ArrowUpRight size={16} /></a>)}
-        <a className="rv-btn rv-btn-primary" href="/#contact" onClick={(e) => go(e, 'contact')}>Claim Free AI Audit <ArrowRight size={16} /></a>
-      </div></div>}
+
+      <div className="rv-mobile-panel" id="rv-mobile-panel" hidden={!open}>
+        <nav className="rv-mobile-links" aria-label="Mobile navigation">
+          {NAV_LINKS.map(({ id, label }) => (
+            <a key={id} href={`#${id}`} onClick={(event) => handleSectionClick(event, id, close)}>
+              {label}<ArrowUpRight size={16} />
+            </a>
+          ))}
+          <a className="rv-button rv-button-primary" href="#contact" onClick={(event) => handleSectionClick(event, 'contact', close)}>
+            Get a Free AI Audit <ArrowRight size={16} />
+          </a>
+        </nav>
+      </div>
     </header>
+  );
+}
+
+function SystemMap() {
+  const inputs = [
+    { icon: Globe2, label: 'Website enquiry', note: 'A clear place to start' },
+    { icon: Mail, label: 'Messages & email', note: 'Different doors in' },
+    { icon: Users, label: 'Team hand-off', note: 'People stay in control' },
+  ];
+  const outputs = [
+    { icon: CheckCircle2, label: 'One clear queue' },
+    { icon: Sparkles, label: 'Useful AI, reviewed' },
+    { icon: CalendarCheck, label: 'A follow-up path' },
+  ];
+
+  return (
+    <div className="rv-system-visual" role="img" aria-label="Illustration: website enquiries, messages and team hand-offs connect through a thoughtful workflow to an organized queue, human-reviewed AI and a follow-up path.">
+      <div className="rv-visual-topline" aria-hidden="true">
+        <span><i /> SYSTEM MAP / EXAMPLE 01</span>
+        <span className="rv-visual-caption">A clearer way through</span>
+      </div>
+      <div className="rv-flow-stage" aria-hidden="true">
+        <svg className="rv-flow-lines" viewBox="0 0 600 400" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="rv-line-left" x1="0" x2="1">
+              <stop offset="0" stopColor="#5d75a8" stopOpacity=".1" />
+              <stop offset="1" stopColor="#7e8dff" stopOpacity=".85" />
+            </linearGradient>
+            <linearGradient id="rv-line-right" x1="0" x2="1">
+              <stop offset="0" stopColor="#8c80ff" stopOpacity=".9" />
+              <stop offset="1" stopColor="#53c8ef" stopOpacity=".16" />
+            </linearGradient>
+          </defs>
+          <path className="rv-flow-path rv-flow-path-a" d="M155 74 C196 74 190 180 225 180" />
+          <path className="rv-flow-path rv-flow-path-b" d="M155 200 C186 200 194 200 225 200" />
+          <path className="rv-flow-path rv-flow-path-c" d="M155 326 C196 326 190 220 225 220" />
+          <path className="rv-flow-path rv-flow-path-a" d="M376 180 C406 180 404 74 445 74" />
+          <path className="rv-flow-path rv-flow-path-b" d="M376 200 C410 200 410 200 445 200" />
+          <path className="rv-flow-path rv-flow-path-c" d="M376 220 C406 220 404 326 445 326" />
+          <circle className="rv-flow-pulse rv-pulse-one" r="3" />
+          <circle className="rv-flow-pulse rv-pulse-two" r="3" />
+          <circle className="rv-flow-pulse rv-pulse-three" r="3" />
+        </svg>
+
+        <div className="rv-flow-column rv-flow-inputs">
+          {inputs.map(({ icon: Icon, label, note }) => (
+            <div className="rv-flow-node rv-flow-input" key={label}>
+              <span className="rv-flow-icon"><Icon size={15} /></span>
+              <span className="rv-flow-copy"><strong>{label}</strong><small>{note}</small></span>
+            </div>
+          ))}
+        </div>
+
+        <div className="rv-flow-hub">
+          <span className="rv-hub-symbol"><Workflow size={22} /></span>
+          <span className="rv-hub-overline">THE CONNECTIVE LAYER</span>
+          <strong>Better systems<br />start with the flow.</strong>
+          <span className="rv-hub-foot">Tools that fit your work</span>
+        </div>
+
+        <div className="rv-flow-column rv-flow-outputs">
+          {outputs.map(({ icon: Icon, label }) => (
+            <div className="rv-flow-node rv-flow-output" key={label}>
+              <span className="rv-flow-icon"><Icon size={15} /></span>
+              <span className="rv-flow-copy"><strong>{label}</strong><small>Built around your team</small></span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="rv-visual-footline" aria-hidden="true">
+        <span><span className="rv-signal-dot" /> WEB / AI / AUTOMATION</span>
+        <span>Illustrative, not a live system</span>
+      </div>
+    </div>
   );
 }
 
 function Hero() {
   return (
     <section className="rv-hero" id="top">
-      <div className="rv-hero-bg" aria-hidden="true"><span className="rv-hero-grid" /><span className="rv-glow rv-glow-a" /><span className="rv-glow rv-glow-b" /></div>
-      <div className="rv-shell rv-hero-inner">
-        <Reveal><div className="rv-trust-chip"><span /> AI automation for growing businesses</div></Reveal>
-        <Reveal><h1>Make everyday business work <span>simpler.</span></h1></Reveal>
-        <Reveal><p className="rv-hero-sub">We help businesses improve their websites, organize leads and explore practical automation—starting with the problem that matters most.</p></Reveal>
-        <Reveal><div className="rv-hero-actions">
-          <a className="rv-btn rv-btn-primary" href="/#contact" onClick={(e) => { e.preventDefault(); goToSection('contact'); }}>Claim Your Free AI Audit <ArrowRight size={17} /></a>
-        </div></Reveal>
-        <Reveal><div className="rv-risk-line"><CheckCircle2 size={15} /> Free first audit <i /> No commitment <i /> Practical recommendations only</div></Reveal>
-        <Reveal><div className="rv-proof-strip">
-          <div><strong>AI + automation</strong><span>Built around your workflows</span></div>
-          <div><strong>Practical by design</strong><span>Start with one clear business problem</span></div>
-          <div><strong>India &amp; remote</strong><span>Built for modern small teams</span></div>
-        </div></Reveal>
+      <div className="rv-hero-atmosphere" aria-hidden="true"><span className="rv-hero-grid" /><span className="rv-hero-glow rv-hero-glow-blue" /><span className="rv-hero-glow rv-hero-glow-violet" /></div>
+      <div className="rv-shell rv-hero-layout">
+        <div className="rv-hero-copy">
+          <Reveal>
+            <p className="rv-eyebrow rv-hero-eyebrow"><span className="rv-eyebrow-spark">✳</span> Build Smarter. Grow Faster.</p>
+          </Reveal>
+          <Reveal>
+            <h1>Turn business bottlenecks into <span>your next advantage.</span></h1>
+          </Reveal>
+          <Reveal>
+            <p className="rv-hero-sub">We build digital experiences, practical AI solutions, and smarter workflows that help businesses spend less time on repetitive work and more time growing.</p>
+          </Reveal>
+          <Reveal>
+            <div className="rv-hero-actions">
+              <a className="rv-button rv-button-primary" href="#contact" onClick={(event) => handleSectionClick(event, 'contact')}>
+                Get a Free AI Audit <ArrowRight size={17} />
+              </a>
+              <a className="rv-button rv-button-secondary" href="#solutions" onClick={(event) => handleSectionClick(event, 'solutions')}>
+                Explore Our Solutions <MoveRight size={17} />
+              </a>
+            </div>
+          </Reveal>
+          <Reveal>
+            <div className="rv-hero-promise">
+              <span><Check size={14} /> Free initial business audit</span>
+              <span className="rv-promise-separator" aria-hidden="true" />
+              <span>Clear advice, no commitment</span>
+            </div>
+          </Reveal>
+        </div>
+
+        <Reveal className="rv-hero-art-wrap"><SystemMap /></Reveal>
+
+        <div className="rv-hero-footerline" aria-label="Services at a glance">
+          <span>WEBSITE DESIGN</span><i /><span>PRACTICAL AI</span><i /><span>WORKFLOW DESIGN</span><i /><span>LEAD SYSTEMS</span>
+        </div>
       </div>
     </section>
   );
 }
 
-function PainSection() {
-  return <section className="rv-section rv-pain"><div className="rv-shell">
-    <Reveal className="rv-head"><span className="rv-eyebrow">The problem</span><h2 className="rv-h2">Your business is growing. Your manual work is growing faster.</h2><p className="rv-lead">AI should remove operational friction, not create another dashboard your team has to manage.</p></Reveal>
-    <div className="rv-pain-grid">{PAINS.map(([title, copy]) => <Reveal className="rv-pain-card" key={title}><span className="rv-card-index">0{PAINS.findIndex((p) => p[0] === title) + 1}</span><h3>{title}</h3><p>{copy}</p></Reveal>)}</div>
-  </div></section>;
+function ServiceSystemVisual() {
+  return (
+    <aside className="rv-service-visual">
+      <div className="rv-service-visual-top"><span>SYSTEM PRINCIPLES / 04</span><span><span className="rv-signal-dot" /> PURPOSE-BUILT</span></div>
+      <div className="rv-service-visual-content">
+        <span className="rv-service-visual-kicker">NOT MORE SOFTWARE.</span>
+        <h3>A better fit<br />for the work.</h3>
+        <p>Start with what your team already uses. Connect only what solves the problem.</p>
+        <div className="rv-system-stack">
+          <div className="rv-stack-row"><span className="rv-stack-icon"><Globe2 size={15} /></span><span><strong>Existing tools</strong><small>Keep what works</small></span><Check size={14} /></div>
+          <div className="rv-stack-connector"><i /></div>
+          <div className="rv-stack-row rv-stack-highlight"><span className="rv-stack-icon"><Sparkles size={15} /></span><span><strong>A focused improvement</strong><small>Website · workflow · AI</small></span><ArrowRight size={14} /></div>
+          <div className="rv-stack-connector"><i /></div>
+          <div className="rv-stack-row"><span className="rv-stack-icon"><Users size={15} /></span><span><strong>People in control</strong><small>Review the important parts</small></span><ShieldCheck size={14} /></div>
+        </div>
+      </div>
+      <span className="rv-service-visual-note">The right amount of technology is the amount that helps.</span>
+    </aside>
+  );
 }
 
 function ServicesSection() {
-  return <section className="rv-section" id="services"><div className="rv-shell">
-    <Reveal className="rv-head"><span className="rv-eyebrow">What we build</span><h2 className="rv-h2">Useful solutions for real business needs.</h2><p className="rv-lead">You do not need more AI tools. You need fewer repetitive steps between your team and the result.</p></Reveal>
-    <div className="rv-services-grid">{SERVICES.map(({ icon: Icon, title, copy, outcome }) => <Reveal className="rv-service" key={title}>
-      <span className="rv-service-icon"><Icon size={19} /></span><h3>{title}</h3><p>{copy}</p><span className="rv-service-outcome"><CheckCircle2 size={14} /> {outcome}</span>
-    </Reveal>)}</div>
-  </div></section>;
+  return (
+    <section className="rv-section rv-services" id="solutions">
+      <div className="rv-shell">
+        <Reveal className="rv-section-heading rv-services-heading">
+          <span className="rv-eyebrow">Where we can help</span>
+          <h2 className="rv-h2">Solve the friction.<br /><span>Skip the theatre.</span></h2>
+          <p className="rv-lead">Each engagement starts with a real business problem—not a preselected product or a pitch for AI you do not need.</p>
+        </Reveal>
+        <div className="rv-services-layout">
+          <div className="rv-service-list">
+            {SERVICES.map(({ number, icon: Icon, title, problem, answer }) => (
+              <Reveal className="rv-service-row" key={title}>
+                <span className="rv-service-number">{number}</span>
+                <span className="rv-service-icon"><Icon size={19} /></span>
+                <div className="rv-service-row-copy">
+                  <h3>{title}</h3>
+                  <p><strong>The problem</strong>{problem}</p>
+                  <p><strong>Our approach</strong>{answer}</p>
+                </div>
+                <MoveRight className="rv-service-arrow" size={17} aria-hidden="true" />
+              </Reveal>
+            ))}
+          </div>
+          <Reveal className="rv-service-visual-wrap"><ServiceSystemVisual /></Reveal>
+        </div>
+        <p className="rv-audience-note"><span>BUILT AROUND REAL OPERATIONS</span> Clinics <i /> Restaurants <i /> Local businesses <i /> Startups <i /> Service providers</p>
+      </div>
+    </section>
+  );
 }
 
 function ProcessSection() {
-  return <section className="rv-section" id="process"><div className="rv-shell">
-    <Reveal className="rv-head"><span className="rv-eyebrow">How it works</span><h2 className="rv-h2">From bottleneck to working system.</h2><p className="rv-lead">Start small. Prove the value. Then scale what works.</p></Reveal>
-    <div className="rv-process">{PROCESS.map(([num, title, copy]) => <Reveal className="rv-process-step" key={num}><span>{num}</span><h3>{title}</h3><p>{copy}</p></Reveal>)}</div>
-  </div></section>;
-}
-
-function TrustSection() {
-  return <section className="rv-section rv-trust"><div className="rv-shell">
-    <Reveal className="rv-head"><span className="rv-eyebrow">Trust, without the theatre</span><h2 className="rv-h2">Clear about what we know — and what we do not.</h2><p className="rv-lead">REVOLTZ is early by design. We will never invent case studies or client results to make the website look bigger than the business.</p></Reveal>
-    <div className="rv-trust-grid">{TRUST_POINTS.map(({ icon: Icon, title, copy }) => <Reveal className="rv-trust-card" key={title}><Icon size={19} /><h3>{title}</h3><p>{copy}</p></Reveal>)}</div>
-  </div></section>;
+  return (
+    <section className="rv-section rv-process-section" id="process">
+      <div className="rv-shell">
+        <Reveal className="rv-section-heading">
+          <span className="rv-eyebrow">A clear path, together</span>
+          <h2 className="rv-h2">Good work is a process,<br />not a big reveal.</h2>
+          <p className="rv-lead">Small, visible steps keep the work grounded in what your business actually needs.</p>
+        </Reveal>
+        <div className="rv-process-track">
+          <div className="rv-process-rule" aria-hidden="true" />
+          {PROCESS.map(({ number, title, icon: Icon, copy }) => (
+            <Reveal className="rv-process-step" key={title}>
+              <span className="rv-process-node"><Icon size={17} /></span>
+              <span className="rv-process-number">{number} / 04</span>
+              <h3>{title}</h3>
+              <p>{copy}</p>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function ReviewsSection() {
-  return <section className="rv-section rv-reviews" id="reviews"><div className="rv-shell">
-    <Reveal className="rv-head"><span className="rv-eyebrow">Reviews &amp; feedback</span><h2 className="rv-h2">Trust is earned, not manufactured.</h2><p className="rv-lead">We’re building REVOLTZ through real conversations and real work. As clients share feedback and approve it for publication, their words will appear here.</p></Reveal>
-    <Reveal className="rv-review-empty">
-      <div className="rv-review-mark" aria-hidden="true">“</div>
-      <div><span className="rv-review-label"><span className="rv-review-dot" /> REAL FEEDBACK ONLY</span><h3>Have we worked together?</h3><p>Your honest feedback helps us improve and helps future clients make an informed decision. We’ll only publish a review with your permission.</p><a className="rv-btn rv-btn-primary" href={mailtoHref('REVOLTZ feedback')} >Share your feedback <ArrowRight size={16} /></a></div>
-    </Reveal>
-  </div></section>;
+  const commitments = [
+    { number: '01', title: 'Clear communication', text: 'We explain what we recommend, what it costs and what is still uncertain.' },
+    { number: '02', title: 'Practical scope', text: 'We look for the smallest useful solution before adding more tools or complexity.' },
+    { number: '03', title: 'Honest work', text: 'No invented results, hidden automation or claims that a demo is a client outcome.' },
+  ];
+
+  return (
+    <section className="rv-section rv-reviews" id="reviews">
+      <div className="rv-shell">
+        <Reveal className="rv-section-heading">
+          <span className="rv-eyebrow">Reviews & credibility</span>
+          <h2 className="rv-h2">Trust is earned.<br /><span>Not designed into a quote.</span></h2>
+          <p className="rv-lead">REVOLTZ is at an early stage, so there are no client reviews published here yet. When a client approves their words for sharing, this is where their feedback will live.</p>
+        </Reveal>
+        <div className="rv-credibility-layout">
+          <Reveal className="rv-review-placeholder">
+            <div className="rv-review-placeholder-top"><span>CLIENT VOICES</span><span className="rv-review-empty-mark"><span /></span></div>
+            <div className="rv-review-placeholder-main">
+              <span className="rv-review-quotes" aria-hidden="true">“ ”</span>
+              <h3>Room for real feedback.</h3>
+              <p>No placeholder testimonials. No borrowed logos. Just an open space for genuine client experiences, shared with permission.</p>
+              <a href={mailtoHref('REVOLTZ AI — feedback')}><Mail size={14} /> Share feedback privately <ArrowUpRight size={14} /></a>
+            </div>
+            <div className="rv-review-placeholder-foot"><span>ONLY WITH PERMISSION</span><span>REVOLTZ AI / 2026</span></div>
+          </Reveal>
+          <div className="rv-commitments">
+            <Reveal><span className="rv-commitments-kicker">WHAT YOU CAN EXPECT FROM US</span></Reveal>
+            {commitments.map(({ number, title, text }) => (
+              <Reveal className="rv-commitment" key={number}>
+                <span>{number}</span><div><h3>{title}</h3><p>{text}</p></div><CheckCircle2 size={16} />
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function FAQSection() {
-  const [open, setOpen] = useState(0);
-  return <section className="rv-section" id="faq"><div className="rv-shell rv-faq-layout">
-    <Reveal><span className="rv-eyebrow">Before you book</span><h2 className="rv-h2">Questions, answered.</h2><p className="rv-lead">No pressure, no jargon. Just enough context to decide whether a conversation is useful.</p></Reveal>
-    <div className="rv-faq-list">{FAQS.map(([q, a], index) => <Reveal className="rv-faq" key={q}>
-      <button type="button" aria-expanded={open === index} onClick={() => setOpen(open === index ? -1 : index)}><span>{q}</span><ChevronDown size={17} /></button>
-      {open === index && <p>{a}</p>}
-    </Reveal>)}</div>
-  </div></section>;
+  return (
+    <section className="rv-section rv-faq-section" id="faq">
+      <div className="rv-shell rv-faq-layout">
+        <Reveal className="rv-faq-intro">
+          <span className="rv-eyebrow">Before we start</span>
+          <h2 className="rv-h2">Good questions<br />deserve straight answers.</h2>
+          <p className="rv-lead">A little context before you decide if a conversation is worthwhile.</p>
+        </Reveal>
+        <div className="rv-faq-list">
+          {FAQS.map(([question, answer], index) => (
+            <Reveal className="rv-faq" key={question}>
+              <details>
+                <summary><span><i>0{index + 1}</i>{question}</span><ChevronDown size={17} /></summary>
+                <p>{answer}</p>
+              </details>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 }
 
-function IntakeForm() {
-  const [form, setForm] = useState({ name: '', business: '', email: '', goal: '' });
-  const submit = (event) => {
+function ContactForm() {
+  const [form, setForm] = useState({ name: '', business: '', email: '', service: '', problem: '' });
+  const [draftHref, setDraftHref] = useState('');
+
+  const update = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setDraftHref('');
+  };
+
+  const prepareEmail = (event) => {
     event.preventDefault();
     const body = [
       'Free AI Audit Request',
       '',
-      `Name: ${form.name}`,
-      `Business: ${form.business}`,
-      `Email: ${form.email}`,
+      `Name: ${form.name.trim()}`,
+      `Business: ${form.business.trim()}`,
+      `Email: ${form.email.trim()}`,
+      `Service of interest: ${form.service || 'Not sure yet'}`,
       '',
-      'What I want to improve:',
-      form.goal,
+      'What I would like to improve:',
+      form.problem.trim(),
     ].join('\n');
-    window.location.href = `${mailtoHref('Free AI Audit Request')}&body=${encodeURIComponent(body)}`;
+    setDraftHref(mailtoHref(`${CONTACT_SUBJECT} — ${form.business.trim()}`, body));
   };
-  return <form className="rv-intake" onSubmit={submit}>
-    <div className="rv-form-grid">
-      <label>Name<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Your name" /></label>
-      <label>Business<input required value={form.business} onChange={(e) => setForm({ ...form, business: e.target.value })} placeholder="Company / business name" /></label>
-    </div>
-    <label>Email<input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@company.com" /></label>
-    <label>What would you like to improve?<textarea required rows="4" value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} placeholder="e.g. automate lead follow-ups, improve our website, reduce admin..." /></label>
-    <button className="rv-btn rv-btn-primary rv-submit" type="submit">Claim My Free AI Audit <ArrowRight size={17} /></button>
-    <p className="rv-form-note"><ShieldCheck size={14} /> No spam. No obligation. We will reply with the next practical step.</p>
-  </form>;
+
+  return (
+    <form className="rv-contact-form" onSubmit={prepareEmail}>
+      <div className="rv-contact-form-heading"><span>FREE INITIAL AI BUSINESS AUDIT</span><span><i /> NO OBLIGATION</span></div>
+      <div className="rv-form-grid">
+        <label htmlFor="rv-name">Name<input id="rv-name" name="name" autoComplete="name" required maxLength={120} value={form.name} onChange={(event) => update('name', event.target.value)} placeholder="Your name" /></label>
+        <label htmlFor="rv-business">Business name<input id="rv-business" name="organization" autoComplete="organization" required maxLength={160} value={form.business} onChange={(event) => update('business', event.target.value)} placeholder="Your business" /></label>
+        <label htmlFor="rv-email">Email<input id="rv-email" name="email" type="email" autoComplete="email" required maxLength={254} value={form.email} onChange={(event) => update('email', event.target.value)} placeholder="you@business.com" /></label>
+        <label htmlFor="rv-service">Service of interest
+          <select id="rv-service" name="service" required value={form.service} onChange={(event) => update('service', event.target.value)}>
+            <option value="" disabled>Select a starting point</option>
+            <option>Website design & development</option>
+            <option>Practical AI tools & business solutions</option>
+            <option>Workflow automation</option>
+            <option>Lead generation & follow-up systems</option>
+            <option>Not sure — start with an AI audit</option>
+          </select>
+        </label>
+        <label className="rv-message-field" htmlFor="rv-problem">What problem would you like to solve?
+          <textarea id="rv-problem" name="problem" required rows="4" maxLength={3000} value={form.problem} onChange={(event) => update('problem', event.target.value)} placeholder="A little context helps us make the first conversation useful." />
+        </label>
+      </div>
+      <div className="rv-contact-submit-row">
+        <button className="rv-button rv-button-primary rv-contact-submit" type="submit">Get a Free AI Audit <ArrowRight size={16} /></button>
+        <span><ShieldCheck size={14} /> This website does not send your details. You choose whether to open and send an email draft.</span>
+      </div>
+      {draftHref && (
+        <div className="rv-email-draft" role="status" aria-live="polite">
+          <span className="rv-email-draft-icon"><Mail size={16} /></span>
+          <div><strong>Your enquiry has not been sent.</strong><p>Open the draft, review the details, then send it from your email app.</p></div>
+          <a className="rv-button rv-button-secondary" href={draftHref}>Open email draft <ArrowUpRight size={15} /></a>
+        </div>
+      )}
+      <p className="rv-form-disclaimer">This site has no enquiry backend. Preparing an email draft does not send your details anywhere; your email app opens only when you choose the button above.</p>
+    </form>
+  );
 }
 
-function FinalCta() {
-  return <section className="rv-section rv-cta" id="contact"><div className="rv-cta-bg" aria-hidden="true"><span /><b /></div><div className="rv-shell rv-cta-grid">
-    <Reveal><span className="rv-eyebrow">Start with one workflow</span><h2>Find one practical way to improve your business.</h2><p>Tell us what you would like to improve. We will review your request and suggest a practical next step—at no cost for the initial audit.</p></Reveal>
-    <Reveal className="rv-booking-wrap"><IntakeForm /><div className="rv-booking-side"><div><Clock3 size={18} /><strong>Simple first step</strong><span>10–15 minutes to understand the problem.</span></div><div><Sparkles size={18} /><strong>Useful even if we do not work together</strong><span>You leave with a clearer automation opportunity.</span></div><div><Mail size={18} /><strong>Prefer email?</strong><a href={mailtoHref()}>{CONTACT_EMAIL}</a></div></div></Reveal>
-  </div></section>;
+function ContactSection() {
+  return (
+    <section className="rv-section rv-contact" id="contact">
+      <div className="rv-contact-atmosphere" aria-hidden="true"><span /><i /></div>
+      <div className="rv-shell rv-contact-layout">
+        <Reveal className="rv-contact-copy">
+          <span className="rv-eyebrow">A useful first conversation</span>
+          <h2 className="rv-h2">What is slowing<br />your business down?</h2>
+          <p className="rv-lead">Tell us a little about it. We will look for a practical next step—starting with a free initial AI business audit.</p>
+          <div className="rv-contact-points">
+            <div><span><Clock3 size={16} /></span><p><strong>Start with the problem</strong><small>No technical brief needed. Just tell us what feels harder than it should.</small></p></div>
+            <div><span><Sparkles size={16} /></span><p><strong>Useful, even if we do not work together</strong><small>Get an honest view of what may be worth improving first.</small></p></div>
+          </div>
+          <a className="rv-direct-email" href={mailtoHref(CONTACT_SUBJECT)}><Mail size={15} /><span>Prefer email?</span><strong>{CONTACT_EMAIL}</strong><ArrowUpRight size={14} /></a>
+        </Reveal>
+        <Reveal className="rv-contact-form-wrap"><ContactForm /></Reveal>
+      </div>
+    </section>
+  );
 }
 
 function SiteFooter() {
-  return <footer className="rv-footer"><div className="rv-footer-inner">
-    <div><span className="rv-brand"><span className="rv-brand-mark"><Zap size={15} /></span><span className="rv-brand-text">REVOLTZ<span>AI</span></span></span><p>Practical digital solutions, useful AI tools and workflow improvements for growing businesses.</p></div>
-    <div><h4>Explore</h4><a href="/#services" onClick={(e) => { e.preventDefault(); goToSection('services'); }}>Services</a><a href="/#process" onClick={(e) => { e.preventDefault(); goToSection('process'); }}>Process</a></div>
-    <div><h4>Contact</h4><a href="/#contact" onClick={(e) => { e.preventDefault(); goToSection('contact'); }}>Free AI Audit</a><a href={mailtoHref()}>{CONTACT_EMAIL}</a></div>
-  </div><div className="rv-footer-bottom"><span>© {new Date().getFullYear()} REVOLTZ AI. Built with clarity over hype.</span><span>No fabricated client results.</span></div></footer>;
+  return (
+    <footer className="rv-footer">
+      <div className="rv-shell">
+        <div className="rv-footer-main">
+          <div className="rv-footer-brand">
+            <a className="rv-brand" href={SITE_ROOT} aria-label="REVOLTZ AI home" onClick={(event) => handleSectionClick(event, 'top')}>
+              <span className="rv-brand-mark" aria-hidden="true"><Zap size={15} fill="currentColor" /></span>
+              <span className="rv-brand-lockup"><span className="rv-brand-text">REVOLTZ<span>AI</span></span><span className="rv-brand-tagline">Build Smarter. Grow Faster.</span></span>
+            </a>
+            <p>Websites, practical AI and workflows built around real business needs.</p>
+          </div>
+          <div className="rv-footer-links"><strong>Explore</strong><a href="#solutions" onClick={(event) => handleSectionClick(event, 'solutions')}>Solutions</a><a href="#demos" onClick={(event) => handleSectionClick(event, 'demos')}>Interactive demos</a><a href="#process" onClick={(event) => handleSectionClick(event, 'process')}>Our approach</a></div>
+          <div className="rv-footer-links"><strong>Start here</strong><a href="#contact" onClick={(event) => handleSectionClick(event, 'contact')}>Get a Free AI Audit</a><a href={mailtoHref(CONTACT_SUBJECT)}>{CONTACT_EMAIL}</a><span>Remote · Built for growing businesses</span></div>
+        </div>
+        <div className="rv-footer-bottom"><span>© {new Date().getFullYear()} REVOLTZ AI</span><span>Clear thinking. Useful technology. Honest work.</span><a href="#top" onClick={(event) => handleSectionClick(event, 'top')}>Back to top ↑</a></div>
+      </div>
+    </footer>
+  );
 }
 
 export default function RevoltzSite() {
   useEffect(() => {
-    const nodes = document.querySelectorAll('.rv-root .rv-reveal');
-    if (!('IntersectionObserver' in window)) {
-      nodes.forEach((node) => node.classList.add('is-visible'));
-      return undefined;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('is-visible');
-          observer.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.12, rootMargin: '0px 0px -36px 0px' });
-    nodes.forEach((node) => observer.observe(node));
-    return () => observer.disconnect();
+    if (!window.location.hash) return;
+    const sectionId = window.location.hash.slice(1);
+    window.requestAnimationFrame(() => document.getElementById(sectionId)?.scrollIntoView({ block: 'start' }));
   }, []);
-  return <div className="rv-root"><a className="rv-skip" href="#main">Skip to content</a><SiteNav /><main id="main"><Hero /><PainSection /><ServicesSection /><ProcessSection /><TrustSection /><ReviewsSection /><FAQSection /><FinalCta /></main><SiteFooter /></div>;
+
+  return (
+    <div className="rv-root">
+      <a className="rv-skip" href="#main">Skip to content</a>
+      <SiteNav />
+      <main id="main">
+        <Hero />
+        <DemosSection />
+        <ServicesSection />
+        <ProcessSection />
+        <ReviewsSection />
+        <FAQSection />
+        <ContactSection />
+      </main>
+      <SiteFooter />
+    </div>
+  );
 }
