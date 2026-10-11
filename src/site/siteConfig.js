@@ -8,5 +8,5 @@
 /** Primary contact address. Shown in the final CTA and the footer. */
 export const CONTACT_EMAIL = 'revoltz.agency@gmail.com';
 
-/** Subject line pre-filled when a visitor clicks "Build With Us". */
-export const CONTACT_SUBJECT = 'Building with REVOLTZ AI';
+/** Subject line used for the email-based free audit request. */
+export const CONTACT_SUBJECT = 'Free AI Audit Request — REVOLTZ AI';

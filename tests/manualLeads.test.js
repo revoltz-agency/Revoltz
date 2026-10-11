@@ -137,7 +137,7 @@ test('CSV parser supports BOM, quoted commas, escaped quotes, and multiline cell
   assert.equal(parseCsv('Name,Industry,City\n"broken,Cafe,Pune').error, 'CSV contains an unclosed quoted field.');
 });
 
-test('CSV import maps headers, validates each row, and reports missing required columns', () => {
+test('CSV import maps headers, validates row-level values, and permits optional Industry and City data', () => {
   const csv = [
     'Business Name,Industry,City,Website,Phone,Email,Google Maps URL,Address,Rating,Review Count,Instagram,Facebook,Notes',
     'North Star,Cafe,Pune,northstar.example,+91 98765 43210,hello@northstar.example,https://maps.google.com/?q=northstar,"Koregaon Park, Pune",4.7,120,https://instagram.com/northstar,https://facebook.com/northstar,"Ask for Priya, weekdays"',
@@ -153,8 +153,16 @@ test('CSV import maps headers, validates each row, and reports missing required 
   assert.equal(parsed.rows[0].values.address, 'Koregaon Park, Pune');
   assert.equal(parsed.rows[0].values.notes, 'Ask for Priya, weekdays');
   assert.equal(parsed.rows[1].valid, false);
-  assert.ok(parsed.rows[1].errors.city);
+  assert.equal(parsed.rows[1].values.city, '');
+  assert.equal(parsed.rows[1].errors.city, undefined);
   assert.ok(parsed.rows[1].errors.website);
+  assert.ok(parsed.rows[1].errors.phone);
   assert.ok(parsed.rows[1].errors.email);
-  assert.match(parseManualLeadCsv('Name,Website\nShop,https://shop.example').error, /Industry, City/);
+  const minimal = parseManualLeadCsv('Name,Website\nShop,https://shop.example');
+  assert.equal(minimal.error, '');
+  assert.equal(minimal.rows[0].valid, true);
+  assert.equal(minimal.rows[0].values.category, '');
+  assert.equal(minimal.rows[0].values.city, '');
+  const noBusinessName = parseManualLeadCsv('Website,Phone\nhttps://shop.example,123');
+  assert.match(noBusinessName.error, /business-name column/i);
 });

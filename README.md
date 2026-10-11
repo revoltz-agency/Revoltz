@@ -1,6 +1,6 @@
 # REVOLTZ AI + AgencyOS
 
-REVOLTZ AI is the public marketing website. AgencyOS is the internal lead research and CRM workspace and is intended for personal use until it is offered as a paid product.
+REVOLTZ AI is the public marketing website. AgencyOS is a separate internal lead research and CRM workspace intended for personal use until it is offered as a paid product. GitHub Pages uses a dedicated marketing-only entry point; the internal app is not part of that build.
 
 AgencyOS is a responsive, dark-mode lead research and CRM MVP for an AI/web agency. It helps an operator search local businesses through the **OpenStreetMap lead finder** (no API key required; public services are shared and rate-limited) or the **official Google Places API (New)**, enrich public business details, qualify visible opportunities, review website signals, prepare evidence-based outreach drafts, and track follow-ups.
 
@@ -22,18 +22,19 @@ Request body: `{"prompt":"Your task..." }`. The endpoint returns `text`, `model`
 
 | Route | What it is |
 | --- | --- |
-| `/` | Public **REVOLTZ AI** marketing website: services, process, FAQs and contact. No link to the internal workspace. |
-| `/agencyos` | Internal **AgencyOS** workspace in local/self-hosted builds only. The public GitHub Pages build disables this route and displays the marketing site instead. |
+| `/` | Public **REVOLTZ AI** marketing website: services, interactive demonstrations, process, reviews/credibility, FAQs and contact. |
+| `/agencyos` | Internal **AgencyOS** workspace in local/self-hosted combined builds only. It is not a route in the GitHub Pages artifact. |
 
-Local/self-hosted builds can serve both views from one bundle. The GitHub Pages workflow sets `VITE_PUBLIC_SITE_ONLY=true`, so visiting `/agencyos` on the public site shows the marketing site instead. This is a visibility/routing separation, **not a security boundary**: source code remains in the repository. Do not put customer data or secrets into the public build. For genuine paid access, keep the repository private and deploy AgencyOS separately behind server-side authentication before onboarding customers.
+Local/self-hosted builds use `src/main.jsx` and can serve both views. The GitHub Pages workflow sets `VITE_PUBLIC_SITE_ONLY=true`; Vite swaps the HTML entry to `src/site-main.jsx`, which mounts only the public marketing site. The Pages artifact therefore contains no AgencyOS UI, route, app data or internal tools. It has no SPA fallback, so `/agencyos` is not served there. The repository itself still contains AgencyOS source code; this build separation is not a security boundary for a public repository. Keep credentials and private business data out of the repository, and use a private repo plus server-side authentication if the source or internal app must be private.
 
-- Public site components and styles live in `src/site/` (`RevoltzSite.jsx`, `site.css`).
-- Workspace styles remain in `src/styles.css`; the site styles are scoped under `.rv-root` so neither surface affects the other.
+- Public site components, example data and styles live in `src/site/` (`RevoltzSite.jsx`, `demoData.js`, `site.css`). `src/site-main.jsx` is the dedicated Pages entry point.
+- Workspace styles remain in `src/styles.css`; marketing styles are scoped under `.rv-root` so the two surfaces remain independent.
+- The three public demos use fictional, browser-local examples. The business auditor is deterministic sample logic, not a live AI service. The contact form prepares an email draft; it does not submit to a backend.
 - `src/components/leadPrimitives.jsx` holds the small lead badges shared by both surfaces.
 
 ## Architecture
 
-- **Frontend:** React 19 + Vite; responsive single-page workspace.
+- **Frontend:** React 19 + Vite; a static marketing website and a separate internal single-page workspace. The public Pages build uses its own marketing-only entry point.
 - **Server:** Express 5 serves the Vite app in development and the static build in production. API keys and outbound API calls stay server-side.
 - **Places search:** `POST /api/places/search` calls `https://places.googleapis.com/v1/places:searchText` with an explicit field mask and paginates up to 50 results (20 per request, at most three pages). Results are deduplicated by place ID. No wildcard field masks or Maps-page scraping are used. When a radius is selected, the server optionally geocodes the location through Google's Geocoding API and applies a Text Search location bias. Text Search bias is approximate, not a strict geographic boundary. `POST /api/places/details` is only called when an operator manually refreshes a saved place ID; the frontend caches each successful or failed request for the active app session.
 - **OpenStreetMap search:** `POST /api/free/search` resolves the operator's location text through Nominatim, then runs one Overpass API query for businesses within the requested radius. No API key is required, but these public community services are shared and rate-limited. Operator category text is matched against a fixed allowlist of Overpass tag pairs; when nothing matches it falls back to a name search restricted to seven business tag keys. Category text can never reach the query directly, and fallback name tokens are reduced to `[a-z0-9]` so no regex metacharacter can be injected. Results are deduplicated by OSM object ID and sorted by distance from the resolved point.
@@ -109,7 +110,7 @@ The UI shows the prescribed “Google Maps” text attribution alongside live li
 
 ## Manual lead import
 
-The Lead Finder's **Add Manual Lead** form requires Business Name, Industry, and City; all remaining fields are optional. **Import CSV** accepts UTF-8 comma-separated files with a header row. Required headers are `Business Name`, `Industry`, and `City`; supported optional headers are `Website`, `Phone`, `Email`, `Google Maps URL`, `Address`, `Rating`, `Review Count`, `Instagram`, `Facebook`, and `Notes`. `Category` may be used instead of `Industry`, and `Name` may be used instead of `Business Name`.
+The Lead Finder's **Add Manual Lead** form requires Business Name, Industry, and City; all remaining fields are optional. **Import CSV** accepts UTF-8 comma-separated files with a recognizable business-name column (for example `Business Name`, `Company`, or `Name`). Industry and City are optional for imports. Other supported optional headers include `Website`, `Phone`, `Email`, `Google Maps URL`, `Address`, `Rating`, `Review Count`, `Instagram`, `Facebook`, and `Notes`. `Category` may be used instead of `Industry`.
 
 CSV import validates rows and previews errors and likely duplicates before the operator confirms **Add anyway** or **Update existing**. Duplicate checks compare normalized Maps URLs, website domains, phone digits, and business name plus city. Blank optional data is shown as **Not provided** and does not count as a confirmed website/contact weakness. Imports are parsed locally in the browser (maximum 5 MB and 1,000 rows); manual creation/import makes no Google Places API request and does not visit or scrape any Maps URL. Manual lead details, explicit overrides, and CRM workflow fields are stored in that browser's local storage.
 
@@ -152,7 +153,7 @@ Provide `GOOGLE_MAPS_API_KEY` through your host's secret/environment manager, no
 
 ### GitHub Pages (static build)
 
-`.github/workflows/deploy.yml` builds the bundle with `--base=/Revoltz/` and publishes it to <https://revoltz-agency.github.io/Revoltz/> on every push to `main` (or via a manual run). The repository setting **Settings → Pages → Source: GitHub Actions** must be selected. `src/lib/router.js` derives its path prefix from the Vite base, so the same code serves `/` on the Express server and `/Revoltz/` on Pages, with `dist/404.html` covering history-route deep links. The static build ships no Express API: live OpenStreetMap/Google search, enrichment and website checks are unavailable there, and the workspace falls back to the demo and manual leads with browser-local CRM storage.
+`.github/workflows/deploy.yml` builds with `--base=/Revoltz/` and `VITE_PUBLIC_SITE_ONLY=true`, then publishes to <https://revoltz-agency.github.io/Revoltz/> on pushes to `main` (or a manual run). The repository setting **Settings → Pages → Source: GitHub Actions** must be selected. The public build uses `src/site-main.jsx`, includes no AgencyOS app or `/agencyos` route, and intentionally has no single-page-app fallback. The website's interactive demonstrations run from fictional data in the visitor's browser. Its contact form creates an email draft to the existing `revoltz.agency@gmail.com` address; there is no enquiry backend and nothing is sent automatically. A successful deployment still depends on the GitHub Pages workflow and repository Pages settings.
 
 **Important production limitation:** V1 has no accounts, authentication, authorization, shared database, server-side audit log, or multi-tenant boundary. Do not expose a public instance with prospect or CRM data without adding appropriate authentication/access controls and reviewing rate limits, privacy notices, retention/deletion, and deployment security. Local workflow fields are browser-specific and are lost if that browser's storage is cleared.
 
