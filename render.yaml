@@ -43,16 +43,15 @@ services:
         sync: false
       - key: AUDIT_OWNER_PASSWORD_HASH
         sync: false
-      # Exact origin(s) allowed to make state-changing Audit Inbox calls,
-      # comma separated, e.g. https://revoltz-agencyos.onrender.com
+      # Exact origins allowed to submit website enquiries and make owner writes.
+      # Update if the public website's domain changes.
       - key: AUDIT_ALLOWED_ORIGINS
-        sync: false
+        value: "https://revoltz-agency.github.io,https://revoltz-agencyos.onrender.com"
 
-      # Public intake stays OFF. Flipping this on is a separate, explicit
-      # decision that also requires end-to-end testing before any claim is made
-      # that website enquiries reach AgencyOS.
+      # Enable the public enquiry form. Requests still fail closed unless the
+      # database and owner credential above are configured.
       - key: AUDIT_PUBLIC_INTAKE_ENABLED
-        value: "false"
+        value: "true"
 
       # 89-day retention for audit requests.
       - key: AUDIT_RETENTION_DAYS
@@ -70,11 +69,6 @@ services:
       # Per-client Places cap, per route. Omit -> 20/min. Set to 0 only to
       # disable. Not a global spending cap: set a Google Cloud quota too.
       - key: PLACES_RATE_LIMIT_PER_MIN
-        sync: false
-      # BluesMinds AI. No key+model -> /api/ai/generate fails closed.
-      - key: BLUESMINDS_API_KEY
-        sync: false
-      - key: BLUESMINDS_MODEL
         sync: false
       # Tavily website discovery. No key -> enrichment skips discovery.
       - key: TAVILY_API_KEY

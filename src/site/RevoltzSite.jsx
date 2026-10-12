@@ -23,7 +23,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { CONTACT_EMAIL, CONTACT_SUBJECT } from './siteConfig.js';
+import { AUDIT_API_BASE_URL, CONTACT_EMAIL, CONTACT_SUBJECT } from './siteConfig.js';
 import DemosSection from './SiteDemos.jsx';
 import { Reveal } from './SitePrimitives.jsx';
 
@@ -464,39 +464,57 @@ function FAQSection() {
 
 function ContactForm() {
   const [form, setForm] = useState({ name: '', business: '', email: '', service: '', problem: '' });
-  const [draftHref, setDraftHref] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState(null);
 
   const update = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
-    setDraftHref('');
+    setResult(null);
   };
 
-  const prepareEmail = (event) => {
+  const submitEnquiry = async (event) => {
     event.preventDefault();
-    const body = [
-      'Free AI Audit Request',
-      '',
-      `Name: ${form.name.trim()}`,
-      `Business: ${form.business.trim()}`,
-      `Email: ${form.email.trim()}`,
-      `Service of interest: ${form.service || 'Not sure yet'}`,
-      '',
-      'What I would like to improve:',
-      form.problem.trim(),
-    ].join('\n');
-    setDraftHref(mailtoHref(`${CONTACT_SUBJECT} — ${form.business.trim()}`, body));
+    if (submitting) return;
+    setSubmitting(true);
+    setResult(null);
+    try {
+      const response = await fetch(AUDIT_API_BASE_URL + '/api/audit/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          business: form.business.trim(),
+          email: form.email.trim(),
+          service: form.service || 'Not sure — start with an AI audit',
+          message: form.problem.trim(),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.received !== true) {
+        if (response.status === 429) {
+          throw new Error('We have received several requests from this connection. Please try again later or email us directly.');
+        }
+        throw new Error('The enquiry form is temporarily unavailable. Please email revoltz.agency@gmail.com instead.');
+      }
+      setResult({ kind: 'success', message: 'Thanks — your request has been received and added to our private review inbox. We will follow up by email.' });
+      setForm({ name: '', business: '', email: '', service: '', problem: '' });
+    } catch (error) {
+      setResult({ kind: 'error', message: error?.message || 'We could not submit your request. Please email revoltz.agency@gmail.com instead.' });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <form className="rv-contact-form" onSubmit={prepareEmail}>
+    <form className="rv-contact-form" onSubmit={submitEnquiry}>
       <div className="rv-contact-form-heading"><span>FREE INITIAL AI BUSINESS AUDIT</span><span><i /> NO OBLIGATION</span></div>
       <div className="rv-form-grid">
         <label htmlFor="rv-name">Name<input id="rv-name" name="name" autoComplete="name" required maxLength={120} value={form.name} onChange={(event) => update('name', event.target.value)} placeholder="Your name" /></label>
         <label htmlFor="rv-business">Business name<input id="rv-business" name="organization" autoComplete="organization" required maxLength={160} value={form.business} onChange={(event) => update('business', event.target.value)} placeholder="Your business" /></label>
         <label htmlFor="rv-email">Email<input id="rv-email" name="email" type="email" autoComplete="email" required maxLength={254} value={form.email} onChange={(event) => update('email', event.target.value)} placeholder="you@business.com" /></label>
         <label htmlFor="rv-service">Service of interest
-          <select id="rv-service" name="service" required value={form.service} onChange={(event) => update('service', event.target.value)}>
-            <option value="" disabled>Select a starting point</option>
+          <select id="rv-service" name="service" value={form.service} onChange={(event) => update('service', event.target.value)}>
+            <option value="">Select a starting point</option>
             <option>Website design & development</option>
             <option>Practical AI tools & business solutions</option>
             <option>Workflow automation</option>
@@ -509,17 +527,17 @@ function ContactForm() {
         </label>
       </div>
       <div className="rv-contact-submit-row">
-        <button className="rv-button rv-button-primary rv-contact-submit" type="submit">Get a Free AI Audit <ArrowRight size={16} /></button>
-        <span><ShieldCheck size={14} /> This website does not send your details. You choose whether to open and send an email draft.</span>
+        <button className="rv-button rv-button-primary rv-contact-submit" type="submit" disabled={submitting}>{submitting ? 'Sending…' : 'Get a Free AI Audit'} <ArrowRight size={16} /></button>
+        <span><ShieldCheck size={14} /> Your enquiry goes to our private AgencyOS review inbox.</span>
       </div>
-      {draftHref && (
-        <div className="rv-email-draft" role="status" aria-live="polite">
-          <span className="rv-email-draft-icon"><Mail size={16} /></span>
-          <div><strong>Your enquiry has not been sent.</strong><p>Open the draft, review the details, then send it from your email app.</p></div>
-          <a className="rv-button rv-button-secondary" href={draftHref}>Open email draft <ArrowUpRight size={15} /></a>
+      {result && (
+        <div className={'rv-form-status rv-form-status-' + result.kind} role="status" aria-live="polite">
+          <strong>{result.kind === 'success' ? 'Request received' : 'Not submitted yet'}</strong>
+          <p>{result.message}</p>
+          {result.kind === 'error' && <a href={mailtoHref(CONTACT_SUBJECT)}>Email us directly <ArrowUpRight size={14} /></a>}
         </div>
       )}
-      <p className="rv-form-disclaimer">This site has no enquiry backend. Preparing an email draft does not send your details anywhere; your email app opens only when you choose the button above.</p>
+      <p className="rv-form-disclaimer">We use these details to review your enquiry and reply. No automated email or WhatsApp message is sent by this form.</p>
     </form>
   );
 }
