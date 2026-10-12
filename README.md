@@ -6,17 +6,11 @@ AgencyOS is a responsive, dark-mode lead research and CRM MVP for an AI/web agen
 
 > **Safety by design:** AgencyOS does not scrape Google Maps webpages, bulk-send email, automatically message WhatsApp numbers, or send follow-ups in the background. Email and WhatsApp actions are explicit, per-lead user clicks. WhatsApp opening is gated on a user-confirmed opt-in.
 
-### Server-side AI provider (BluesMinds)
+### Gemini AI
 
-The Express server exposes `POST /api/ai/generate` for server-side AI requests. This keeps the provider secret out of browser bundles and Git history.
+AgencyOS AI features use the Gemini API key entered in **Settings**. The key is kept in the current browser session and sent directly to Google's Gemini API from the client. No BluesMinds account, server-side AI key, or alternate-provider configuration is required. Model access, quotas, and billing eligibility are controlled by the Google AI Studio project.
 
-Configure these variables in the **server host's environment** (never in frontend code or committed files):
-
-- `BLUESMINDS_API_KEY` — secret key from your BluesMinds account.
-- `BLUESMINDS_MODEL` — exact model ID enabled for your account.
-- `BLUESMINDS_RESPONSES_URL` — optional override; defaults to `https://api.bluesminds.com/v1/responses`.
-
-Request body: `{"prompt":"Your task..." }`. The endpoint returns `text`, `model`, and `usage`. Prompts are limited to 12,000 characters and the endpoint applies a basic per-IP limit of 12 requests/minute per server process. This in-memory guard is only a fallback; use deployment-level authentication and rate limiting before exposing the endpoint publicly. GitHub Pages is static hosting and cannot run this Express route by itself; deploy the server to a backend host and configure these environment variables there.
+The API key is tested with a basic text-generation request without Google Maps grounding. Lead discovery uses Gemini with Google Maps grounding; other AI features use Gemini JSON generation.
 
 ## Routes
 
@@ -40,7 +34,7 @@ Local/self-hosted builds use `src/main.jsx` and can serve both views. The GitHub
 - **OpenStreetMap search:** `POST /api/free/search` resolves the operator's location text through Nominatim, then runs one Overpass API query for businesses within the requested radius. No API key is required, but these public community services are shared and rate-limited. Operator category text is matched against a fixed allowlist of Overpass tag pairs; when nothing matches it falls back to a name search restricted to seven business tag keys. Category text can never reach the query directly, and fallback name tokens are reduced to `[a-z0-9]` so no regex metacharacter can be injected. Results are deduplicated by OSM object ID and sorted by distance from the resolved point.
 - **Website check:** `POST /api/website/analyze` performs a constrained request to a public website and inspects a small HTML response for observable source signals, including link-text/URL evidence of an ordering link for food businesses. It includes SSRF safeguards, redirect checks, timeouts, content-type checks, and a 350 KB response limit. It is not a visual, accessibility, security, or full conversion audit.
 - **OSM lead enrichment:** `POST /api/enrich` fetches an OSM lead's listed website first, extracts publicly listed business contact/profile details, and checks at most five pages total per enrichment run (the homepage plus up to four obvious same-site pages). It reuses DNS-pinned public HTTP(S) fetching with redirect, timeout, and response-size limits; Jina Reader is only a fallback. If no website is listed, Tavily is called only when the server has `TAVILY_API_KEY`; its exact-name + city/category candidates are fetched and verified against the business name before acceptance. Tavily is optional. Results are cached in server memory for 24 hours and saved as separate browser-local CRM enrichment fields, leaving existing user-entered/verified contact fields unchanged. Enrichment does not scrape Google Maps or collect named personal email addresses.
-- **Qualification and draft generation:** A local, explainable rule engine scores source-appropriate observable signals; manually entered rating/review/social details are clearly identified as user-provided, and missing manual fields are treated as unknown. Message drafts use the supplied business details and any explicitly completed HTML check; no external LLM is used in this V1 so the product does not invent business claims. There is no AI-provider credential to configure.
+- **Qualification and draft generation:** A local, explainable rule engine scores source-appropriate observable signals; manually entered rating/review/social details are clearly identified as user-provided, and missing manual fields are treated as unknown. AI-assisted features use the Gemini API key entered in Settings. Message drafts use supplied business details and any explicitly completed HTML check.
 - **CRM storage:** Google Places responses stay in browser memory for the active session and are not written to the server or browser storage. `localStorage` holds CRM workflow/enrichment fields, manually entered leads and explicit user-entered overrides, saved Google place IDs (which are exempt from Places caching restrictions), and recent user-entered search terms. Saved Google IDs are shown as placeholders after a reload; the operator explicitly refreshes a place to fetch current details. CSV export includes labeled manual/user-entered details, CRM workflow fields, and Google place IDs, but intentionally omits Google Places business listing content.
 
 ## Requirements
