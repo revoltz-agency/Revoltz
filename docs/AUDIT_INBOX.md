@@ -1,9 +1,9 @@
 # Audit Inbox
 
-An owner-only inbox for “Claim Your Free Audit” enquiries, stored in PostgreSQL
-and deliberately separated from prospect CRM data.
+An owner-only inbox for enquiries submitted from the public REVOLTZ AI website.
+Requests are stored in PostgreSQL and deliberately separated from prospect CRM data.
 
-> **Status: implemented and unit-tested. NOT deployed. Public intake is OFF.**
+> **Status: inbox/API code exists. Production storage and Render configuration must be verified before claiming the form is live.**
 
 | Capability | State |
 |---|---|
@@ -11,7 +11,7 @@ and deliberately separated from prospect CRM data.
 | Unit tests | ✅ 137/137 passing (`npm test`) |
 | Database deployed | ❌ No |
 | Owner credential configured | ❌ No |
-| Public intake enabled | ❌ No (and must stay off until tested) |
+| Public intake enabled | ⚠️ Depends on Render environment configuration |
 | Scheduled retention cleanup | ❌ **Not deployed, not operational** |
 
 ---
@@ -66,7 +66,7 @@ All placeholders live in `.env.example`. Never commit real values.
 |---|---|---|
 | `DATABASE_URL` | *(none)* | PostgreSQL connection string |
 | `AUDIT_OWNER_PASSWORD_HASH` | *(none)* | scrypt hash of the owner password |
-| `AUDIT_PUBLIC_INTAKE_ENABLED` | `false` | Public `POST /api/audit/requests` |
+| `AUDIT_PUBLIC_INTAKE_ENABLED` | `false` in local defaults; `true` in Render blueprint | Public `POST /api/audit/requests` |
 | `AUDIT_RETENTION_DAYS` | `89` | Retention window in days |
 | `AUDIT_ALLOWED_ORIGINS` | *(none)* | Comma-separated origins for state-changing calls |
 | `AUDIT_SESSION_IDLE_MINUTES` | `480` | Idle session lifetime (renewed on use) |
