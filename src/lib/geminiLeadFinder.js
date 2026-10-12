@@ -118,7 +118,9 @@ async function callGemini(apiKey, prompt, { mapsGrounding = true, responseSchema
     if (response.ok) return data;
     const message = data?.error?.message || `Gemini request failed (HTTP ${response.status}).`;
     lastError = new Error(message.slice(0, 500));
-    // Switching models can help with model-specific limits, but cannot bypass a project-wide exhausted quota.
+    // Try the next configured model when Google explicitly rejects a model ID.
+    if (/model.*(not found|unavailable|does not exist|not supported)|unknown model/i.test(message)) continue;
+    // Switching models cannot bypass a project-wide exhausted quota.
     if (![429, 500, 502, 503, 504].includes(response.status)) break;
   }
   const message = lastError?.message || 'Gemini request failed.';
@@ -132,7 +134,9 @@ async function callGemini(apiKey, prompt, { mapsGrounding = true, responseSchema
 }
 
 export async function testGeminiApiKey(apiKey) {
-  await callGemini(apiKey, 'Return an empty leads array. Do not search for businesses.');
+  // Test authentication/model access without Google Maps grounding, so a key
+  // test does not depend on Maps-tool availability or lead-search behavior.
+  await callGemini(apiKey, 'Return a JSON object with status set to ok.', { mapsGrounding: false, responseSchema: null });
   return true;
 }
 
