@@ -8,7 +8,7 @@ AgencyOS is a responsive, dark-mode lead research and CRM MVP for an AI/web agen
 
 ### Gemini AI
 
-AgencyOS AI features use the Gemini API key entered in **Settings**. The key is kept in the current browser session and sent directly to Google's Gemini API from the client. No BluesMinds account, server-side AI key, or alternate-provider configuration is required. Model access, quotas, and billing eligibility are controlled by the Google AI Studio project.
+AgencyOS AI features use the Gemini API key entered in **Settings**. The key is kept in the current browser session and sent directly to Google's Gemini API from the client. No alternate-provider account or server-side AI credential is required. Model access, quotas, and billing eligibility are controlled by the Google AI Studio project.
 
 The API key is tested with a basic text-generation request without Google Maps grounding. Lead discovery uses Gemini with Google Maps grounding; other AI features use Gemini JSON generation.
 
