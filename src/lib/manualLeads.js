@@ -1,5 +1,8 @@
+// Prospect email collection was removed from the CRM workflow. The field list
+// below no longer contains 'email'. Existing CSV exports that still carry an
+// Email column remain importable: the column is ignored, never rejected.
 export const MANUAL_LEAD_FIELDS = [
-  'name', 'category', 'city', 'website', 'phone', 'email', 'mapsUrl', 'address',
+  'name', 'category', 'city', 'website', 'phone', 'mapsUrl', 'address',
   'rating', 'reviews', 'instagram', 'facebook', 'notes',
 ];
 
@@ -9,7 +12,6 @@ export const MANUAL_FIELD_LABELS = {
   city: 'City',
   website: 'Website',
   phone: 'Phone',
-  email: 'Email',
   mapsUrl: 'Google Maps URL',
   address: 'Address',
   rating: 'Rating',
@@ -22,9 +24,14 @@ export const MANUAL_FIELD_LABELS = {
 const MAX_MANUAL_CSV_ROWS = 1000;
 
 const EMPTY_VALUES = Object.freeze({
-  name: '', category: '', city: '', website: '', phone: '', email: '', mapsUrl: '', address: '',
+  name: '', category: '', city: '', website: '', phone: '', mapsUrl: '', address: '',
   rating: '', reviews: '', instagram: '', facebook: '', notes: '',
 });
+
+// Header names still recognised on import so a legacy Email column is skipped
+// deliberately rather than being mistaken for a business-name column. The value
+// is discarded: prospect email is no longer stored anywhere in the CRM.
+export const LEGACY_CSV_EMAIL_HEADERS = ['email', 'emailaddress', 'businessemail'];
 
 const HEADER_ALIASES = {
   name: ['businessname', 'business', 'businessnameorname', 'company', 'companyname', 'name', 'leadname', 'title', 'businesstitle', 'business_title', 'placename', 'placetitle', 'storename', 'shopname', 'restaurantname', 'venuename'],
@@ -32,7 +39,6 @@ const HEADER_ALIASES = {
   city: ['city', 'town', 'locality', 'cityname', 'district', 'area', 'locationcity'],
   website: ['website', 'websiteurl', 'businesswebsite', 'site', 'url'],
   phone: ['phone', 'phonenumber', 'telephone', 'mobile', 'businessphone'],
-  email: ['email', 'emailaddress', 'businessemail'],
   mapsUrl: ['googlemapsurl', 'googlemapslink', 'googlemaps', 'mapsurl', 'mapslink', 'mapurl'],
   address: ['address', 'fulladdress', 'streetaddress', 'location', 'businesslocation', 'locationaddress'],
   rating: ['rating', 'googlerating', 'businessrating'],
@@ -83,7 +89,6 @@ export function normalizeManualInput(input = {}) {
   values.city = cleanText(input.city, 160);
   values.website = cleanText(input.website, 2048);
   values.phone = cleanText(input.phone, 64);
-  values.email = cleanText(input.email, 254);
   values.mapsUrl = cleanText(input.mapsUrl ?? input.googleMapsUrl ?? input.google_maps_url, 2048);
   values.address = cleanText(input.address, 500);
   values.rating = cleanText(input.rating, 16);
@@ -104,9 +109,6 @@ export function validateManualLead(input = {}) {
   values.instagram = normalizeUrl(values.instagram, 'instagram', errors);
   values.facebook = normalizeUrl(values.facebook, 'facebook', errors);
 
-  if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
-    errors.email = 'Enter a valid email address or leave it blank.';
-  }
   if (values.phone) {
     const digits = values.phone.replace(/\D/g, '');
     if (digits.length < 7 || digits.length > 15) errors.phone = 'Enter a phone number with 7–15 digits, or leave it blank.';
@@ -152,7 +154,6 @@ export function createManualLead(input, options = {}) {
     website: values.website,
     phone: values.phone,
     internationalPhoneNumber: values.phone.startsWith('+') ? values.phone : '',
-    email: values.email,
     mapsUrl: values.mapsUrl,
     address: values.address,
     rating: values.rating === '' ? null : Number(values.rating),
@@ -161,7 +162,7 @@ export function createManualLead(input, options = {}) {
     facebook: values.facebook,
     notes: values.notes,
     businessStatus: 'UNKNOWN',
-    initialCRM: { status: 'NEW', assignedService: 'Website', email: values.email, notes: values.notes },
+    initialCRM: { status: 'NEW', assignedService: 'Website', notes: values.notes },
   };
 }
 
@@ -210,12 +211,14 @@ export function applyManualLeadUpdate(existing, input) {
     source: existing?.source || 'manual',
   };
   if (existing?.source === 'manual') {
+    // stripLegacyCrmEmail-equivalent at this layer: a legacy stored record must
+    // not carry an email forward after an edit. All other CRM data is kept.
+    const { email: _dropEmail, ...preservedCrm } = existing.initialCRM || {};
     updated.initialCRM = {
-      ...(existing.initialCRM || {}),
-      ...(values.email ? { email: values.email } : {}),
+      ...preservedCrm,
       ...(values.notes ? { notes: values.notes } : {}),
     };
-    if (values.email) updated.email = values.email;
+    delete updated.email;
     if (values.notes) updated.notes = values.notes;
   }
   return updated;
@@ -273,7 +276,6 @@ function duplicateFields(lead) {
     name: lead?.name ?? lead?.businessName ?? '',
     city: lead?.city ?? '',
     address: lead?.address ?? '',
-    email: lead?.email ?? crm.email ?? '',
   };
 }
 

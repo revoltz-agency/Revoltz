@@ -8,11 +8,19 @@ import { createManualLead } from '../src/lib/manualLeads.js';
 test('outreach uses only the listing details supplied to the generator', () => {
   const lead = { name: 'Sample Bistro', category: 'Restaurant', city: 'Pune', website: '', rating: 4.8, reviews: 428 };
   const draft = buildOutreach(lead);
-  assert.match(draft.subject, /Sample Bistro/);
-  assert.match(draft.emailBody, /Google business listing does not include a website/);
-  assert.doesNotMatch(draft.emailBody, /award-winning|helped 500|open until/i);
+  assert.match(draft.whatsappBody, /Sample Bistro/);
+  assert.match(draft.whatsappBody, /Google business listing does not include a website/);
+  assert.doesNotMatch(draft.whatsappBody, /award-winning|helped 500|open until/i);
   const listedWebsiteDraft = buildOutreach({ ...lead, website: 'https://example.com' });
-  assert.match(listedWebsiteDraft.emailBody, /4\.8 rating across 428 reviews/);
+  assert.match(listedWebsiteDraft.whatsappBody, /4\.8 rating across 428 reviews/);
+});
+
+test('outreach no longer produces an email draft', () => {
+  const draft = buildOutreach({ name: 'Sample Bistro', category: 'Restaurant', city: 'Pune' });
+  assert.equal(draft.subject, undefined);
+  assert.equal(draft.emailBody, undefined);
+  assert.equal(typeof draft.whatsappBody, 'string');
+  assert.ok(draft.whatsappBody.length > 0);
 });
 
 test('follow-up cadence includes Day 3, Day 7, and Day 14 relative to the first contact', () => {
@@ -48,22 +56,27 @@ test('CRM status changes preserve workflow fields and Do Not Contact revokes cha
   const contacted = updateCrmRecord(current, { status: 'CONTACTED', lastContacted: '2026-10-06' });
   assert.equal(contacted.status, 'CONTACTED');
   assert.equal(contacted.notes, 'Call after review');
-  const dnc = updateCrmRecord(contacted, { status: 'DO NOT CONTACT', emailPermissionConfirmed: true, whatsappOptInConfirmed: true });
+  const dnc = updateCrmRecord(contacted, { status: 'DO NOT CONTACT', whatsappOptInConfirmed: true });
   assert.equal(dnc.status, 'DO NOT CONTACT');
-  assert.equal(dnc.emailPermissionConfirmed, false);
   assert.equal(dnc.whatsappOptInConfirmed, false);
+  // Legacy email keys cannot be reintroduced even when explicitly patched in.
+  assert.equal(dnc.emailPermissionConfirmed, undefined);
+  assert.equal(dnc.email, undefined);
 });
 
-test('email outreach requires a user-verified address and an appropriate contact basis', () => {
+test('email outreach is unavailable regardless of any legacy email data', () => {
   const lead = { name: 'Business', phone: '+91 2012345678' };
-  const base = { status: 'NEW', email: 'owner@business.example' };
-  assert.equal(validateOutreachContact('email', lead, base).allowed, false);
-  assert.match(validateOutreachContact('email', lead, base).reason, /verified/i);
-  const verified = { ...base, emailVerifiedByUser: true };
-  assert.equal(validateOutreachContact('email', lead, verified).allowed, false);
-  assert.match(validateOutreachContact('email', lead, verified).reason, /contact basis/i);
-  assert.equal(validateOutreachContact('email', lead, { ...verified, emailPermissionConfirmed: true }).allowed, true);
-  assert.equal(validateOutreachContact('email', lead, { ...verified, emailPermissionConfirmed: true, status: 'DO NOT CONTACT' }).allowed, false);
+  const legacy = {
+    status: 'NEW',
+    email: 'owner@business.example',
+    emailVerifiedByUser: true,
+    emailPermissionConfirmed: true,
+  };
+  const result = validateOutreachContact('email', lead, legacy);
+  assert.equal(result.allowed, false);
+  assert.match(result.reason, /no longer available/i);
+  assert.equal(validateOutreachContact('email', lead, { status: 'NEW' }).allowed, false);
+  assert.match(validateOutreachContact('unknown-channel', lead, legacy).reason, /unsupported/i);
 });
 
 test('WhatsApp outreach requires a public phone and explicit per-lead opt-in', () => {
@@ -75,15 +88,14 @@ test('WhatsApp outreach requires a public phone and explicit per-lead opt-in', (
   assert.equal(validateOutreachContact('whatsapp', { ...lead, demo: true }, { status: 'NEW', whatsappOptInConfirmed: true }).allowed, false);
 });
 
-test('manual lead outreach keeps email verification, contact-basis, WhatsApp opt-in, and Do Not Contact gates', () => {
-  const lead = createManualLead({ name: 'North Star', category: 'Cafe', city: 'Pune', email: 'owner@example.com', phone: '+91 98765 43210' }, { id: 'manual-outreach' });
-  const crm = { status: 'NEW', email: lead.initialCRM.email, emailVerifiedByUser: false, emailPermissionConfirmed: false, whatsappOptInConfirmed: false };
-  assert.equal(validateOutreachContact('email', lead, crm).allowed, false);
-  assert.equal(validateOutreachContact('email', lead, { ...crm, emailVerifiedByUser: true }).allowed, false);
-  assert.equal(validateOutreachContact('email', lead, { ...crm, emailVerifiedByUser: true, emailPermissionConfirmed: true }).allowed, true);
+test('manual lead outreach keeps the WhatsApp opt-in and Do Not Contact gates', () => {
+  const lead = createManualLead({ name: 'North Star', category: 'Cafe', city: 'Pune', phone: '+91 98765 43210' }, { id: 'manual-outreach' });
+  // A manual lead no longer carries an email on the record or in its initial CRM.
+  assert.equal(lead.email, undefined);
+  const crm = { status: 'NEW', whatsappOptInConfirmed: false };
   assert.equal(validateOutreachContact('whatsapp', lead, crm).allowed, false);
   assert.equal(validateOutreachContact('whatsapp', lead, { ...crm, whatsappOptInConfirmed: true }).allowed, true);
-  const dnc = { ...crm, status: 'DO NOT CONTACT', emailVerifiedByUser: true, emailPermissionConfirmed: true, whatsappOptInConfirmed: true };
-  assert.equal(validateOutreachContact('email', lead, dnc).allowed, false);
+  const dnc = { ...crm, status: 'DO NOT CONTACT', whatsappOptInConfirmed: true };
   assert.equal(validateOutreachContact('whatsapp', lead, dnc).allowed, false);
+  assert.equal(validateOutreachContact('email', lead, dnc).allowed, false);
 });

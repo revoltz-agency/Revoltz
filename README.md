@@ -75,6 +75,7 @@ Copy `.env.example` to `.env` for local development. `.env` is ignored by Git.
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `GOOGLE_MAPS_API_KEY` | No (Google search only) | Server-only Google Maps Platform key. Enable Places API (New). Geocoding API is optional for radius bias. |
+| `PLACES_RATE_LIMIT_PER_MIN` | No | Per-client cap on Google Places calls, counted separately for search and details. Omit or leave malformed for the default of `20`; set exactly `0` to disable. This is a per-instance backstop, not a global spending cap — also set a Google Cloud quota and budget alert. See `docs/API_ABUSE_AND_COST_REVIEW.md`. |
 | `PORT` | No | Express server port; defaults to `5173`. |
 | `FREE_LEAD_SEARCH` | No | Set to `off` to disable OpenStreetMap search. No API key is required, but public services are shared and rate-limited. Defaults to `on`. |
 | `OVERPASS_API_URL` | No | Override the Overpass endpoint (default `https://overpass-api.de/api/interpreter`). |
@@ -141,6 +142,18 @@ Attribution is required: results display **© OpenStreetMap contributors** and l
 
 ## Deployment
 
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for verified compatibility notes
+and the deployment checklist. **Nothing has been deployed from this branch.**
+
+A [`render.yaml`](render.yaml) Blueprint is included. Committing it does not
+create or change any cloud resource; it must be applied deliberately in the
+Render dashboard. All secrets are declared `sync: false` — no credential,
+database URL or `.env` file is committed.
+
+The Node version is pinned consistently at **22.22.3** across `NODE_VERSION`
+(Render), `.node-version`, CI (`node-version: 22`) and `engines.node`
+(`^22.22.0 || ^24.0.0`).
+
 Build and run the Express server in production mode:
 
 ```bash
@@ -157,10 +170,70 @@ Provide `GOOGLE_MAPS_API_KEY` through your host's secret/environment manager, no
 
 **Important production limitation:** V1 has no accounts, authentication, authorization, shared database, server-side audit log, or multi-tenant boundary. Do not expose a public instance with prospect or CRM data without adding appropriate authentication/access controls and reviewing rate limits, privacy notices, retention/deletion, and deployment security. Local workflow fields are browser-specific and are lost if that browser's storage is cleared.
 
+## Audit Inbox
+
+An owner-only inbox for “Claim Your Free Audit” enquiries, stored in PostgreSQL
+and **completely separate from prospect CRM data** (which stays in the
+operator's browser). Full detail: [`docs/AUDIT_INBOX.md`](docs/AUDIT_INBOX.md).
+
+- **Not enabled by default.** It returns 503 unless both `DATABASE_URL` and
+  `AUDIT_OWNER_PASSWORD_HASH` are configured. It never falls back to weaker
+  authentication.
+- **Public intake is off.** `AUDIT_PUBLIC_INTAKE_ENABLED` defaults to `false`
+  and is set to `false` in `render.yaml`. The deployed marketing site keeps its
+  existing `mailto:` contact behaviour — **website form submissions do not reach
+  AgencyOS** until intake is enabled, deployed and tested end to end.
+- **Nothing is sent.** No email and no WhatsApp message is ever dispatched by
+  these routes. There is no mail or messaging provider in this feature.
+- The inbox UI lives in the AgencyOS workspace only, so it is excluded from the
+  public GitHub Pages marketing build.
+
+### Audit request retention — 89 days
+
+Audit requests are scheduled for hard deletion **89 days** after they are
+received (`AUDIT_RETENTION_DAYS`, default 89). Stated plainly, because these are
+different claims:
+
+| State | Status |
+|---|---|
+| Configured | ✅ Expiry is computed on every insert; a malformed setting falls back to 89 rather than disabling retention |
+| Unit-tested | ✅ `tests/auditInbox.test.js` covers the 88/89/90-day boundary, clamping, and that the purge statement is parameterized |
+| Deployed | ❌ **No.** No scheduled job exists in any Neon project |
+| Operational & verified | ❌ **No.** No scheduled invocation has ever been observed |
+
+Opening the inbox also purges expired rows opportunistically. That is
+**defence in depth, not proof of a scheduled policy** — it only runs when a
+human opens the page.
+
+Recommended mechanism: a **Neon scheduled Function Trigger**
+([`functions/audit-retention.ts`](functions/audit-retention.ts)), which per
+Neon's documentation fires even when the compute is scaled to zero. The
+`pg_cron` variant in
+[`db/audit_retention_pg_cron.sql`](db/audit_retention_pg_cron.sql) **only runs
+while the compute is active**, so it is unsuitable with scale-to-zero.
+
+## Prospect CRM email removal
+
+Email collection and email outreach have been removed from prospect CRM
+workflows; outreach is WhatsApp-draft only. Legacy email fields in existing
+browser storage are stripped on load (idempotent, selective, non-destructive),
+and the CRM CSV export no longer contains the three prospect email columns — a
+breaking schema change that remains backward compatible on import. Full detail:
+[`docs/CRM_EMAIL_REMOVAL.md`](docs/CRM_EMAIL_REMOVAL.md).
+
+## API abuse and provider cost
+
+[`docs/API_ABUSE_AND_COST_REVIEW.md`](docs/API_ABUSE_AND_COST_REVIEW.md) reviews
+every public route. Summary: Google Places, BluesMinds and Tavily are all
+disabled unless a key is present, but **`/api/places/search` has no in-process
+rate limit** and in-process limiters are **not** global spending caps. Platform
+budget alerts and quota caps are required before any public deployment.
+
 ## Compliance and limitations
 
 - There is no Google Maps webpage scraping, automatic bulk outreach, unofficial WhatsApp API, or background message sending.
-- The operator is responsible for a lawful basis for email outreach, honoring opt-outs, and getting WhatsApp opt-in before opening a WhatsApp conversation. The in-app contact check is an operator confirmation, not legal verification.
+- AgencyOS no longer collects prospect email addresses and no longer prepares email outreach. The operator is responsible for getting WhatsApp opt-in before opening a WhatsApp conversation. The in-app contact check is an operator confirmation, not legal verification.
+- Audit-request contact email **is** stored (it is the reply address for an inbound enquiry) in PostgreSQL, separate from prospect CRM data, retained for 89 days and then deleted. Opening the Audit Inbox requires an authenticated server-side session; data is never served without it.
 - Enrichment reads only public business websites, applies SSRF protection and strict fetch limits, skips Google Maps pages, and does not collect named personal email addresses. Normal fetching is attempted first; optional Jina Reader and Tavily services may receive the requested public website URL or exact business name/city/category as needed.
 - Google Places does not return business email in this field set. OSM enrichment can surface only publicly listed shared/role-based business email addresses; named personal mailboxes are ignored. An enriched address is not user-verified and stays separate from the outreach email until the operator chooses to use and verify it.
 - Scores are deterministic and explainable, not predictive guarantees. Raw factor points are normalized to 0–100 because mutually exclusive website signals cap the raw sum at 70. The drawer shows raw and normalized values.
@@ -178,5 +251,15 @@ Provide `GOOGLE_MAPS_API_KEY` through your host's secret/environment manager, no
 - `POST /api/places/details` — refreshes one saved place ID using a minimal explicit field mask; called only after an operator action.
 - `POST /api/enrich` — enriches an OSM lead from its public business website; optional Tavily discovery runs only when `TAVILY_API_KEY` is configured and verifies the candidate site before accepting it.
 - `POST /api/website/analyze` — performs a constrained public-website HTML check.
+- `GET /api/audit/config` — non-secret Audit Inbox configuration booleans (no credentials, tokens or connection strings).
+- `POST /api/audit/session` — owner sign-in. Rate limited and Origin checked; creates a server-side session returned as an HttpOnly, Secure-in-production, SameSite=Strict cookie.
+- `POST /api/audit/session/logout` — revokes the session server-side and clears both cookies. Requires the session, an allowed Origin and a CSRF token.
+- `GET /api/audit/retention` — owner-only. Reports the retention window, row counts and honest scheduled-cleanup status.
+- `GET /api/audit/requests` — owner-only. Lists audit requests.
+- `POST /api/audit/requests` — public audit intake. **Disabled by default** and returns 503 unless `AUDIT_PUBLIC_INTAKE_ENABLED=true`.
+- `PATCH /api/audit/requests/:id` — owner-only status change (validated id, validated status, validated transition).
+- `DELETE /api/audit/requests/:id` — owner-only hard delete.
+
+All Audit Inbox SQL uses bound parameters, ids are validated as UUIDs, and status values come from a closed set.
 
 Manual lead creation, validation, duplicate detection, and CSV parsing/import are client-side workflows; they have no server route and do not call Google Places. Website analysis and lead enrichment run only after an explicit per-lead click.

@@ -9,9 +9,6 @@ import { recommendService, whyThisLead } from '../src/lib/leadUtils.js';
 const crmFor = (lead) => ({
   status: lead.initialCRM?.status || 'NEW',
   notes: lead.initialCRM?.notes || '',
-  email: lead.initialCRM?.email || '',
-  emailVerifiedByUser: false,
-  emailPermissionConfirmed: false,
   whatsappOptInConfirmed: false,
   lastContacted: '', lastContactedAt: '', followUpAnchorDate: '', followUpStep: 0,
   nextFollowUp: '', assignedService: 'Website', estimatedDealValue: '', tags: [],
@@ -63,13 +60,13 @@ test('user-entered updates on Google leads retain source attribution in qualific
   const evidence = whyThisLead(lead).map((reason) => reason.text).join(' ');
   assert.match(evidence, /entered manually/);
   assert.doesNotMatch(evidence, /Phone was not returned/);
-  assert.match(buildOutreach(lead).emailBody, /user-provided rating.*user-provided reviews/i);
+  assert.match(buildOutreach(lead).whatsappBody, /user-provided rating.*user-provided reviews/i);
 });
 
 test('CSV export includes manual details and still excludes Google Places listing content', () => {
   const manual = createManualLead({
     name: 'North Star Cafe', category: 'Cafe', city: 'Pune', website: 'northstar.example',
-    phone: '+91 98765 43210', email: 'owner@northstar.example', mapsUrl: 'https://maps.google.com/?q=northstar',
+    phone: '+91 98765 43210', mapsUrl: 'https://maps.google.com/?q=northstar',
     address: 'Koregaon Park', rating: '4.8', reviews: '125', instagram: 'instagram.com/northstar', facebook: 'facebook.com/northstar', notes: 'Follow up next week',
   }, { id: 'manual-export' });
   const google = {
@@ -80,7 +77,6 @@ test('CSV export includes manual details and still excludes Google Places listin
   assert.match(csv, /lead_source/);
   assert.match(csv, /manual_business_name_user_entered/);
   assert.match(csv, /"Manual","North Star Cafe","Cafe","Pune"/);
-  assert.match(csv, /owner@northstar\.example/);
   assert.match(csv, /"Google Places"/);
   assert.match(csv, /place-secret/);
   assert.doesNotMatch(csv, /Google-only business|google-only\.example|Google address|11111 11111/);
@@ -99,7 +95,7 @@ test('CSV export includes manually entered updates on a Google record only in us
 
 test('manual outreach draft does not claim that a missing website or rating came from Google', () => {
   const draft = buildOutreach({ name: 'North Star Cafe', category: 'Cafe', city: 'Pune', source: 'manual', website: '' });
-  assert.match(draft.emailBody, /website was not provided/i);
-  assert.doesNotMatch(draft.emailBody, /Google business listing does not include a website/i);
-  assert.doesNotMatch(draft.emailBody, /Google listing shows/i);
+  assert.match(draft.whatsappBody, /website was not provided/i);
+  assert.doesNotMatch(draft.whatsappBody, /Google business listing does not include a website/i);
+  assert.doesNotMatch(draft.whatsappBody, /Google listing shows/i);
 });

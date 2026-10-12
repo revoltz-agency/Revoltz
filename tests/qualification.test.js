@@ -75,12 +75,13 @@ test('CSV contains labeled CRM fields only and neutralizes spreadsheet formulas'
   const lead = { id: 'place-1', placeId: 'place-1', source: 'google', name: 'Do not export name' };
   const csv = buildWorkflowCsv([lead], () => ({
     status: 'NEW', notes: '=HYPERLINK("https://bad.example")', lastContacted: '', nextFollowUp: '',
-    assignedService: 'Website', estimatedDealValue: 5000, email: '', emailVerifiedByUser: false,
-    emailPermissionConfirmed: false, whatsappOptInConfirmed: false, tags: [],
+    assignedService: 'Website', estimatedDealValue: 5000, whatsappOptInConfirmed: false, tags: [],
   }));
   assert.match(csv, /google_place_id_google_sourced/);
   assert.match(csv, /user_status/);
   assert.match(csv, /'=HYPERLINK/);
+  // Prospect email columns were removed from the export schema.
+  assert.doesNotMatch(csv, /user_entered_business_email|user_verified_email_by_user|user_email_contact_basis_confirmed/);
   assert.doesNotMatch(csv, /Do not export name/);
   assert.doesNotMatch(csv, /Sample Bistro/);
 });

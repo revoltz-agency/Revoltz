@@ -37,9 +37,9 @@ export function buildOutreach(lead) {
   const specific = observation ? ` ${observation}` : '';
   const offer = `I run an AI and web agency that helps local businesses improve their online presence and make enquiries easier. I have a quick idea tailored to the public details above and would be happy to share a short demo. Would you be open to seeing it?`;
 
+  // Prospect CRM no longer prepares email outreach. Only a WhatsApp draft is
+  // produced; the operator copies it and sends it themselves.
   return {
-    subject: `A quick idea for ${business}`,
-    emailBody: `Hi ${business},\n\n${intro}${specific}\n\n${offer}\n\nBest,\n[Your name]`,
     whatsappBody: `Hi ${business} — I came across your ${category.toLowerCase()} in ${city}.${observation ? ` ${observation}` : ''} I run an AI and web agency and had a small idea that may help make enquiries easier. Would you be open to a short demo?`,
   };
 }
