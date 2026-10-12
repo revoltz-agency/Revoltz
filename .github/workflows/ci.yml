@@ -18,3 +18,5 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Verify the public GitHub Pages build
+        run: VITE_PUBLIC_SITE_ONLY=true npm run build -- --base=/Revoltz/
