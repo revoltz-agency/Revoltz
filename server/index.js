@@ -150,7 +150,9 @@ app.post('/api/ai/generate', async (req, res) => {
     return res.status(400).json({ error: 'Provide a prompt between 1 and 12,000 characters.' });
   }
   try {
-    const result = await generateWithBluesMinds({ prompt });
+    const apiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim().slice(0, 500) : '';
+    const model = typeof req.body?.model === 'string' ? req.body.model.trim().slice(0, 160) : '';
+    const result = await generateWithBluesMinds({ prompt, apiKey, model });
     res.setHeader('Cache-Control', 'no-store');
     return res.json(result);
   } catch (error) {
