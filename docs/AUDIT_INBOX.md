@@ -44,8 +44,9 @@ never returned by the configuration endpoint.
 - Requests are stored in the `audit_requests` table in PostgreSQL.
 - Prospect CRM data never reaches the server — it stays in the operator's
   browser `localStorage`. The two stores are entirely separate.
-- **No email and no WhatsApp message is ever sent.** There is no mail provider,
-  no messaging provider and no webhook anywhere in this feature.
+- **No email or WhatsApp message is sent automatically.** Optional Telegram alerts
+  are available for new enquiries when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
+  are configured on the server.
 - The UI lives in the AgencyOS workspace (`src/components/AuditInbox.jsx`), so
   it is **excluded from the public GitHub Pages marketing build**.
 
