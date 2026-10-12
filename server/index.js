@@ -38,7 +38,7 @@ import {
   sessionAbsoluteMs,
   verifyOwnerPassword,
 } from './session.js';
-import { clientKey, createPlacesRateLimiter, createRateLimiter } from './security.js';
+import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed } from './security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -61,6 +61,25 @@ app.use((req, res, next) => {
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   next();
 });
+// Narrow CORS support for the public marketing site's enquiry form. The
+// same exact-origin allowlist also protects state-changing Audit Inbox routes.
+// No cookies or credentials are allowed for public intake.
+const auditAllowedOrigins = () => String(process.env.AUDIT_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+app.use('/api/audit/requests', (req, res, next) => {
+  const origin = String(req.headers.origin || '').trim();
+  if (!origin || !originAllowed(req, auditAllowedOrigins(), { allowMissing: false })) return next();
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  return next();
+});
+
 app.use(express.json({ limit: '32kb' }));
 
 const googleApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
@@ -69,9 +88,8 @@ const googleApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
 const freeSearchEnabled = (process.env.FREE_LEAD_SEARCH || 'on').trim().toLowerCase() !== 'off';
 
 // --- Audit Inbox configuration ---------------------------------------------
-// Public intake is OFF unless it is explicitly turned on. Nothing in this repo
-// enables it: the deployed marketing site keeps using its mailto: contact flow,
-// and the flag stays false through development and deployment preparation.
+// Public intake remains opt-in via AUDIT_PUBLIC_INTAKE_ENABLED. It is only
+// functional when the database, owner credential and exact allowed origins are configured.
 const auditPublicIntakeEnabled = String(process.env.AUDIT_PUBLIC_INTAKE_ENABLED || '')
   .trim().toLowerCase() === 'true';
 const auditRetentionDays = retentionDaysFromEnv(process.env.AUDIT_RETENTION_DAYS);
