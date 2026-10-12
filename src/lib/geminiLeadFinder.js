@@ -1,8 +1,8 @@
 // Gemini-powered local lead discovery using Gemini + Google Maps grounding.
 // The API key is supplied by the user at runtime and is never committed.
 
-export const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-2.5-flash'];
 export const GEMINI_KEY_STORAGE = 'agencyos:gemini-api-key:v1';
 
 const LEAD_SCHEMA = {
@@ -132,7 +132,9 @@ async function callGemini(apiKey, prompt, { mapsGrounding = true, responseSchema
 }
 
 export async function testGeminiApiKey(apiKey) {
-  await callGemini(apiKey, 'Return an empty leads array. Do not search for businesses.');
+  // Test key/model access without Maps grounding so this is an authentication
+  // check, not a lead-search or Maps-tool compatibility test.
+  await callGemini(apiKey, 'Reply with the single word OK.', { mapsGrounding: false, responseSchema: null });
   return true;
 }
 
@@ -154,7 +156,7 @@ export async function searchGeminiLeads({ apiKey, category, location, radiusKm =
     'Do not invent, infer, or guess missing phone numbers, websites, ratings, review counts, addresses, or place IDs. Use an empty string or null when the grounded data does not provide a field.',
     'Prefer distinct businesses located in the requested city/location. Exclude duplicates, closed/clearly nonexistent businesses, and generic category descriptions.',
     'Return the business name, category, city, full address, public phone if available, public website if available, Google Maps URL if available, rating, review count, and Google Maps place ID when available.',
-  ].join('\\n');
+  ].join('\n');
 
   const data = await callGemini(apiKey, prompt);
   const leads = parseResponse(data).slice(0, count);
