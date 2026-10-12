@@ -1,14 +1,15 @@
 const DEFAULT_BASE_URL = 'https://api.bluesminds.com/v1/responses';
 
-export async function generateWithBluesMinds({ prompt, model = process.env.BLUESMINDS_MODEL || '' }) {
-  const apiKey = process.env.BLUESMINDS_API_KEY?.trim();
+export async function generateWithBluesMinds({ prompt, apiKey: suppliedApiKey = '', model: suppliedModel = '' }) {
+  const apiKey = String(suppliedApiKey || process.env.BLUESMINDS_API_KEY || '').trim();
+  const model = String(suppliedModel || process.env.BLUESMINDS_MODEL || '').trim();
   if (!apiKey) {
-    const error = new Error('BluesMinds is not configured on this server. Set BLUESMINDS_API_KEY in the server environment.');
+    const error = new Error('Add your BluesMinds API key in AgencyOS Settings first.');
     error.statusCode = 503;
     throw error;
   }
   if (!model) {
-    const error = new Error('Set BLUESMINDS_MODEL to a model ID enabled for your account.');
+    const error = new Error('Enter a BluesMinds model ID enabled for your account in Settings.');
     error.statusCode = 503;
     throw error;
   }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, ArrowDownUp, ArrowRight, ArrowUpRight, Award, BarChart3, Building2, CalendarDays, ClipboardList,
   Check, CheckCircle2, ChevronDown, CircleHelp, Clock3, Copy, Download, ExternalLink, FileText, CircleDollarSign,
-  Filter, Flame, Globe2, LayoutDashboard, LoaderCircle, Mail, MapPin, Menu, MessageCircle,
+  Filter, Flame, Globe2, Inbox, LayoutDashboard, LoaderCircle, MapPin, Menu, MessageCircle,
   MoreHorizontal, Phone, Plus, RefreshCw, Search, Send, Settings as SettingsIcon, ShieldCheck,
   SlidersHorizontal, Sparkles, Star, Target, Users, Upload, X, Zap, Info, History, Trash2, Tag,
 } from 'lucide-react';
@@ -31,12 +31,15 @@ import ProposalBuilder from './components/ProposalBuilder.jsx';
 import WebsiteDemoBuilder from './components/WebsiteDemoBuilder.jsx';
 import ClientRetention from './components/ClientRetention.jsx';
 import WebsiteDelivery from './components/WebsiteDelivery.jsx';
+import AuditInbox from './components/AuditInbox.jsx';
 import CashFlowPlanner from './components/CashFlowPlanner.jsx';
 import ClientActivityLog from './components/ClientActivityLog.jsx';
 import PageErrorBoundary from './components/PageErrorBoundary.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
 import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
-import { enrichmentCrmPatch, markLeadContacted, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
+import {
+  enrichmentCrmPatch, markLeadContacted, stripLegacyCrmEmail, updateCrmRecord, validateOutreachContact,
+} from './lib/crm.js';
 import { getOrCreateCachedRequest } from './lib/placeDetailsCache.js';
 import {
   OSM_ATTRIBUTION, OSM_LICENSE_URL, buildFreeSearchPayload, freeSearchHint, isOsmLead, listingSourceNoun,
@@ -46,11 +49,15 @@ import {
   manualLeadOverrideFields, manualLeadSourceLabel, parseManualLeadCsv, validateManualLead,
 } from './lib/manualLeads.js';
 
-const DEFAULT_CRM = { status: 'NEW', notes: '', lastContacted: '', lastContactedAt: '', followUpAnchorDate: '', followUpStep: 0, nextFollowUp: '', assignedService: 'Website', estimatedDealValue: '', email: '', emailVerifiedByUser: false, emailPermissionConfirmed: false, whatsappOptInConfirmed: false, enrichmentStatus: 'not_enriched', enrichmentTimestamp: '', enrichmentSource: '', enrichmentConfidence: '', enrichmentEmail: '', enrichmentPhone: '', enrichmentWhatsappUrl: '', enrichmentSocialLinks: [], enrichmentAddress: '', enrichmentBusinessName: '', enrichmentServices: [], enrichmentOpeningHours: '', enrichmentContactPage: '', discoveredWebsite: '', enrichmentEvidence: [], tags: [] };
+// Prospect email fields are intentionally absent. Any legacy email value found
+// in stored data is dropped by stripLegacyCrmEmail inside cleanCrmRecord.
+const DEFAULT_CRM = { status: 'NEW', notes: '', lastContacted: '', lastContactedAt: '', followUpAnchorDate: '', followUpStep: 0, nextFollowUp: '', assignedService: 'Website', estimatedDealValue: '', whatsappOptInConfirmed: false, enrichmentStatus: 'not_enriched', enrichmentTimestamp: '', enrichmentSource: '', enrichmentConfidence: '', enrichmentPhone: '', enrichmentWhatsappUrl: '', enrichmentSocialLinks: [], enrichmentAddress: '', enrichmentBusinessName: '', enrichmentServices: [], enrichmentOpeningHours: '', enrichmentContactPage: '', discoveredWebsite: '', enrichmentEvidence: [], tags: [] };
 const WORKFLOW_STORAGE_KEY = 'agencyos:workflow:v1';
 const SAVED_PLACE_IDS_KEY = 'agencyos:saved-place-ids:v1';
 const SEARCH_HISTORY_KEY = 'agencyos:search-history:v1';
 const GEMINI_API_KEY_STORAGE = GEMINI_KEY_STORAGE;
+const BLUESMINDS_API_KEY_STORAGE = 'agencyos:bluesminds-api-key:v1';
+const BLUESMINDS_MODEL_STORAGE = 'agencyos:bluesminds-model:v1';
 const MANUAL_LEADS_STORAGE_KEY = 'agencyos:manual-leads:v1';
 const MANUAL_OVERRIDES_STORAGE_KEY = 'agencyos:manual-lead-overrides:v1';
 const EXAMPLE_SEARCHES = ['Restaurants in Pune', 'Dental clinics in Pune', 'CA firms in Pune', 'Gyms in Pune', 'Salons in Pune', 'Real estate agencies in Pune', 'Cloud kitchens in Pune'];
@@ -58,6 +65,7 @@ const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard },
   { label: 'Find Leads', icon: Search },
   { label: 'AI Business Auditor', icon: ClipboardList },
+  { label: 'Audit Inbox', icon: Inbox },
   { label: 'Leads', icon: Users },
   { label: 'Campaigns', icon: Send },
   { label: 'Sales Engine', icon: Target },
@@ -111,17 +119,19 @@ function readManualLeads() {
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((record) => record?.source === 'manual' && typeof record.id === 'string' && record.id.length <= 256)
       .slice(0, 1000).map((record) => {
+        // A legacy stored record may still carry an email key. It is stripped
+        // here rather than passed to the validator, so it is never re-saved.
+        const { email: _legacyStoredEmail, ...storedRecord } = record;
         const validation = validateManualLead({
-          ...record,
-          email: record.initialCRM?.email ?? record.email,
+          ...storedRecord,
           notes: record.initialCRM?.notes ?? record.notes,
         });
         if (!validation.valid) return null;
         const lead = createManualLead(validation.values, { id: record.id });
+        delete lead.email;
         lead.initialCRM = cleanCrmRecord({
           ...lead.initialCRM,
           ...(record.initialCRM || {}),
-          ...(validation.values.email ? { email: validation.values.email } : {}),
           ...(validation.values.notes ? { notes: validation.values.notes } : {}),
         });
         return lead;
@@ -140,7 +150,10 @@ function readManualLeadOverrides() {
 }
 
 function cleanCrmRecord(record) {
-  const next = { ...DEFAULT_CRM, ...(record || {}) };
+  // Drop any legacy prospect email field before sanitising, so stored data from
+  // earlier versions cannot resurrect an email on this record. Idempotent, and
+  // unrelated CRM fields are untouched.
+  const next = { ...DEFAULT_CRM, ...stripLegacyCrmEmail(record) };
   return {
     status: LEAD_STATUSES.includes(next.status) ? next.status : 'NEW',
     notes: typeof next.notes === 'string' ? next.notes.slice(0, 5000) : '',
@@ -151,15 +164,11 @@ function cleanCrmRecord(record) {
     nextFollowUp: typeof next.nextFollowUp === 'string' ? next.nextFollowUp.slice(0, 10) : '',
     assignedService: SERVICES.includes(next.assignedService) ? next.assignedService : 'Website',
     estimatedDealValue: next.estimatedDealValue === '' || next.estimatedDealValue == null ? '' : String(next.estimatedDealValue).slice(0, 14),
-    email: typeof next.email === 'string' ? next.email.slice(0, 254) : '',
-    emailVerifiedByUser: Boolean(next.emailVerifiedByUser),
-    emailPermissionConfirmed: Boolean(next.emailPermissionConfirmed),
     whatsappOptInConfirmed: Boolean(next.whatsappOptInConfirmed),
     enrichmentStatus: typeof next.enrichmentStatus === 'string' ? next.enrichmentStatus.slice(0, 40) : 'not_enriched',
     enrichmentTimestamp: typeof next.enrichmentTimestamp === 'string' ? next.enrichmentTimestamp.slice(0, 40) : '',
     enrichmentSource: typeof next.enrichmentSource === 'string' ? next.enrichmentSource.slice(0, 80) : '',
     enrichmentConfidence: ['high', 'medium', 'low'].includes(next.enrichmentConfidence) ? next.enrichmentConfidence : '',
-    enrichmentEmail: typeof next.enrichmentEmail === 'string' ? next.enrichmentEmail.slice(0, 254) : '',
     enrichmentPhone: typeof next.enrichmentPhone === 'string' ? next.enrichmentPhone.slice(0, 80) : '',
     enrichmentWhatsappUrl: typeof next.enrichmentWhatsappUrl === 'string' ? next.enrichmentWhatsappUrl.slice(0, 2000) : '',
     enrichmentSocialLinks: [...new Set((Array.isArray(next.enrichmentSocialLinks) ? next.enrichmentSocialLinks : []).filter((value) => typeof value === 'string').map((value) => value.slice(0, 2000)).filter(Boolean))].slice(0, 8),
@@ -225,6 +234,9 @@ function AgencyOSApp() {
     try { return window.sessionStorage.getItem(GEMINI_API_KEY_STORAGE) || ''; } catch { return ''; }
   });
   const [geminiTesting, setGeminiTesting] = useState(false);
+  const [bluesmindsApiKey, setBluesmindsApiKey] = useState(() => { try { return window.sessionStorage.getItem(BLUESMINDS_API_KEY_STORAGE) || ''; } catch { return ''; } });
+  const [bluesmindsModel, setBluesmindsModel] = useState(() => { try { return window.sessionStorage.getItem(BLUESMINDS_MODEL_STORAGE) || 'gpt-4o-mini'; } catch { return 'gpt-4o-mini'; } });
+  const [bluesmindsTesting, setBluesmindsTesting] = useState(false);
   const [manualLeads, setManualLeads] = useState(readManualLeads);
   const [manualOverrides, setManualOverrides] = useState(readManualLeadOverrides);
   const [leads, setLeads] = useState(() => dedupeLeads(manualLeads.map((lead) => applyManualLeadOverride(lead, manualOverrides))));
@@ -330,9 +342,7 @@ function AgencyOSApp() {
     if (!key) return;
     setWorkflow((previous) => {
       const current = cleanCrmRecord({ ...getDefaultCrm(lead), ...(previous[key] || {}) });
-      const emailChanged = Object.hasOwn(patch || {}, 'email') && patch.email !== current.email;
       const next = updateCrmRecord(current, {
-        ...(emailChanged ? { emailVerifiedByUser: false, emailPermissionConfirmed: false } : {}),
         ...(patch || {}),
       });
       return { ...previous, [key]: cleanCrmRecord(next) };
@@ -454,7 +464,6 @@ function AgencyOSApp() {
           overridePatches.set(key, { ...(overridePatches.get(key) || {}), ...manualLeadOverrideFields(values) });
         }
         const crmPatch = {};
-        if (values.email) crmPatch.email = values.email;
         if (values.notes) crmPatch.notes = values.notes;
         if (values.phone && values.phone.trim() !== String(current.phone || '').trim()) crmPatch.whatsappOptInConfirmed = false;
         if (Object.keys(crmPatch).length) crmPatches.set(key, { lead: updated, patch: crmPatch });
@@ -631,7 +640,7 @@ function AgencyOSApp() {
     const query = normalizeSearch(leadSearch);
     return leads.filter((lead) => {
       const crm = getCrm(lead);
-      const haystack = normalizeSearch(`${lead.name} ${lead.category} ${lead.city} ${lead.address} ${crm.email}`);
+      const haystack = normalizeSearch(`${lead.name} ${lead.category} ${lead.city} ${lead.address}`);
       return (!query || haystack.includes(query)) && (statusFilter === 'ALL' || crm.status === statusFilter) && (priorityFilter === 'ALL' || scoreOpportunity(lead).tier === ({ HOT: 'high', WARM: 'medium', COLD: 'low' }[priorityFilter] || priorityFilter.toLowerCase()));
     });
   }, [leads, workflow, leadSearch, statusFilter, priorityFilter]);
@@ -697,6 +706,7 @@ function AgencyOSApp() {
           {activePage === 'Client Activity Log' && <ClientActivityLog />}
           {activePage === 'Project Tracker' && <ProjectTracker />}
           {activePage === 'Business Reports' && <BusinessReports />}
+          {activePage === 'Audit Inbox' && <AuditInbox />}
           {activePage === 'Data Backup' && <DataBackup />}
           {activePage === 'Revenue Goals' && <RevenueGoals />}
           {activePage === 'Daily Action Center' && <DailyActionCenter />}
@@ -707,7 +717,7 @@ function AgencyOSApp() {
           {activePage === 'Find Leads' && <FinderPage searchForm={searchForm} setSearchForm={setSearchForm} onSearch={runLeadSearch} searching={searching} searchError={searchError} results={finderResults} source={finderSource} warnings={finderWarnings} requests={finderRequests} geocodingRequests={finderGeocodingRequests} history={searchHistory} onSelectHistory={(entry) => setSearchForm((current) => ({ ...current, ...entry }))} hasRun={searchHasRun} query={finderQuery} configLoading={apiConfig.loading} leads={leads} onAdd={addLeadToWorkspace} onOpenLead={openLead} onManualEntries={addManualLeadEntries} config={apiConfig} osmMeta={osmMeta} />}
           {activePage === 'Leads' && <PageErrorBoundary><LeadsPage leads={sortedLeads} allCount={leads.length} getCrm={getCrm} search={leadSearch} setSearch={setLeadSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} priorityFilter={priorityFilter} setPriorityFilter={setPriorityFilter} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort} onOpenLead={openLead} onPitch={handleOpenPitch} onStatus={updateStatus} onBulkUpdate={updateCrmBulk} onBulkRemove={removeSavedLeads} onRemove={removeSavedLead} onRefreshDetails={refreshSavedPlace} refreshingDetailsIds={refreshingDetailsIds} onExport={() => exportCsv(leads)} onFind={() => setActivePage('Find Leads')} /></PageErrorBoundary>}
           {activePage === 'Campaigns' && <CampaignsPage leads={leads} getCrm={getCrm} onOpenLead={openLead} onPitch={handleOpenPitch} />}
-          {activePage === 'Settings' && <SettingsPage config={apiConfig} notice={settingsNotice} onRefresh={refreshConfig} onNavigate={setActivePage} geminiApiKey={geminiApiKey} onGeminiApiKeyChange={(value) => {
+          {activePage === 'Settings' && <SettingsPage config={apiConfig} notice={settingsNotice} onRefresh={refreshConfig} onNavigate={setActivePage} geminiApiKey={geminiApiKey} bluesmindsApiKey={bluesmindsApiKey} bluesmindsModel={bluesmindsModel} bluesmindsTesting={bluesmindsTesting} onBluesMindsApiKeyChange={(value) => { setBluesmindsApiKey(value); try { window.sessionStorage.setItem(BLUESMINDS_API_KEY_STORAGE, value); } catch {} }} onBluesMindsModelChange={(value) => { setBluesmindsModel(value); try { window.sessionStorage.setItem(BLUESMINDS_MODEL_STORAGE, value); } catch {} }} onTestBluesMinds={async () => { setBluesmindsTesting(true); setSettingsNotice(''); try { const response = await fetch('/api/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ prompt: 'Reply with exactly: {"ok":true}', apiKey: bluesmindsApiKey, model: bluesmindsModel }) }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data?.error || `BluesMinds request failed (HTTP ${response.status}).`); if (!String(data.text || '').trim()) throw new Error('BluesMinds returned an empty response.'); setSettingsNotice('BluesMinds API connection works.'); } catch (error) { setSettingsNotice(error?.message || 'BluesMinds API test failed.'); } finally { setBluesmindsTesting(false); } }} onGeminiApiKeyChange={(value) => {
             setGeminiApiKey(value);
             try { window.sessionStorage.setItem(GEMINI_API_KEY_STORAGE, value); } catch {}
           }} geminiTesting={geminiTesting} onTestGemini={async () => {
@@ -733,7 +743,7 @@ function AgencyOSApp() {
 }
 
 const NAV_GROUPS = [
-  { label: 'Sales & follow-ups', icon: Target, items: ['AI Business Auditor', 'Campaigns', 'Sales Engine', 'Deal Pipeline', 'Follow-up Assistant'] },
+  { label: 'Sales & follow-ups', icon: Target, items: ['AI Business Auditor', 'Audit Inbox', 'Campaigns', 'Sales Engine', 'Deal Pipeline', 'Follow-up Assistant'] },
   { label: 'Clients & delivery', icon: Users, items: ['Client Onboarding', 'Client Retention', 'Website Delivery Hub', 'Project Tracker', 'Client Activity Log'] },
   { label: 'Finance & reports', icon: CircleDollarSign, items: ['Invoice Tracker', 'Cash Flow Planner', 'Expense Tracker', 'Revenue Goals', 'Business Reports'] },
   { label: 'Tools', icon: Zap, items: ['Daily Action Center', 'Quick Notes', 'Website Demo Builder', 'Proposal Builder', 'Data Backup'] },
@@ -926,7 +936,7 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
 }
 
 const EMPTY_MANUAL_LEAD_FORM = {
-  name: '', category: '', city: '', website: '', phone: '', email: '', mapsUrl: '', address: '',
+  name: '', category: '', city: '', website: '', phone: '', mapsUrl: '', address: '',
   rating: '', reviews: '', instagram: '', facebook: '', notes: '',
 };
 
@@ -1027,7 +1037,6 @@ function ManualLeadTools({ leads, results, onImport }) {
         <label className="field-group"><span>City <b>*</b></span><input className="field-input" value={formValues.city} onChange={(event) => updateForm('city', event.target.value)} maxLength={160} autoComplete="address-level2" required aria-invalid={Boolean(formErrors.city)} />{formErrors.city && <small className="manual-field-error">{formErrors.city}</small>}</label>
         <label className="field-group"><span>Website <small>optional</small></span><input className="field-input" value={formValues.website} onChange={(event) => updateForm('website', event.target.value)} maxLength={2048} placeholder="https://example.com" inputMode="url" aria-invalid={Boolean(formErrors.website)} />{formErrors.website && <small className="manual-field-error">{formErrors.website}</small>}</label>
         <label className="field-group"><span>Phone <small>optional</small></span><input className="field-input" value={formValues.phone} onChange={(event) => updateForm('phone', event.target.value)} maxLength={64} autoComplete="tel" placeholder="+91 …" aria-invalid={Boolean(formErrors.phone)} />{formErrors.phone && <small className="manual-field-error">{formErrors.phone}</small>}</label>
-        <label className="field-group"><span>Email <small>optional</small></span><input className="field-input" type="email" value={formValues.email} onChange={(event) => updateForm('email', event.target.value)} maxLength={254} autoComplete="email" placeholder="name@business.com" aria-invalid={Boolean(formErrors.email)} />{formErrors.email && <small className="manual-field-error">{formErrors.email}</small>}</label>
         <label className="field-group"><span>Google Maps URL <small>optional</small></span><input className="field-input" value={formValues.mapsUrl} onChange={(event) => updateForm('mapsUrl', event.target.value)} maxLength={2048} placeholder="Paste a public Google Maps link" inputMode="url" aria-invalid={Boolean(formErrors.mapsUrl)} />{formErrors.mapsUrl && <small className="manual-field-error">{formErrors.mapsUrl}</small>}<small className="manual-field-help"><a href="https://www.google.com/maps" target="_blank" rel="noreferrer">Open Google Maps <ExternalLink size={10} /></a> to copy a public link. No scraping or automation is performed.</small></label>
         <label className="field-group"><span>Address <small>optional</small></span><input className="field-input" value={formValues.address} onChange={(event) => updateForm('address', event.target.value)} maxLength={500} autoComplete="street-address" aria-invalid={Boolean(formErrors.address)} />{formErrors.address && <small className="manual-field-error">{formErrors.address}</small>}</label>
         <label className="field-group"><span>Rating <small>optional · 0–5</small></span><input className="field-input" type="number" min="0" max="5" step="0.1" value={formValues.rating} onChange={(event) => updateForm('rating', event.target.value)} placeholder="Not provided" aria-invalid={Boolean(formErrors.rating)} />{formErrors.rating && <small className="manual-field-error">{formErrors.rating}</small>}</label>
@@ -1094,7 +1103,7 @@ function LeadsPage({ leads, allCount, getCrm, search, setSearch, statusFilter, s
             <th className="select-column"><input type="checkbox" aria-label="Select all visible leads" checked={allVisibleSelected} onChange={(event) => setSelectedIds(event.target.checked ? visibleIds : [])} /></th><th><SortButton label="Business" field="name" current={sortKey} direction={sortDirection} onClick={onSort} /></th><th>Category</th><th>Location</th>
             <th><SortButton label="Rating" field="rating" current={sortKey} direction={sortDirection} onClick={onSort} /></th>
             <th><SortButton label="Reviews" field="reviews" current={sortKey} direction={sortDirection} onClick={onSort} /></th>
-            <th>Website</th><th>Phone</th><th>Email</th>
+            <th>Website</th><th>Phone</th>
             <th><SortButton label="Score" field="score" current={sortKey} direction={sortDirection} onClick={onSort} /></th>
             <th><SortButton label="Status" field="status" current={sortKey} direction={sortDirection} onClick={onSort} /></th><th>Actions</th>
           </tr></thead>
@@ -1112,7 +1121,6 @@ function LeadsPage({ leads, allCount, getCrm, search, setSearch, statusFilter, s
               <td className="number-cell">{hasReviews ? Number(lead.reviews).toLocaleString() : missingLeadValue(lead, '—')}</td>
               <td>{lead.needsRefresh ? <span className="muted-cell">Refresh listing</span> : lead.website ? lead.demo ? <span className="demo-site-label">Sample URL</span> : safeHttpUrl(lead.website) ? <a className="table-link" href={safeHttpUrl(lead.website)} target="_blank" rel="noreferrer">Visit <ExternalLink size={12} /></a> : <span className="muted-cell">Invalid URL</span> : <span className="muted-cell">{missingLeadValue(lead, 'Not listed')}</span>}</td>
               <td>{lead.phone ? <span className="phone-cell" title={isUserProvidedManualField(lead, 'phone') ? 'User-entered business phone' : lead.demo ? 'Fictional demo phone' : isOsmLead(lead) ? 'Public business phone from OpenStreetMap' : 'Public business phone from Google Places'}><Phone size={12} />{lead.phone}</span> : <span className="muted-cell">{missingLeadValue(lead, '—')}</span>}</td>
-              <td>{crm.email ? <button className="table-email" type="button" onClick={() => onOpenLead(lead)} title={`User-entered business email · ${crm.emailVerifiedByUser ? 'verified by you' : 'unverified'}`}>{crm.email}<small>{crm.emailVerifiedByUser ? 'USER VERIFIED' : 'UNVERIFIED'}</small></button> : <button className="add-email-button" type="button" onClick={() => onOpenLead(lead)}><Plus size={12} /> Add email</button>}</td>
               <td><ScorePill lead={lead} compact /></td>
               <td><select className={`status-select status-${crm.status.toLowerCase().replaceAll(' ', '-')}`} value={crm.status} onChange={(event) => onStatus(lead, event.target.value)} aria-label={`Status for ${lead.name}`}>{LEAD_STATUSES.map((status) => <option key={status} value={status}>{titleCaseStatus(status)}</option>)}</select></td>
               <td><div className="row-actions"><button className="icon-button small-icon-button" onClick={() => onOpenLead(lead)} aria-label={`View ${lead.name}`} title="Lead details"><ArrowUpRight size={15} /></button>{lead.needsRefresh && <button className="icon-button small-icon-button" onClick={() => onRefreshDetails(lead)} disabled={Boolean(refreshingDetailsIds[getLeadKey(lead)])} aria-label={`Refresh ${lead.name}`} title="Refresh current details from Google Places">{refreshingDetailsIds[getLeadKey(lead)] ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />}</button>}<button className="icon-button small-icon-button pitch-action" onClick={() => onPitch(lead)} disabled={crm.status === 'DO NOT CONTACT' || lead.needsRefresh} aria-label={`Generate pitch for ${lead.name}`} title={crm.status === 'DO NOT CONTACT' ? 'Do Not Contact is active' : lead.needsRefresh ? 'Refresh current place details first' : 'Generate pitch'}><Sparkles size={15} /></button><button className="icon-button small-icon-button remove-lead-action" onClick={() => onRemove(lead)} aria-label={`Remove ${lead.name} from saved leads`} title="Remove saved lead"><Trash2 size={14} /></button></div></td>
@@ -1142,7 +1150,7 @@ function CampaignsPage({ leads, getCrm, onOpenLead, onPitch }) {
   ];
   return <div className="page-stack">
     <PageHeading eyebrow="CAMPAIGNS" title="A cadence, not an autopilot." description="Plan thoughtful follow-ups. Every message is still reviewed and sent by you."><span className="manual-only-pill"><ShieldCheck size={14} /> Manual sending only</span></PageHeading>
-    <div className="campaign-warning"><div className="campaign-warning-icon"><ShieldCheck size={17} /></div><div><strong>No bulk sends. No background automation.</strong><p>AgencyOS only prepares drafts and suggested dates. Opening an email or WhatsApp draft requires your explicit click; you review and send it yourself.</p></div></div>
+    <div className="campaign-warning"><div className="campaign-warning-icon"><ShieldCheck size={17} /></div><div><strong>No bulk sends. No background automation.</strong><p>AgencyOS only prepares WhatsApp drafts and suggested dates. Opening a draft requires your explicit click; you review and send it yourself.</p></div></div>
     <section className="campaign-stat-grid"><div className="surface-card campaign-stat"><span className="campaign-stat-icon purple"><FileText size={17} /></span><span>Draft sequences</span><strong>01</strong><small>One suggested cadence</small></div><div className="surface-card campaign-stat"><span className="campaign-stat-icon blue"><Clock3 size={17} /></span><span>Follow-ups due</span><strong>{due.length}</strong><small>Dates you can review</small></div><div className="surface-card campaign-stat"><span className="campaign-stat-icon green"><CalendarDays size={17} /></span><span>Upcoming</span><strong>{upcoming.length}</strong><small>Suggestions only</small></div><div className="surface-card campaign-stat"><span className="campaign-stat-icon amber"><Send size={17} /></span><span>Automated sends</span><strong>0</strong><small>Intentionally unavailable</small></div></section>
     <div className="campaign-layout"><section className="surface-card sequence-card"><div className="card-heading-row"><div><div className="card-kicker">SUGGESTED SEQUENCE</div><h2>Local business introduction</h2></div><span className="draft-badge"><span /> Draft only</span></div><p className="sequence-intro">A respectful four-step rhythm you can adapt for each prospect. Dates begin when you manually mark the initial outreach.</p><div className="sequence-timeline">{steps.map((step, index) => { const Icon = step.icon; return <div className={`timeline-step ${step.tone}`} key={step.day}><div className="timeline-marker"><Icon size={15} /></div><div className="timeline-copy"><span>{step.day}</span><strong>{step.title}</strong><p>{step.desc}</p></div>{index < steps.length - 1 && <div className="timeline-line" />}</div>; })}</div>{eligible && <button className="button button-primary" type="button" onClick={() => onPitch(eligible)}><Sparkles size={16} /> Generate a personal draft <ArrowRight size={15} /></button>}</section>
       <section className="surface-card followup-queue-card"><div className="card-heading-row"><div><div className="card-kicker">YOUR FOLLOW-UPS</div><h2>Review the queue</h2></div><CalendarDays size={17} className="muted-icon" /></div>{queue.length ? <div className="campaign-queue-list">{queue.map(({ lead, crm }) => <div className="campaign-queue-row" key={getLeadKey(lead)}><div className={`queue-date ${crm.nextFollowUp < today ? 'queue-date-overdue' : ''}`}><span>{formatDate(crm.nextFollowUp)}</span><small>{crm.nextFollowUp < today ? 'Overdue' : 'Upcoming'}</small></div><button className="queue-lead" type="button" onClick={() => onOpenLead(lead)}><strong>{lead.name}</strong><span>{titleCaseStatus(crm.status)} <i>·</i> {crm.assignedService}</span></button><button className="icon-button small-icon-button" type="button" onClick={() => onPitch(lead)} aria-label={`Draft follow-up for ${lead.name}`}><ArrowUpRight size={15} /></button></div>)}</div> : <div className="empty-inline"><div className="empty-inline-icon"><CalendarDays size={15} /></div><div><strong>No follow-ups scheduled</strong><span>Suggested dates appear here after you set a next follow-up on a lead.</span></div></div>}<div className="campaign-queue-foot"><Info size={13} /> Due dates never trigger messages automatically.</div>{leads.some((lead) => lead.source === 'google') && <GoogleDisclosure />}</section>
@@ -1150,15 +1158,15 @@ function CampaignsPage({ leads, getCrm, onOpenLead, onPitch }) {
   </div>;
 }
 
-function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onGeminiApiKeyChange, geminiTesting, onTestGemini }) {
+function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onGeminiApiKeyChange, geminiTesting, onTestGemini, bluesmindsApiKey, bluesmindsModel, bluesmindsTesting, onBluesMindsApiKeyChange, onBluesMindsModelChange, onTestBluesMinds }) {
   return <div className="page-stack">
     <PageHeading eyebrow="WORKSPACE PREFERENCES" title="Settings & integrations." description="Know what is connected, where data lives, and what AgencyOS will never do." />
     <section className={`integration-status-card ${config.googlePlacesConfigured ? 'integration-ready' : ''}`}><div className="integration-icon"><Globe2 size={20} /></div><div className="integration-copy"><div className="card-kicker">LEGACY GOOGLE PLACES INTEGRATION</div><h2>{config.loading ? 'Checking server configuration…' : config.googlePlacesConfigured ? 'Legacy server key configured' : 'No legacy Places key'}</h2><p>{config.googlePlacesConfigured ? 'A legacy server-side Places key is present for refreshing older saved Google place IDs. New lead searches use the Gemini key above.' : config.reachable ? 'Normal lead discovery and the AI Business Auditor use the Gemini key above. This legacy Places key is not used for normal searches.' : 'The optional server status endpoint could not be reached. Gemini-powered features use the key above; manual entry and CSV import remain available.'}</p></div><div className={`integration-state ${config.googlePlacesConfigured ? 'integration-state-ready' : ''}`}><span />{config.loading ? 'Checking' : config.googlePlacesConfigured ? 'Configured' : 'Not configured'}</div></section>
     <div className="settings-grid">
-      <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">SHARED GEMINI AI ENGINE</div><h2>Connect Gemini once</h2></div><Sparkles size={18} className="muted-icon" /></div><p className="settings-paragraph">Use this one Gemini API key for lead discovery and the AI Business Auditor. The key stays in this browser session and is sent to Google's Gemini API; it is never committed to Revoltz.</p><label className="field-group"><span>Gemini API key</span><input className="field-input" type="password" autoComplete="off" value={geminiApiKey} onChange={(event) => onGeminiApiKeyChange(event.target.value)} placeholder="Paste your Gemini API key" /></label><div className="settings-inline-actions"><button className="button button-secondary" type="button" onClick={onTestGemini} disabled={!geminiApiKey || geminiTesting}>{geminiTesting ? 'Testing…' : 'Test Gemini key'}</button>{geminiApiKey && <button className="text-button" type="button" onClick={() => onGeminiApiKeyChange('')}>Clear key</button>}</div><div className="settings-callout"><Info size={15} /><span>Lead discovery uses Google Maps grounding through Gemini; the Business Auditor uses the same key for Gemini text generation. API usage and quota belong to your Google AI Studio project. A Jio Google AI Pro subscription is separate from Gemini API usage and does not automatically make API calls free.</span></div>{notice && <div className="settings-notice"><CheckCircle2 size={14} />{notice}</div>}<p className="settings-paragraph settings-small-note">Create/manage an API key in Google AI Studio and monitor its API usage there. Do not share your key or commit it to GitHub.</p></section>
+      <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">BLUESMINDS AI ENGINE</div><h2>Connect BluesMinds</h2></div><Sparkles size={18} className="muted-icon" /></div><p className="settings-paragraph">Paste your BluesMinds API key here—no Render environment settings needed. The key is kept in this browser session and sent to your AgencyOS backend over HTTPS when you run supported AI tools; it is not committed to GitHub.</p><label className="field-group"><span>BluesMinds API key</span><input className="field-input" type="password" autoComplete="off" value={bluesmindsApiKey} onChange={(event) => onBluesMindsApiKeyChange(event.target.value)} placeholder="Paste your BluesMinds API key" /></label><label className="field-group"><span>Model ID (from your BluesMinds account)</span><input className="field-input" type="text" autoComplete="off" value={bluesmindsModel} onChange={(event) => onBluesMindsModelChange(event.target.value)} placeholder="e.g. gpt-4o-mini" /></label><div className="settings-inline-actions"><button className="button button-secondary" type="button" onClick={onTestBluesMinds} disabled={!bluesmindsApiKey.trim() || !bluesmindsModel.trim() || bluesmindsTesting}>{bluesmindsTesting ? 'Testing…' : 'Test BluesMinds key'}</button>{bluesmindsApiKey && <button className="text-button" type="button" onClick={() => onBluesMindsApiKeyChange('')}>Clear key</button>}</div>{notice && <div className="settings-notice"><CheckCircle2 size={14} />{notice}</div>}<p className="settings-paragraph settings-small-note">Get your key and exact model ID from the <a href="https://api.bluesminds.com/" target="_blank" rel="noreferrer">BluesMinds console</a>. Usage and limits depend on your BluesMinds account.</p></section><section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">GEMINI MAPS GROUNDING</div><h2>Lead discovery fallback</h2></div><Globe2 size={18} className="muted-icon" /></div><p className="settings-paragraph">Find Leads currently uses Gemini with Google Maps grounding to return real, map-grounded businesses. BluesMinds can power supported text-generation tools, but its standard API does not provide the same Google Maps grounding. Keep your Gemini key here if you want to use that lead-discovery mode.</p><label className="field-group"><span>Gemini API key (optional)</span><input className="field-input" type="password" autoComplete="off" value={geminiApiKey} onChange={(event) => onGeminiApiKeyChange(event.target.value)} placeholder="Paste your Gemini API key" /></label><div className="settings-inline-actions"><button className="button button-secondary" type="button" onClick={onTestGemini} disabled={!geminiApiKey || geminiTesting}>{geminiTesting ? 'Testing…' : 'Test Gemini key'}</button>{geminiApiKey && <button className="text-button" type="button" onClick={() => onGeminiApiKeyChange('')}>Clear key</button>}</div><p className="settings-paragraph settings-small-note">The Gemini key stays in this browser session and is sent directly to Google for grounded lead discovery. Do not share it or commit it to GitHub.</p></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">EXPLAINABLE AI QUALIFICATION</div><h2>Evidence in, reason out</h2></div><div className="engine-icon"><Sparkles size={16} /></div></div><p className="settings-paragraph">Lead scoring and draft outreach remain deterministic and evidence-based; Gemini is used for grounded lead discovery and the AI Business Auditor, not for every button in the CRM.</p><div className="score-rule-list"><div><span>No website listed (Google only; manual missing = unknown)</span><strong>+30</strong></div><div><span>Weak website checks</span><strong>+20</strong></div><div><span>100+ reviews / 4.5+ rating</span><strong>+15 / +10</strong></div><div><span>Operational / contact gap / social link</span><strong>+10 / +10 / +5</strong></div></div><div className="settings-callout"><Info size={15} /><span>Priority bands: HOT 80–100, WARM 50–79, COLD 0–49. These are deterministic signals, not a forecast of conversion.</span></div><div className="settings-callout"><Info size={15} /><span>Mutually exclusive website signals cap the raw sum at 70. The app normalizes the observed raw score to 0–100 for the requested priority bands and shows both values in lead details.</span></div></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">DATA & RETENTION</div><h2>Minimal by default</h2></div><ShieldCheck size={18} className="muted-icon" /></div><div className="settings-feature-list"><div><CheckCircle2 size={16} /><span>Google Places business content stays in browser memory for this session only.</span></div><div><CheckCircle2 size={16} /><span>Local storage holds user-entered manual leads, their CRM fields, saved Google place IDs, and recent search terms. Google Places listing content is not cached.</span></div><div><CheckCircle2 size={16} /><span>Saved place details refresh only on request; the same place ID is not fetched twice in one app session.</span></div><div><CheckCircle2 size={16} /><span>CSV export includes user-entered manual lead details and CRM fields; Google Places business listing content remains excluded.</span></div></div><button className="text-button settings-link" type="button" onClick={() => onNavigate('Privacy Policy')}>Read the Privacy Policy <ArrowRight size={14} /></button></section>
-      <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">CONTACT SAFETY</div><h2>You stay in control</h2></div><MessageCircle size={18} className="muted-icon" /></div><div className="settings-feature-list"><div><CheckCircle2 size={16} /><span>No bulk email sending or automated WhatsApp messaging.</span></div><div><CheckCircle2 size={16} /><span>Email copy/open requires a user-entered, user-verified email and a confirmed contact basis; WhatsApp requires a public business phone and explicit per-lead opt-in.</span></div><div><CheckCircle2 size={16} /><span>“Do not contact” disables outreach, bulk selection is CRM-only, and closed/DNC leads leave follow-up suggestions.</span></div></div><button className="text-button settings-link" type="button" onClick={() => onNavigate('Terms')}>Review Terms <ArrowRight size={14} /></button></section>
+      <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">CONTACT SAFETY</div><h2>You stay in control</h2></div><MessageCircle size={18} className="muted-icon" /></div><div className="settings-feature-list"><div><CheckCircle2 size={16} /><span>No bulk email sending and no automated WhatsApp messaging.</span></div><div><CheckCircle2 size={16} /><span>AgencyOS no longer collects prospect email addresses. WhatsApp requires a public business phone and explicit per-lead opt-in.</span></div><div><CheckCircle2 size={16} /><span>“Do not contact” disables outreach, bulk selection is CRM-only, and closed/DNC leads leave follow-up suggestions.</span></div></div><button className="text-button settings-link" type="button" onClick={() => onNavigate('Terms')}>Review Terms <ArrowRight size={14} /></button></section>
     </div><div className="settings-readme-note"><FileText size={15} /><span>For full local setup, deployment, and API instructions, see the project README.md.</span></div>
   </div>;
 }
@@ -1169,14 +1177,14 @@ function LegalPage({ type, onNavigate }) {
     <article className="surface-card legal-card"><div className="legal-updated"><ShieldCheck size={15} /> Last updated October 7, 2026 <span>·</span> MVP version</div>
       {privacy ? <>
         <section><h2>What AgencyOS does</h2><p>AgencyOS helps an agency research local businesses through the official Google Places API, qualify prospects from visible signals, draft outreach for review, and manage a simple CRM workflow. The optional sample dataset contains only fictional businesses and reserved example URLs.</p></section>
-        <section><h2>Information and storage</h2><p>Google Places responses are held in browser memory for the active session and are not written to the AgencyOS server or browser storage. The browser stores manually entered leads, explicit user-entered overrides, CRM fields (status, notes, tags, follow-up dates, assigned service, estimate, a user-entered email and its verification/contact checks), saved Google place IDs, and recent user-entered search terms. Manual lead details are stored locally in this browser. Place IDs are exempt from Google Places caching restrictions; after a reload, a saved ID is a placeholder until you explicitly refresh its current listing details. Avoid putting sensitive personal information in notes.</p><p>CSV export contains manual/user-entered lead details, labeled CRM workflow fields, and Google place IDs, not Google Places business details. A user-initiated export creates a file on your device.</p></section>
-        <section><h2>Website checks and external actions</h2><p>Website analysis makes a limited server-side request to the submitted public website, follows only a small number of safe redirects, and returns basic HTML signals. It does not attempt a visual audit. Email and WhatsApp buttons open your own applications only after you click; the MVP does not send messages, schedule sends, scrape Maps pages, or automate WhatsApp.</p></section>
+        <section><h2>Information and storage</h2><p>Google Places responses are held in browser memory for the active session and are not written to the AgencyOS server or browser storage. The browser stores manually entered leads (name, category, city, website, phone, maps URL, address, rating, review count, Instagram, Facebook and notes, but no email address), explicit user-entered overrides, CRM fields (status, notes, tags, follow-up dates, assigned service, estimate, and WhatsApp opt-in confirmation). Prospect email addresses are not collected or stored. The browser also stores saved Google place IDs and recent user-entered search terms. Manual lead details are stored locally in this browser. Place IDs are exempt from Google Places caching restrictions; after a reload, a saved ID is a placeholder until you explicitly refresh its current listing details. Avoid putting sensitive personal information in notes.</p><p>CSV export contains manual/user-entered lead details, labeled CRM workflow fields, and Google place IDs, not Google Places business details. A user-initiated export creates a file on your device.</p></section>
+        <section><h2>Website checks and external actions</h2><p>Website analysis makes a limited server-side request to the submitted public website, follows only a small number of safe redirects, and returns basic HTML signals. It does not attempt a visual audit. The WhatsApp button opens your own application only after you click; AgencyOS does not send messages, schedule sends, scrape Maps pages, or automate WhatsApp. Any email field stored by an earlier version is discarded when your data is loaded.</p></section>
         <section><h2>Credentials and service providers</h2><p>Google credentials are read by the server from environment variables and are never returned to the browser. Search requests are sent to Google Maps Platform. Your use of Google data is also subject to <a href="https://cloud.google.com/maps-platform/terms" target="_blank" rel="noreferrer">Google Maps Platform terms</a> and <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Google’s privacy practices</a>. This MVP does not include accounts, passwords, an email provider, or an external AI model.</p></section>
-        <section><h2>Your responsibilities and choices</h2><p>You decide whether and how to contact a prospect. Confirm an appropriate legal basis for email and the recipient’s WhatsApp opt-in before using those channels. Use “Do not contact” when appropriate, honor opt-outs, and follow applicable privacy, marketing, and platform rules. You can clear local CRM data by clearing this site’s browser storage.</p></section>
+        <section><h2>Your responsibilities and choices</h2><p>You decide whether and how to contact a prospect. Confirm the recipient’s WhatsApp opt-in before opening a conversation; AgencyOS does not prepare or send email outreach. Use “Do not contact” when appropriate, honor opt-outs, and follow applicable privacy, marketing, and platform rules. You can clear local CRM data by clearing this site’s browser storage.</p></section>
         <section><h2>Contact and changes</h2><p>This policy is a product MVP summary, not legal advice. Replace it with a reviewed policy and a real contact address before public deployment. The workspace owner is responsible for publishing accurate contact information and updating this notice.</p></section>
       </> : <>
-        <section><h2>Use of prospect data</h2><p>Use AgencyOS only for lawful, appropriate prospect research. You are responsible for confirming a lawful basis for outreach, honoring contact preferences and opt-outs, and complying with email, privacy, consumer-protection, and WhatsApp Business policies.</p></section>
-        <section><h2>No scraping or automatic messaging</h2><p>Google-backed search uses official Google Places API endpoints when configured; manual lead entry and CSV import are local-only and do not make Places API calls. AgencyOS is not designed to scrape or automate Google Maps webpages. It does not send bulk email, automatically message WhatsApp numbers, bypass WhatsApp opt-in, or send follow-ups in the background. You must review every draft and explicitly choose whether to contact a prospect.</p></section>
+        <section><h2>Use of prospect data</h2><p>Use AgencyOS only for lawful, appropriate prospect research. You are responsible for confirming a lawful basis for outreach, honoring contact preferences and opt-outs, and complying with privacy, consumer-protection, and WhatsApp Business policies.</p></section>
+        <section><h2>No scraping or automatic messaging</h2><p>Google-backed search uses official Google Places API endpoints when configured; manual lead entry and CSV import are local-only and do not make Places API calls. AgencyOS is not designed to scrape or automate Google Maps webpages. It does not send email, does not automatically message WhatsApp numbers, does not bypass WhatsApp opt-in, and does not send follow-ups in the background. You must review every draft and explicitly choose whether to contact a prospect.</p></section>
         <section><h2>Google Maps Platform</h2><p>Google Places data is subject to <a href="https://cloud.google.com/maps-platform/terms" target="_blank" rel="noreferrer">Google Maps Platform terms</a>, attribution, retention, and display requirements. Configure your Google Cloud project and API key securely, avoid storing restricted Google content, and review current provider policies before deployment or export use.</p></section>
         <section><h2>Website analysis</h2><p>Website checks are limited automated HTML observations, not legal, security, accessibility, visual design, or conversion guarantees. Dynamic content can be missed, and results should be reviewed before relying on them.</p></section>
         <section><h2>Availability and responsibility</h2><p>This MVP is provided as-is, without a guarantee that third-party APIs are configured or available. Scores and suggestions are decision support, not verified claims about a business or a promise of results. Verify important details and keep personal information out of notes.</p></section>
@@ -1210,23 +1218,18 @@ function EnrichmentSection({ crm, onUpdate, onEnrich, enriching }) {
   }[crm.enrichmentStatus] || crm.enrichmentStatus;
   const socialLinks = Array.isArray(crm.enrichmentSocialLinks) ? crm.enrichmentSocialLinks : [];
   const services = Array.isArray(crm.enrichmentServices) ? crm.enrichmentServices : [];
-  const useEmail = () => onUpdate({ email: crm.enrichmentEmail, emailVerifiedByUser: false, emailPermissionConfirmed: false });
 
   return <section className="drawer-section enrichment-section">
     <div className="drawer-section-heading"><div><div className="card-kicker">PUBLIC BUSINESS ENRICHMENT</div><h3>Enrich Lead</h3></div><button className="button button-secondary button-small" type="button" onClick={onEnrich} disabled={enriching}>{enriching ? <LoaderCircle size={13} className="spin" /> : <Search size={13} />}{enriching ? 'Enriching…' : crm.enrichmentTimestamp ? 'Check again' : 'Enrich Lead'}</button></div>
     <p className="enrichment-description">Checks the listed business website first, with safe public-page limits. If none is listed, optional website discovery runs only when configured. Results are cached for 24 hours; no Google Maps pages or private contact details are collected.</p>
     <div className="enrichment-status-row"><strong>{statusLabel}</strong>{timestampLabel && <span>{timestampLabel}</span>}{crm.enrichmentConfidence && <span>{crm.enrichmentConfidence} confidence</span>}{crm.enrichmentSource && <span>Source: {crm.enrichmentSource}</span>}</div>
-    {crm.enrichmentStatus === 'not_enriched' && <div className="enrichment-empty">Only publicly listed business details are shown. Discovered emails remain separate until you choose to use one and verify it.</div>}
+    {crm.enrichmentStatus === 'not_enriched' && <div className="enrichment-empty">Only publicly listed business details are shown. AgencyOS no longer stores prospect email addresses.</div>}
     {crm.enrichmentStatus === 'no_website' && <div className="enrichment-empty">No website was listed in OpenStreetMap. Optional Tavily discovery was not configured, so no search was made.</div>}
     {crm.enrichmentStatus === 'no_public_details' && <div className="enrichment-empty">No candidate website or supported public business details could be verified. Check the source manually.</div>}
     {crm.enrichmentStatus === 'unavailable' && <div className="enrichment-empty">{crm.enrichmentSource === 'tavily' ? 'Optional website discovery is unavailable. No candidate website was accepted.' : 'The public website could not be read. No contact details were inferred.'}</div>}
     <div className="enrichment-facts">
       <EnrichmentEvidence label="Business name" field="businessName" value={crm.enrichmentBusinessName} crm={crm} />
       <EnrichmentEvidence label="Discovered website" field="discoveredWebsite" value={crm.discoveredWebsite} href={crm.discoveredWebsite} crm={crm} />
-      <EnrichmentEvidence label="Public business email" field="email" value={crm.enrichmentEmail} crm={crm} />
-      {crm.enrichmentEmail && (crm.email
-        ? <small className="enrichment-preserved-note">Existing CRM email was preserved. The discovered address is not used for outreach unless you replace it yourself.</small>
-        : <button className="text-button enrichment-use-email" type="button" onClick={useEmail}>Use this email in CRM <ArrowRight size={13} /></button>)}
       <EnrichmentEvidence label="Public business phone" field="phone" value={crm.enrichmentPhone} crm={crm} />
       <EnrichmentEvidence label="Public WhatsApp link · not contacted" field="whatsappUrl" value={crm.enrichmentWhatsappUrl} crm={crm} />
       <EnrichmentEvidence label="Business address" field="address" value={crm.enrichmentAddress} crm={crm} />
@@ -1235,7 +1238,7 @@ function EnrichmentSection({ crm, onUpdate, onEnrich, enriching }) {
       {socialLinks.map((url) => <EnrichmentEvidence key={url} label="Social profile" field="socialLinks" value={url} href={url} crm={crm} />)}
       {services.map((service) => <EnrichmentEvidence key={service} label="Publicly listed service" field="services" value={service} crm={crm} />)}
     </div>
-    <div className="enrichment-privacy-note"><ShieldCheck size={13} /> Enrichment only gathers publicly listed business information. It does not contact the business or change your existing phone, email, or consent settings.</div>
+    <div className="enrichment-privacy-note"><ShieldCheck size={13} /> Enrichment only gathers publicly listed business information. It does not contact the business, does not store email addresses, and does not change your existing phone or consent settings.</div>
   </section>;
 }
 
@@ -1283,7 +1286,6 @@ function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, o
               <div className="profile-fact"><Phone size={15} /><div><span>{isUserProvidedManualField(lead, 'phone') ? 'User-provided phone' : `Public business phone · ${listingSourceNoun(lead)} listing`}</span><strong>{lead.needsRefresh ? 'Refresh to load current public phone' : isUserProvidedManualField(lead, 'phone') ? lead.phone || 'Not provided' : lead.demo ? 'Not available in demo' : lead.phone || (isOsmLead(lead) ? 'Not listed in OpenStreetMap' : 'Not returned by Google')}</strong></div></div>
               <div className="profile-fact"><Globe2 size={15} /><div><span>{isUserProvidedManualField(lead, 'website') ? 'User-provided website' : `Website · ${listingSourceNoun(lead)} listing`}</span><strong>{lead.needsRefresh ? 'Refresh to load current website field' : lead.website ? safeHttpUrl(lead.website) ? (lead.demo ? `${new URL(safeHttpUrl(lead.website)).hostname} · sample only` : new URL(safeHttpUrl(lead.website)).hostname) : 'Invalid URL' : lead.source === 'manual' ? 'Not provided' : 'Not listed on profile'}</strong></div></div>
               {isUserProvidedManualField(lead, 'mapsUrl') && <div className="profile-fact"><MapPin size={15} /><div><span>Google Maps URL</span><strong>{lead.mapsUrl ? 'User-provided link' : 'Not provided'}</strong></div></div>}
-              {lead.source === 'manual' && <div className="profile-fact"><Mail size={15} /><div><span>User-provided email</span><strong>{crm.email || 'Not provided'}</strong></div></div>}
               {isUserProvidedManualField(lead, 'instagram') && <div className="profile-fact"><ExternalLink size={15} /><div><span>Instagram</span><strong>{lead.instagram ? 'User-provided profile link' : 'Not provided'}</strong></div></div>}
               {isUserProvidedManualField(lead, 'facebook') && <div className="profile-fact"><ExternalLink size={15} /><div><span>Facebook</span><strong>{lead.facebook ? 'User-provided profile link' : 'Not provided'}</strong></div></div>}
               {safeHttpUrl(lead.website) && !lead.demo && <a className="profile-map-link" href={safeHttpUrl(lead.website)} target="_blank" rel="noreferrer"><Globe2 size={14} /> Open business website <ExternalLink size={12} /></a>}
@@ -1311,18 +1313,15 @@ function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, o
               <label className="field-group"><span>Last contacted</span><input className="field-input" type="date" value={crm.lastContacted} onChange={(event) => { const value = event.target.value; onUpdate({ lastContacted: value, lastContactedAt: '', followUpAnchorDate: value, followUpStep: value ? 1 : 0, nextFollowUp: value ? addDays(value, 3) : '' }); }} /></label>
               <label className="field-group"><span>Next follow-up</span><input className="field-input" type="date" value={crm.nextFollowUp} onChange={(event) => onUpdate({ nextFollowUp: event.target.value })} /></label>
               <label className="field-group"><span>Estimated deal value (₹)</span><input className="field-input" inputMode="numeric" type="number" min="0" value={crm.estimatedDealValue} onChange={(event) => onUpdate({ estimatedDealValue: event.target.value })} placeholder="Not set" /></label>
-              <label className="field-group"><span>Business email <small>user-entered, not from Google</small></span><input className="field-input" type="email" value={crm.email} onChange={(event) => onUpdate({ email: event.target.value, emailVerifiedByUser: false, emailPermissionConfirmed: false })} placeholder={lead.source === 'manual' ? 'Not provided' : 'Enter a business email'} maxLength={254} /></label>
             </div>
-            <label className={`consent-row email-verified-row ${dnc || !crm.email ? 'consent-disabled' : ''}`}><input type="checkbox" checked={crm.emailVerifiedByUser} disabled={dnc || !crm.email} onChange={(event) => onUpdate({ emailVerifiedByUser: event.target.checked, ...(event.target.checked ? {} : { emailPermissionConfirmed: false }) })} /><span className="consent-check" /><span><strong>{crm.emailVerifiedByUser ? 'Business email verified by you' : 'I verified this business email'}</strong><small>Email is user-entered and {crm.emailVerifiedByUser ? 'marked verified by you.' : 'unverified until you confirm it.'}</small></span></label>
             <label className="field-group tags-field"><span>Tags <small>Comma-separated labels</small></span><input className="field-input" value={crm.tags.join(', ')} onChange={(event) => onUpdate({ tags: event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 20) })} placeholder="e.g. Pune, priority, referral" maxLength={400} /></label>
             <label className="field-group notes-field"><span>Notes <small>Keep sensitive personal data out.</small></span><textarea value={crm.notes} onChange={(event) => onUpdate({ notes: event.target.value })} maxLength={5000} rows={3} placeholder={lead.source === 'manual' ? 'Not provided' : 'Add context for your next conversation…'} /></label>
           </section>
 
           <section className="drawer-section contact-preferences-section">
             <div className="drawer-section-heading"><div><div className="card-kicker">CONTACT PREFERENCES</div><h3>Confirm before contacting</h3></div><ShieldCheck size={16} className="muted-icon" /></div>
-            <label className={`consent-row ${dnc ? 'consent-disabled' : ''}`}><input type="checkbox" checked={crm.emailPermissionConfirmed} disabled={dnc} onChange={(event) => onUpdate({ emailPermissionConfirmed: event.target.checked })} /><span className="consent-check" /><span><strong>Email contact basis confirmed</strong><small>Confirm a lawful basis and honor any opt-out.</small></span></label>
             <label className={`consent-row ${dnc ? 'consent-disabled' : ''}`}><input type="checkbox" checked={crm.whatsappOptInConfirmed} disabled={dnc} onChange={(event) => onUpdate({ whatsappOptInConfirmed: event.target.checked })} /><span className="consent-check" /><span><strong>WhatsApp opt-in confirmed</strong><small>Required before opening a WhatsApp draft.</small></span></label>
-            {dnc && <div className="dnc-notice"><ShieldCheck size={14} /> Do Not Contact is active. Copy and email/WhatsApp actions are disabled.</div>}
+            {dnc && <div className="dnc-notice"><ShieldCheck size={14} /> Do Not Contact is active. Copy and WhatsApp actions are disabled.</div>}
           </section>
 
           <section className="drawer-section cadence-section">
@@ -1360,20 +1359,14 @@ function AuditReport({ audit, demo, showOrdering = false }) {
 
 function OutreachModal({ lead, crm, onClose, onToast, onMarkContacted, onReviewLead }) {
   const draft = useMemo(() => buildOutreach(lead), [lead]);
-  const [tab, setTab] = useState('email');
-  const [subject, setSubject] = useState(draft.subject);
-  const [emailBody, setEmailBody] = useState(draft.emailBody);
   const [whatsappBody, setWhatsappBody] = useState(draft.whatsappBody);
   const isDnc = crm.status === 'DO NOT CONTACT';
-  const emailValidation = validateOutreachContact('email', lead, crm);
   const whatsappValidation = validateOutreachContact('whatsapp', lead, crm);
-  const emailAllowed = emailValidation.allowed;
   const phoneDigits = safePhoneDigits(lead.internationalPhoneNumber || lead.phone);
   const whatsappPhoneDigits = phoneDigits.length === 10 ? `91${phoneDigits}` : phoneDigits;
   const whatsappAllowed = whatsappValidation.allowed && Boolean(whatsappPhoneDigits);
   const whatsappDraftAllowed = !isDnc && !lead.demo && !lead.needsRefresh;
   const whatsappAppAllowed = whatsappDraftAllowed && Boolean(whatsappPhoneDigits);
-  const emailHref = `mailto:${encodeURIComponent(crm.email || '').replaceAll('%40', '@')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
   // Use WhatsApp's universal HTTPS link: on mobile it hands off to the installed app;
   // otherwise it falls back to WhatsApp Web instead of leaving the site on a blank scheme page.
   const whatsappHref = whatsappAppAllowed ? `https://wa.me/${whatsappPhoneDigits}?text=${encodeURIComponent(whatsappBody)}` : '';
@@ -1403,23 +1396,18 @@ function OutreachModal({ lead, crm, onClose, onToast, onMarkContacted, onReviewL
         <div className="pitch-recipient-links">{!lead.demo && safeHttpUrl(lead.website) && <a href={safeHttpUrl(lead.website)} target="_blank" rel="noreferrer"><Globe2 size={13} /> Open website <ExternalLink size={11} /></a>}{!lead.demo && safeHttpUrl(lead.mapsUrl) && <a href={safeHttpUrl(lead.mapsUrl)} target="_blank" rel="noreferrer"><MapPin size={13} /> {isOsmLead(lead) ? 'OpenStreetMap' : 'Google Maps'} <ExternalLink size={11} /></a>}</div>
         {lead.source === 'google' && <GoogleDisclosure compact />}
         {lead.source === 'osm' && <OsmDisclosure />}
-        <div className="pitch-tabs"><button type="button" className={tab === 'email' ? 'pitch-tab active' : 'pitch-tab'} onClick={() => setTab('email')}><Mail size={15} /> Email draft</button><button type="button" className={tab === 'whatsapp' ? 'pitch-tab active' : 'pitch-tab'} onClick={() => setTab('whatsapp')}><MessageCircle size={15} /> WhatsApp draft</button></div>
-        <div className={`outreach-contact-status ${tab === 'email' ? (emailAllowed ? 'contact-basis-ready' : 'contact-basis-blocked') : (whatsappDraftAllowed ? 'contact-basis-ready' : 'contact-basis-blocked')}`}><ShieldCheck size={14} /><span>{tab === 'email' ? emailAllowed ? 'Email address is user-entered, verified by you, and contact basis confirmed.' : emailValidation.reason : whatsappDraftAllowed ? 'WhatsApp draft is ready to copy. Opening WhatsApp requires a valid business phone number.' : whatsappValidation.reason}{tab === 'whatsapp' && lead.phone && <small>Phone source: {isUserProvidedManualField(lead, 'phone') ? 'user-entered business number.' : lead.demo ? 'fictional demo sample.' : isOsmLead(lead) ? 'public business number from OpenStreetMap.' : lead.source === 'gemini' ? 'public business number from Google Maps grounding.' : 'public business number from Google Places.'}</small>}</span></div>
-        {tab === 'email' ? <div className="pitch-editor"><label className="field-group"><span>Subject</span><input className="field-input" value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={160} /></label><label className="field-group"><span>Email body</span><textarea rows={10} value={emailBody} onChange={(event) => setEmailBody(event.target.value)} maxLength={4000} /></label><div className="pitch-editor-foot"><span>{emailBody.length} / 4,000 characters</span><button className="text-button" type="button" onClick={() => copy(`${subject}\n\n${emailBody}`, 'Email draft')} disabled={!emailAllowed}><Copy size={14} /> Copy email</button></div></div> : <div className="pitch-editor"><label className="field-group"><span>WhatsApp message</span><textarea rows={7} value={whatsappBody} onChange={(event) => setWhatsappBody(event.target.value)} maxLength={1500} /></label><div className="pitch-editor-foot"><span>{whatsappBody.length} / 1,500 characters</span><button className="text-button" type="button" onClick={() => copy(whatsappBody, 'WhatsApp draft')} disabled={!whatsappDraftAllowed}><Copy size={14} /> Copy message</button></div></div>}
+        <div className="pitch-tabs"><span className="pitch-tab active"><MessageCircle size={15} /> WhatsApp draft</span><span className="pitch-channel-note">Email outreach was removed from prospect CRM.</span></div>
+        <div className={`outreach-contact-status ${whatsappDraftAllowed ? 'contact-basis-ready' : 'contact-basis-blocked'}`}><ShieldCheck size={14} /><span>{whatsappDraftAllowed ? 'WhatsApp draft is ready to copy. Opening WhatsApp requires a valid business phone number and confirmed opt-in.' : whatsappValidation.reason}{lead.phone && <small>Phone source: {isUserProvidedManualField(lead, 'phone') ? 'user-entered business number.' : lead.demo ? 'fictional demo sample.' : isOsmLead(lead) ? 'public business number from OpenStreetMap.' : lead.source === 'gemini' ? 'public business number from Google Maps grounding.' : 'public business number from Google Places.'}</small>}</span></div>
+        <div className="pitch-editor"><label className="field-group"><span>WhatsApp message</span><textarea rows={7} value={whatsappBody} onChange={(event) => setWhatsappBody(event.target.value)} maxLength={1500} /></label><div className="pitch-editor-foot"><span>{whatsappBody.length} / 1,500 characters</span><button className="text-button" type="button" onClick={() => copy(whatsappBody, 'WhatsApp draft')} disabled={!whatsappDraftAllowed}><Copy size={14} /> Copy message</button></div></div>
         <div className="pitch-evidence"><ShieldCheck size={14} /><span>{lead.demo ? 'Fictional demo details. The sample cannot be contacted.' : lead.source === 'manual' || lead.manualUserFields?.length ? 'Draft uses details entered by you and any completed page check. User-entered claims are not independently verified.' : 'Draft uses only returned listing details and any completed page check. No unsupported business claims are added.'}</span></div>
         {isDnc && <div className="dnc-notice modal-dnc"><ShieldCheck size={14} /> Do Not Contact is active. Draft copy and channel actions are disabled.</div>}
         <div className="modal-actions">
-          {tab === 'email' ? <>
-            <button className="button button-secondary" type="button" onClick={() => copy(`${subject}\n\n${emailBody}`, 'Email draft')} disabled={!emailAllowed}><Copy size={15} /> Copy draft</button>
-            {emailAllowed ? <a className="button button-primary" href={emailHref}><Mail size={15} /> Open email app <ArrowUpRight size={14} /></a> : <button className="button button-primary" type="button" disabled title="Add a valid business email and confirm the appropriate contact basis in Lead details."><Mail size={15} /> Open email app</button>}
-          </> : <>
-            <button className="button button-secondary" type="button" onClick={() => copy(whatsappBody, 'WhatsApp draft')} disabled={!whatsappDraftAllowed}><Copy size={15} /> Copy draft</button>
-            {whatsappAppAllowed ? <a className="button button-whatsapp" href={whatsappHref}><MessageCircle size={15} /> Open WhatsApp app <ArrowUpRight size={14} /></a> : <button className="button button-whatsapp" type="button" disabled title={whatsappOpenReason}><MessageCircle size={15} /> Open WhatsApp app</button>}
-          </>}
+          <button className="button button-secondary" type="button" onClick={() => copy(whatsappBody, 'WhatsApp draft')} disabled={!whatsappDraftAllowed}><Copy size={15} /> Copy draft</button>
+          {whatsappAppAllowed ? <a className="button button-whatsapp" href={whatsappHref}><MessageCircle size={15} /> Open WhatsApp app <ArrowUpRight size={14} /></a> : <button className="button button-whatsapp" type="button" disabled title={whatsappOpenReason}><MessageCircle size={15} /> Open WhatsApp app</button>}
           <button type="button" className="button button-secondary mark-contacted-button" onClick={onMarkContacted} disabled={isDnc || lead.demo}><Check size={14} /> Mark as Contacted</button>
           <button type="button" className="modal-review-link" onClick={onReviewLead}>Review contact details <ArrowRight size={14} /></button>
         </div>
-        <div className="manual-send-note"><Info size={14} /><span>{tab === 'email' ? 'Opening your email app does not send a message. You review and send it yourself.' : 'Click Open WhatsApp once to open the installed WhatsApp app with the message prefilled. Then review it and tap Send yourself; AgencyOS never sends automatically.'}</span></div>
+        <div className="manual-send-note"><Info size={14} /><span>Click Open WhatsApp once to open the installed WhatsApp app with the message prefilled. Then review it and tap Send yourself; AgencyOS never sends automatically and no longer prepares email outreach.</span></div>
       </section>
     </div>
   );

@@ -17,16 +17,18 @@ function parseJsonText(text) {
  * when configured; retain the existing user-supplied Gemini path as fallback.
  */
 export async function generateAgencyJson({ prompt, geminiApiKey = '' }) {
+  let bluesmindsApiKey = ''; let bluesmindsModel = '';
+  try { bluesmindsApiKey = window.sessionStorage.getItem('agencyos:bluesminds-api-key:v1') || ''; bluesmindsModel = window.sessionStorage.getItem('agencyos:bluesminds-model:v1') || 'gpt-4o-mini'; } catch {}
   let serverError;
   try {
     const configResponse = await fetch('/api/config', { headers: { Accept: 'application/json' } });
     if (configResponse.ok) {
       const config = await configResponse.json();
-      if (config.bluesmindsConfigured) {
+      if (bluesmindsApiKey.trim() && bluesmindsModel.trim()) {
         const response = await fetch('/api/ai/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ prompt }),
+          body: JSON.stringify({ prompt, apiKey: bluesmindsApiKey.trim(), model: bluesmindsModel.trim() }),
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data?.error || `AI request failed (HTTP ${response.status}).`);
@@ -37,6 +39,7 @@ export async function generateAgencyJson({ prompt, geminiApiKey = '' }) {
     serverError = error;
   }
 
+  if (bluesmindsApiKey.trim() && serverError) throw serverError;
   if (String(geminiApiKey || '').trim()) {
     return generateGeminiJson({ apiKey: geminiApiKey, prompt });
   }

@@ -23,15 +23,16 @@ test('manual lead validation requires name, industry, and city while optional de
   assert.deepEqual(valid.errors, {});
   assert.equal(valid.values.website, '');
   assert.equal(valid.values.phone, '');
-  assert.equal(valid.values.email, '');
+  // Email is no longer a manual lead field at all.
+  assert.equal('email' in valid.values, false);
   assert.equal(validateManualLead({ ...requiredInput, website: 'javascript:alert(1)' }).valid, false);
-  assert.match(validateManualLead({ ...requiredInput, email: 'not-an-email' }).errors.email, /valid email/i);
+  assert.equal(validateManualLead({ ...requiredInput, email: 'not-an-email' }).valid, true);
   assert.match(validateManualLead({ ...requiredInput, rating: '5.1' }).errors.rating, /0 to 5/i);
   assert.match(validateManualLead({ ...requiredInput, reviews: '3.5' }).errors.reviews, /whole number/i);
   assert.equal(validateManualLead({ name: '', category: '', city: '' }).valid, false);
 });
 
-test('manual lead creation is local-only and stores CRM email and notes as unverified user data', () => {
+test('manual lead creation is local-only and stores notes as unverified user data', () => {
   const originalFetch = globalThis.fetch;
   let networkCalls = 0;
   globalThis.fetch = async () => { networkCalls += 1; throw new Error('unexpected network request'); };
@@ -39,6 +40,7 @@ test('manual lead creation is local-only and stores CRM email and notes as unver
     const lead = createManualLead({
       ...requiredInput,
       phone: '+91 98765 43210',
+      // A legacy caller may still pass an email; it must be ignored entirely.
       email: 'owner@example.com',
       notes: 'Met at an event',
     }, { id: 'manual-test-1' });
@@ -46,7 +48,8 @@ test('manual lead creation is local-only and stores CRM email and notes as unver
     assert.equal(lead.id, 'manual-test-1');
     assert.equal(lead.source, 'manual');
     assert.equal(lead.businessStatus, 'UNKNOWN');
-    assert.equal(lead.initialCRM.email, 'owner@example.com');
+    assert.equal(lead.email, undefined);
+    assert.equal(lead.initialCRM.email, undefined);
     assert.equal(lead.initialCRM.notes, 'Met at an event');
     assert.equal(lead.initialCRM.emailVerifiedByUser, undefined);
     assert.equal(lead.placeId, undefined);
@@ -142,22 +145,33 @@ test('CSV import maps headers, validates row-level values, and permits optional 
     'Business Name,Industry,City,Website,Phone,Email,Google Maps URL,Address,Rating,Review Count,Instagram,Facebook,Notes',
     'North Star,Cafe,Pune,northstar.example,+91 98765 43210,hello@northstar.example,https://maps.google.com/?q=northstar,"Koregaon Park, Pune",4.7,120,https://instagram.com/northstar,https://facebook.com/northstar,"Ask for Priya, weekdays"',
     'Missing City,Salon,,javascript:alert(1),123,wrong-email,,,,,,,',
+    'Email Only,Cafe,Pune,,,only@mail.example,,,,,,,,',
   ].join('\r\n');
   const parsed = parseManualLeadCsv(csv);
   assert.equal(parsed.error, '');
-  assert.equal(parsed.rows.length, 2);
+  assert.equal(parsed.rows.length, 3);
   assert.equal(parsed.rows[0].valid, true);
   assert.equal(parsed.rows[0].values.website, 'https://northstar.example/');
   assert.equal(parsed.rows[0].values.mapsUrl, 'https://maps.google.com/?q=northstar');
   assert.equal(parsed.rows[0].values.reviews, '120');
   assert.equal(parsed.rows[0].values.address, 'Koregaon Park, Pune');
   assert.equal(parsed.rows[0].values.notes, 'Ask for Priya, weekdays');
+  // Backward compatibility: a legacy Email column is ignored, and a bad value in
+  // it must not reject an otherwise valid row.
+  assert.equal(parsed.rows[0].valid, true);
+  assert.equal('email' in parsed.rows[0].values, false);
+  assert.equal(parsed.rows[2].valid, true);
+  assert.equal(parsed.rows[2].values.name, 'Email Only');
+  assert.equal('email' in parsed.rows[2].values, false);
+  // The legacy Email column must never be mistaken for the business-name column.
+  assert.equal(parsed.rows[0].values.email, undefined);
   assert.equal(parsed.rows[1].valid, false);
   assert.equal(parsed.rows[1].values.city, '');
   assert.equal(parsed.rows[1].errors.city, undefined);
   assert.ok(parsed.rows[1].errors.website);
   assert.ok(parsed.rows[1].errors.phone);
-  assert.ok(parsed.rows[1].errors.email);
+  // The row is rejected for the website and phone values, not for the email.
+  assert.equal(parsed.rows[1].errors.email, undefined);
   const minimal = parseManualLeadCsv('Name,Website\nShop,https://shop.example');
   assert.equal(minimal.error, '');
   assert.equal(minimal.rows[0].valid, true);

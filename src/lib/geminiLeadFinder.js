@@ -1,8 +1,8 @@
 // Gemini-powered local lead discovery using Gemini + Google Maps grounding.
 // The API key is supplied by the user at runtime and is never committed.
 
-export const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
 export const GEMINI_KEY_STORAGE = 'agencyos:gemini-api-key:v1';
 
 const LEAD_SCHEMA = {
@@ -53,7 +53,7 @@ function parseResponse(data) {
   const text = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim() || '';
   if (!text) throw new Error('Gemini returned no lead data. Try a broader search.');
   let parsed;
-  const unfenced = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const unfenced = text.replace(/^\`\`\`(?:json)?\\s*/i, '').replace(/\\s*\`\`\`$/, '').trim();
   try { parsed = JSON.parse(unfenced); }
   catch {
     const first = unfenced.indexOf('{');
@@ -166,7 +166,7 @@ export async function generateGeminiJson({ apiKey, prompt }) {
   const text = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim() || '';
   if (!text) throw new Error('Gemini returned an empty response. Please try again.');
   let parsed;
-  const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const cleaned = text.replace(/^\`\`\`(?:json)?\\s*/i, '').replace(/\\s*\`\`\`$/, '').trim();
   try { parsed = JSON.parse(cleaned); }
   catch {
     const first = cleaned.indexOf('{');

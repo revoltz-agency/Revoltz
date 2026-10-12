@@ -36,9 +36,8 @@ export function buildWorkflowCsv(leads, getCrm) {
     ['user_next_follow_up', (lead) => getCrm(lead).nextFollowUp],
     ['user_assigned_service', (lead) => getCrm(lead).assignedService],
     ['user_estimated_deal_value', (lead) => getCrm(lead).estimatedDealValue],
-    ['user_entered_business_email', (lead) => getCrm(lead).email],
-    ['user_verified_email_by_user', (lead) => getCrm(lead).emailVerifiedByUser],
-    ['user_email_contact_basis_confirmed', (lead) => getCrm(lead).emailPermissionConfirmed],
+    // Prospect email columns were intentionally removed from the export schema.
+    // See docs/CRM_EMAIL_REMOVAL.md for the migration and the full column list.
     ['user_whatsapp_opt_in_confirmed', (lead) => getCrm(lead).whatsappOptInConfirmed],
     ['user_tags', (lead) => (getCrm(lead).tags || []).join('; ')],
   ];

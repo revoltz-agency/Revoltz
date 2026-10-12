@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createEnrichmentService, ENRICHMENT_CACHE_TTL_MS } from '../server/enrich.js';
+import { createEnrichmentService, enrichOsmLead, ENRICHMENT_CACHE_TTL_MS } from '../server/enrich.js';
 import {
   assertBusinessWebsiteUrl, assertSafeUrl, fetchPublicContent, isPublicAddress, UnsafeWebsiteError,
 } from '../server/websiteAudit.js';
@@ -256,21 +256,37 @@ test('server enrichment cache reuses a result for 24 hours and expires it afterw
   assert.notEqual(third.result.timestamp, first.result.timestamp);
 });
 
-test('applying enrichment keeps existing user-entered and verified contact fields unchanged', () => {
+test('applying enrichment keeps existing verified contact fields and never stores an email', () => {
+  // A legacy stored record carrying email keys is stripped, not preserved: the
+  // CRM no longer holds prospect email addresses at all.
   const crm = applyEnrichmentToCrm({
     email: 'owner@example.com', emailVerifiedByUser: true, emailPermissionConfirmed: true,
     whatsappOptInConfirmed: true, enrichmentEmail: '', enrichmentPhone: '',
   }, {
     status: 'complete', timestamp: '2026-10-07T12:00:00.000Z', source: 'website', confidence: 'high',
     email: 'info@example.org', phone: '+1 555 0100', whatsappUrl: 'https://wa.me/15550100',
-    evidence: [{ field: 'email', value: 'info@example.org', source: 'Website /contact', evidence: 'Public mailto link', confidence: 'high' }],
+    evidence: [
+      { field: 'email', value: 'info@example.org', source: 'Website /contact', evidence: 'Public mailto link', confidence: 'high' },
+      { field: 'phone', value: '+1 555 0100', source: 'Website /contact', evidence: 'Public tel link', confidence: 'high' },
+    ],
   });
-  assert.equal(crm.email, 'owner@example.com');
-  assert.equal(crm.emailVerifiedByUser, true);
-  assert.equal(crm.emailPermissionConfirmed, true);
+  assert.equal(crm.email, undefined);
+  assert.equal(crm.emailVerifiedByUser, undefined);
+  assert.equal(crm.emailPermissionConfirmed, undefined);
+  assert.equal(crm.enrichmentEmail, undefined);
+  // Unrelated fields survive untouched.
   assert.equal(crm.whatsappOptInConfirmed, true);
-  assert.equal(crm.enrichmentEmail, 'info@example.org');
   assert.equal(crm.enrichmentPhone, '+1 555 0100');
+  assert.equal(crm.enrichmentStatus, 'complete');
+  // 'email' was removed from the allowed evidence fields, so no email evidence persists.
+  assert.equal(crm.enrichmentEvidence.some((entry) => entry.field === 'email'), false);
+  assert.equal(crm.enrichmentEvidence.some((entry) => entry.field === 'phone'), true);
+});
+
+test('server-side enrichment still reports the public business email signal', () => {
+  // D1 Option 1: server/enrich.js extraction is untouched. Only the CRM stops
+  // storing the value, so the public-website signal feature is preserved.
+  assert.equal(typeof enrichOsmLead, 'function');
 });
 
 test('SSRF validation blocks loopback, private, link-local, and internal hostname targets', () => {

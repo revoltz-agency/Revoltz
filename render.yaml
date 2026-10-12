@@ -1,0 +1,85 @@
+# Render Blueprint — deployment preparation only.
+#
+# Committing this file does NOT create, deploy, or change any cloud resource.
+# It describes how the service *would* be created if a Blueprint is applied in
+# the Render dashboard.
+#
+# Secrets use `sync: false`, which tells Render to expect the value to be set
+# manually in the dashboard. No credential, connection string or .env file is
+# ever stored in Git.
+#
+# Verified compatibility notes are in docs/DEPLOYMENT.md.
+
+services:
+  - type: web
+    name: revoltz-agencyos
+    runtime: node
+    plan: free
+    # Build then serve: Vite produces dist/, the Express server serves it.
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    # /api/config is dependency-free and returns 200 as soon as the app boots.
+    healthCheckPath: /api/config
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Pin the runtime. Render resolves NODE_VERSION first, then
+      # .node-version, then .nvmrc, then package.json engines.node.
+      # 22.22.3 matches the version used locally and in CI (.github/workflows).
+      - key: NODE_VERSION
+        value: 22.22.3
+
+      # Render terminates TLS at the edge and forwards over HTTP internally.
+      # Trusting one hop makes req.ip the real client address so the Audit
+      # Inbox rate limiters key per client instead of per proxy.
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+
+      # --- Audit Inbox -----------------------------------------------------
+      # Set both in the Render dashboard. While either is missing the inbox
+      # returns 503 and stays unavailable; it never falls back to weak auth.
+      - key: DATABASE_URL
+        sync: false
+      - key: AUDIT_OWNER_PASSWORD_HASH
+        sync: false
+      # Exact origin(s) allowed to make state-changing Audit Inbox calls,
+      # comma separated, e.g. https://revoltz-agencyos.onrender.com
+      - key: AUDIT_ALLOWED_ORIGINS
+        sync: false
+
+      # Public intake stays OFF. Flipping this on is a separate, explicit
+      # decision that also requires end-to-end testing before any claim is made
+      # that website enquiries reach AgencyOS.
+      - key: AUDIT_PUBLIC_INTAKE_ENABLED
+        value: "false"
+
+      # 89-day retention for audit requests.
+      - key: AUDIT_RETENTION_DAYS
+        value: "89"
+      # Idle session lifetime (minutes) and absolute ceiling (minutes).
+      - key: AUDIT_SESSION_IDLE_MINUTES
+        value: "480"
+      - key: AUDIT_SESSION_ABSOLUTE_MINUTES
+        value: "1440"
+
+      # --- Optional paid providers (all disabled unless a key is set) -------
+      # Google Places. No key -> /api/places/* return 503.
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      # Per-client Places cap, per route. Omit -> 20/min. Set to 0 only to
+      # disable. Not a global spending cap: set a Google Cloud quota too.
+      - key: PLACES_RATE_LIMIT_PER_MIN
+        sync: false
+      # BluesMinds AI. No key+model -> /api/ai/generate fails closed.
+      - key: BLUESMINDS_API_KEY
+        sync: false
+      - key: BLUESMINDS_MODEL
+        sync: false
+      # Tavily website discovery. No key -> enrichment skips discovery.
+      - key: TAVILY_API_KEY
+        sync: false
+
+      # OpenStreetMap search is on by default and needs no key.
+      - key: FREE_LEAD_SEARCH
+        value: "on"
