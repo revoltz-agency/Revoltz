@@ -39,6 +39,7 @@ import {
   verifyOwnerPassword,
 } from './session.js';
 import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed } from './security.js';
+import { notifyTelegramAuditRequest } from './telegram.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -130,6 +131,8 @@ app.get('/api/config', (_req, res) => {
     // Booleans only: never a connection string, token, or password hash.
     auditInboxConfigured: auditInboxConfigured(),
     auditPublicIntakeEnabled,
+    // Boolean only; never expose Telegram credentials to the browser.
+    telegramNotificationsConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim() && process.env.TELEGRAM_CHAT_ID?.trim()),
     // Non-secret: lets an operator confirm the Places backstop is active.
     placesRateLimitPerMinute: placesLimiter.limit,
   });
@@ -425,7 +428,10 @@ app.post('/api/audit/requests', async (req, res) => {
 
   try {
     const stored = await insertAuditRequest(values, { retentionDays: auditRetentionDays });
-    // 202: accepted for review. Nothing is emailed or messaged automatically.
+    // Best-effort Telegram alert. The request is already saved; notification
+    // failure must not turn a successful submission into a user-facing error.
+    await notifyTelegramAuditRequest(values, stored);
+    // 202: accepted for review. Email is not sent automatically.
     return res.status(202).json({
       received: true,
       id: stored.id,

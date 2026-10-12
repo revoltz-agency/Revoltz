@@ -3,6 +3,29 @@
 An owner-only inbox for enquiries submitted from the public REVOLTZ AI website.
 Requests are stored in PostgreSQL and deliberately separated from prospect CRM data.
 
+When Telegram is configured, every newly accepted public audit request also triggers
+a private Telegram message containing the submitted contact details and request ID.
+The database save is the source of truth: if Telegram is unavailable, the enquiry
+still succeeds and remains in the inbox.
+
+### Optional Telegram alerts
+
+1. In Telegram, open [@BotFather](https://t.me/BotFather), run `/newbot`, and follow the prompts.
+2. Copy the bot token from BotFather. Keep it private.
+3. Open your new bot and press **Start**.
+4. To get your chat ID, open this address in a browser after replacing `<BOT_TOKEN>`
+   with your token: `https://api.telegram.org/bot<BOT_TOKEN>/getUpdates`.
+   Find `message.chat.id` in the response. Do not share this response publicly.
+5. In the Render dashboard, open the `revoltz-agencyos` service → **Environment** and add:
+   - `TELEGRAM_BOT_TOKEN` = the token from BotFather
+   - `TELEGRAM_CHAT_ID` = your private chat ID
+6. Save changes and let Render redeploy. Submit a test enquiry on the website.
+
+Both variables are optional. When absent, the website form and Audit Inbox work as
+before, with no Telegram message. Credentials are read only on the server and are
+never returned by the configuration endpoint.
+
+
 > **Status: inbox/API code exists. Production storage and Render configuration must be verified before claiming the form is live.**
 
 | Capability | State |
@@ -21,8 +44,9 @@ Requests are stored in PostgreSQL and deliberately separated from prospect CRM d
 - Requests are stored in the `audit_requests` table in PostgreSQL.
 - Prospect CRM data never reaches the server — it stays in the operator's
   browser `localStorage`. The two stores are entirely separate.
-- **No email and no WhatsApp message is ever sent.** There is no mail provider,
-  no messaging provider and no webhook anywhere in this feature.
+- **No email or WhatsApp message is sent automatically.** Optional Telegram alerts
+  are available for new enquiries when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
+  are configured on the server.
 - The UI lives in the AgencyOS workspace (`src/components/AuditInbox.jsx`), so
   it is **excluded from the public GitHub Pages marketing build**.
 
