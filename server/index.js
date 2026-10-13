@@ -40,6 +40,20 @@ import {
 } from './session.js';
 import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed } from './security.js';
 import { notifyTelegramAuditRequest } from './telegram.js';
+import {
+  authenticateWorkspaceUser,
+  clearWorkspaceCookies,
+  createWorkspaceSession,
+  registerWorkspaceUser,
+  resolveWorkspaceSession,
+  revokeWorkspaceSession,
+  workspaceCsrfAllowed,
+  workspaceCsrfCookie,
+  workspaceOriginAllowed,
+  workspaceSessionCookie,
+  readWorkspaceState,
+  writeWorkspaceState,
+} from './workspaceAuth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -81,7 +95,136 @@ app.use('/api/audit/requests', (req, res, next) => {
   return next();
 });
 
-app.use(express.json({ limit: '32kb' }));
+app.use(express.json({ limit: '2mb' }));
+
+// --- Multi-user AgencyOS workspace accounts --------------------------------
+const workspaceLoginLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 10 });
+const workspaceRegisterLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 5 });
+
+function workspaceUnavailable(res) {
+  return res.status(503).json({ error: 'Workspace accounts are temporarily unavailable. Please try again later.' });
+}
+async function requireWorkspaceUser(req, res) {
+  if (!isDatabaseConfigured()) { workspaceUnavailable(res); return null; }
+  try {
+    const session = await resolveWorkspaceSession(req);
+    if (!session) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(401).json({ error: 'Please sign in to use this workspace.' });
+      return null;
+    }
+    return session;
+  } catch {
+    workspaceUnavailable(res);
+    return null;
+  }
+}
+
+app.post('/api/workspace/register', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDatabaseConfigured()) return workspaceUnavailable(res);
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  const rate = workspaceRegisterLimiter.check(`register:${clientKey(req)}`);
+  if (!rate.allowed) {
+    res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+    return res.status(429).json({ error: 'Too many account attempts. Please try again later.' });
+  }
+  try {
+    const user = await registerWorkspaceUser(req.body || {});
+    const session = await createWorkspaceSession(user.id);
+    const maxAge = Math.floor((session.expiresAt.getTime() - Date.now()) / 1000);
+    res.append('Set-Cookie', workspaceSessionCookie(session.token, req, maxAge));
+    res.append('Set-Cookie', workspaceCsrfCookie(session.csrfToken, req, maxAge));
+    return res.status(201).json({ user });
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return workspaceUnavailable(res);
+  }
+});
+
+app.post('/api/workspace/login', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDatabaseConfigured()) return workspaceUnavailable(res);
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  const rate = workspaceLoginLimiter.check(`login:${clientKey(req)}`);
+  if (!rate.allowed) {
+    res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+    return res.status(429).json({ error: 'Too many sign-in attempts. Please wait a few minutes.' });
+  }
+  try {
+    const user = await authenticateWorkspaceUser(req.body || {});
+    if (!user) return res.status(401).json({ error: 'Email or password is incorrect.' });
+    const session = await createWorkspaceSession(user.id);
+    const maxAge = Math.floor((session.expiresAt.getTime() - Date.now()) / 1000);
+    res.append('Set-Cookie', workspaceSessionCookie(session.token, req, maxAge));
+    res.append('Set-Cookie', workspaceCsrfCookie(session.csrfToken, req, maxAge));
+    return res.json({ user });
+  } catch {
+    return workspaceUnavailable(res);
+  }
+});
+
+app.get('/api/workspace/me', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  return res.json({ user: session.user });
+});
+
+app.post('/api/workspace/logout', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDatabaseConfigured()) return workspaceUnavailable(res);
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  const session = await resolveWorkspaceSession(req, { renew: false }).catch(() => null);
+  if (session && !workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  await revokeWorkspaceSession(req).catch(() => false);
+  for (const cookie of clearWorkspaceCookies(req)) res.append('Set-Cookie', cookie);
+  return res.json({ ok: true });
+});
+
+app.get('/api/workspace/state', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  try {
+    return res.json(await readWorkspaceState(session.user.id));
+  } catch {
+    return workspaceUnavailable(res);
+  }
+});
+
+app.put('/api/workspace/state', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  const state = req.body?.state;
+  if (!state || typeof state !== 'object' || Array.isArray(state)) {
+    return res.status(400).json({ error: 'Workspace state must be an object.' });
+  }
+  let serialized;
+  try { serialized = JSON.stringify(state); } catch { return res.status(400).json({ error: 'Workspace state is invalid.' }); }
+  if (serialized.length > 1_000_000 || Object.keys(state).length > 250) {
+    return res.status(413).json({ error: 'Workspace data is too large. Export a backup and remove old data before syncing.' });
+  }
+  try {
+    await writeWorkspaceState(session.user.id, state);
+    return res.json({ saved: true, updatedAt: new Date().toISOString() });
+  } catch {
+    return workspaceUnavailable(res);
+  }
+});
+
+// The internal lead-research APIs are available only to signed-in workspace users.
+// Public marketing/audit-intake endpoints and the separate owner-only Audit Inbox
+// retain their existing access rules.
+app.use(['/api/free', '/api/places', '/api/enrich', '/api/website'], async (req, res, next) => {
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  req.workspaceUser = session.user;
+  return next();
+});
 
 const googleApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
 // The OpenStreetMap path needs no key. It can still be switched off for an
