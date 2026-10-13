@@ -164,6 +164,11 @@ export default function WorkspaceAuthGate() {
     return () => { alive = false; };
   }, [loadWorkspace]);
 
+  useEffect(() => () => {
+    cleanupStorage?.();
+    window.__agencyOSUser = null;
+  }, [cleanupStorage]);
+
   const signOut = useCallback(async () => {
     try {
       await fetch('/api/workspace/logout', {
