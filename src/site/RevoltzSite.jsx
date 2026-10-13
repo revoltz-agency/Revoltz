@@ -504,7 +504,16 @@ function ContactForm() {
       setForm({ name: '', business: '', email: '', service: '', problem: '' });
     } catch (error) {
       console.warn('[REVOLTZ audit form] Request failed before acceptance:', error?.name || 'Error', error?.message || 'No details.');
-      setResult({ kind: 'error', message: error?.name === 'TimeoutError' ? 'The request took too long and may not have reached us. Please try once more, or email revoltz.agency@gmail.com.' : 'We could not confirm your request was received. Please try again, or email revoltz.agency@gmail.com.' });
+      const knownMessage = [
+        'We have received several requests from this connection. Please try again later or email us directly.',
+        'The enquiry form is temporarily unavailable. Please email revoltz.agency@gmail.com instead.',
+      ].includes(error?.message);
+      const message = error?.name === 'TimeoutError'
+        ? 'The request took too long and may not have reached us. Please try once more, or email revoltz.agency@gmail.com.'
+        : knownMessage
+          ? error.message
+          : 'We could not confirm your request was received. Please try again, or email revoltz.agency@gmail.com.';
+      setResult({ kind: 'error', message });
     } finally {
       setSubmitting(false);
     }
