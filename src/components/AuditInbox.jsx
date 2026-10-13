@@ -215,7 +215,7 @@ export default function AuditInbox() {
               The inbox is intentionally disabled until both <code>DATABASE_URL</code> and <code>AUDIT_OWNER_PASSWORD_HASH</code> are configured on the server. It never falls back to weaker authentication.
             </p>
             <p style={{ ...muted, margin: 0, lineHeight: 1.6, maxWidth: 640 }}>
-              Public intake is separate and remains <strong>off by default</strong>. The deployed marketing site keeps using its existing email-draft contact flow.
+              Public intake is configured separately through <code>AUDIT_PUBLIC_INTAKE_ENABLED</code>. The current Render Blueprint enables it, but the live service must be verified independently.
             </p>
           </div>
         </div>
