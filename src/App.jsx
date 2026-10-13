@@ -3,7 +3,7 @@ import {
   Activity, ArrowDownUp, ArrowRight, ArrowUpRight, Award, BarChart3, Building2, CalendarDays, ClipboardList,
   Check, CheckCircle2, ChevronDown, CircleHelp, Clock3, Copy, Download, ExternalLink, FileText, CircleDollarSign,
   Filter, Flame, Globe2, Inbox, LayoutDashboard, LoaderCircle, MapPin, Menu, MessageCircle,
-  MoreHorizontal, Phone, Plus, RefreshCw, Search, Send, Settings as SettingsIcon, ShieldCheck,
+  MoreHorizontal, Phone, Plus, RefreshCw, Search, Send, Settings as SettingsIcon, ShieldCheck, LogOut,
   SlidersHorizontal, Sparkles, Star, Target, Users, Upload, X, Zap, Info, History, Trash2, Tag,
 } from 'lucide-react';
 import { DEMO_LEADS, LEAD_STATUSES, SERVICES } from './data/demoLeads.js';
@@ -815,7 +815,7 @@ function Sidebar({ activePage, onNavigate, open }) {
       {navButton({label:'Settings',icon:SettingsIcon})}
     </nav>
     <div className="sidebar-spacer" /><div className="sidebar-assist-card"><div className="assist-icon"><Zap size={16} /></div><div><strong>Less busywork</strong><p>Keep daily work focused and review messages before sending.</p></div></div>
-    <div className="sidebar-bottom"><div className="sidebar-privacy"><ShieldCheck size={14} /> Your data stays in your workspace</div><div className="sidebar-user-row"><div className="sidebar-user-avatar">A</div><div className="sidebar-user-copy"><strong>Agency admin</strong><span>Workspace owner</span></div><MoreHorizontal size={18} /></div></div>
+    <div className="sidebar-bottom"><div className="sidebar-privacy"><ShieldCheck size={14} /> Your data stays in your workspace</div><div className="sidebar-user-row"><div className="sidebar-user-avatar">{String(window.__agencyOSUser?.name || "U").trim().slice(0, 1).toUpperCase()}</div><div className="sidebar-user-copy"><strong>{window.__agencyOSUser?.name || "Workspace user"}</strong><span>{window.__agencyOSUser?.email || "Personal workspace"}</span></div><button className="icon-button small-icon-button" type="button" aria-label="Sign out" title="Sign out" onClick={() => window.dispatchEvent(new Event("agencyos:logout"))}><LogOut size={15} /></button></div></div>
   </aside>;
 }
 function PageHeading({ eyebrow, title, description, children }) {
