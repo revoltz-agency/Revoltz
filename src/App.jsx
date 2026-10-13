@@ -438,6 +438,46 @@ function AgencyOSApp() {
     if (lead.source === 'google' && !String(key).startsWith('demo-')) setSavedPlaceIds((current) => [...new Set([key, ...current])].slice(0, 500));
     showToast(existing?.needsRefresh ? 'Saved place details refreshed from this search.' : existing ? 'This lead is already in your workspace.' : 'Lead saved to your workspace.');
   }
+  function addAuditRequestToLeads(request) {
+    const requestId = String(request?.id || '').trim();
+    const businessName = String(request?.business || request?.name || '').trim();
+    if (!requestId || !businessName) throw new Error('This audit request is missing its ID or business name.');
+
+    const id = `audit-${requestId.slice(0, 240)}`;
+    const auditNote = [
+      'Website free audit request',
+      request.name ? `Contact name: ${String(request.name).slice(0, 160)}` : '',
+      request.service ? `Service of interest: ${String(request.service).slice(0, 160)}` : '',
+      request.createdAt ? `Received: ${String(request.createdAt).slice(0, 40)}` : '',
+      request.message ? `Request: ${String(request.message).slice(0, 4000)}` : '',
+    ].filter(Boolean).join('\\n');
+
+    const existingById = leads.find((lead) => getLeadKey(lead) === id);
+    if (existingById) {
+      showToast('This audit request is already in your Leads.');
+      return { success: true, message: 'This audit request is already in Leads.' };
+    }
+
+    const existingByName = leads.find((lead) => normalizeSearch(lead.name) === normalizeSearch(businessName));
+    if (existingByName) {
+      const currentNotes = getCrm(existingByName).notes.trim();
+      updateCrm(existingByName, { notes: [currentNotes, auditNote].filter(Boolean).join('\\n\\n').slice(0, 5000) });
+      showToast('Business already existed in Leads; audit details were added to its notes.');
+      return { success: true, message: 'Business already existed in Leads; audit details were added to its notes.' };
+    }
+
+    const lead = createManualLead({
+      name: businessName,
+      category: request.service || 'Free Audit',
+      city: '',
+      notes: auditNote,
+    }, { id });
+    setManualLeads((current) => [...current.filter((item) => getLeadKey(item) !== id), lead].slice(-1000));
+    setLeads((current) => current.some((item) => getLeadKey(item) === id) ? current : [lead, ...current]);
+    showToast('Audit enquiry added to Leads. Contact email was kept out of the CRM.');
+    return { success: true, message: 'Added to Leads. The contact email was not copied into the CRM.' };
+  }
+
   function addManualLeadEntries(entries, mode = 'add') {
     const working = [...allLeads];
     const added = [];
@@ -701,7 +741,7 @@ function AgencyOSApp() {
           {activePage === 'Client Activity Log' && <ClientActivityLog />}
           {activePage === 'Project Tracker' && <ProjectTracker />}
           {activePage === 'Business Reports' && <BusinessReports />}
-          {activePage === 'Audit Inbox' && <AuditInbox />}
+          {activePage === 'Audit Inbox' && <AuditInbox onAddToLeads={addAuditRequestToLeads} />}
           {activePage === 'Data Backup' && <DataBackup />}
           {activePage === 'Revenue Goals' && <RevenueGoals />}
           {activePage === 'Daily Action Center' && <DailyActionCenter />}
