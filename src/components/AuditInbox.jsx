@@ -64,7 +64,7 @@ async function readError(response, fallback) {
   }
 }
 
-export default function AuditInbox() {
+export default function AuditInbox({ onAddToLeads }) {
   const [config, setConfig] = useState(null);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [authed, setAuthed] = useState(false);
@@ -74,6 +74,14 @@ export default function AuditInbox() {
   const [error, setError] = useState('');
 
   const [requests, setRequests] = useState([]);
+  const [addedToLeadsIds, setAddedToLeadsIds] = useState(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem('agencyos:audit-leads-imported:v1') || '[]');
+      return new Set(Array.isArray(saved) ? saved.filter((id) => typeof id === 'string').slice(-1000) : []);
+    } catch {
+      return new Set();
+    }
+  });
   const [retention, setRetention] = useState(null);
   const [purged, setPurged] = useState(0);
 
@@ -112,6 +120,14 @@ export default function AuditInbox() {
   }, []);
 
   useEffect(() => { loadConfig(); }, [loadConfig]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('agencyos:audit-leads-imported:v1', JSON.stringify([...addedToLeadsIds].slice(-1000)));
+    } catch {
+      // The import action remains usable for this session if browser storage is unavailable.
+    }
+  }, [addedToLeadsIds]);
 
   useEffect(() => {
     if (!authed) return;
@@ -195,6 +211,29 @@ export default function AuditInbox() {
       setNotice('Audit request deleted.');
     } catch (submitError) {
       setError(submitError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addToLeads(request) {
+    if (addedToLeadsIds.has(request.id)) return;
+    if (typeof onAddToLeads !== 'function') {
+      setError('The CRM integration is not available in this workspace.');
+      return;
+    }
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const result = await onAddToLeads(request);
+      if (result?.success === false) throw new Error(result.message || 'Could not add this enquiry to Leads.');
+      setAddedToLeadsIds((current) => {
+        const next = new Set(current);
+        next.add(request.id);
+        return next;
+      });
+      setNotice(result?.message || 'Audit enquiry added to Leads.');
+    } catch (submitError) {
+      setError(submitError.message || 'Could not add this enquiry to Leads.');
     } finally {
       setBusy(false);
     }
@@ -317,6 +356,15 @@ export default function AuditInbox() {
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span className={`audit-inbox-status audit-inbox-status-${request.status}`}>{STATUS_OPTIONS.find((option) => option.value === request.status)?.label || request.status}</span>
+                  <button
+                    type="button"
+                    onClick={() => addToLeads(request)}
+                    disabled={busy || addedToLeadsIds.has(request.id)}
+                    title={addedToLeadsIds.has(request.id) ? 'Already added to Leads' : 'Add this enquiry to your CRM Leads'}
+                    style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--line, #333)', background: addedToLeadsIds.has(request.id) ? 'rgba(70, 150, 110, 0.14)' : 'transparent', color: addedToLeadsIds.has(request.id) ? '#7fc3a5' : 'inherit', cursor: addedToLeadsIds.has(request.id) ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, font: 'inherit', fontSize: 12 }}
+                  >
+                    {addedToLeadsIds.has(request.id) ? <><CheckCircle2 size={14} /> Added to Leads</> : 'Add to Leads'}
+                  </button>
                   <button type="button" onClick={() => remove(request.id)} disabled={busy} aria-label={`Delete audit request from ${request.business}`} title="Delete permanently" style={{ padding: 8, borderRadius: 8, border: '1px solid var(--line, #333)', background: 'transparent', color: 'inherit', cursor: 'pointer', display: 'inline-flex' }}>
                     <Trash2 size={15} />
                   </button>
