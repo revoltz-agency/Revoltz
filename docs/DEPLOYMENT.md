@@ -1,7 +1,6 @@
 # Deployment preparation
 
-**Nothing has been deployed.** Committing configuration is not deployment. This
-document records verified compatibility and the steps a human must take.
+**Important:** Committing configuration is not deployment. This document records the intended configuration and the steps a human must verify in the live services.
 
 ## Verified compatibility
 
@@ -35,7 +34,7 @@ be applied deliberately in the Render dashboard.
   dashboard. **No credential, connection string or `.env` file is in Git.**
 - `TRUST_PROXY_HOPS=1` makes `req.ip` the real client address behind Render's
   edge, so the Audit Inbox rate limiters key per client rather than per proxy.
-- `AUDIT_PUBLIC_INTAKE_ENABLED=false` is explicit, not implicit.
+- `AUDIT_PUBLIC_INTAKE_ENABLED=true` is set in the current Render blueprint. The live service must still be checked because a committed Blueprint does not prove that it has been applied.
 
 ## Render free-plan caveats
 
@@ -59,13 +58,13 @@ be applied deliberately in the Render dashboard.
 6. Sign in to the Audit Inbox and confirm an empty list renders.
 7. Deploy the retention function and **verify one real scheduled invocation**
    before describing cleanup as operational (see `docs/AUDIT_INBOX.md`).
-8. Only then consider `AUDIT_PUBLIC_INTAKE_ENABLED=true`, and test end to end
-   before claiming website enquiries reach AgencyOS.
+8. Confirm `AUDIT_PUBLIC_INTAKE_ENABLED=true` in the live Render environment.
+9. Submit a controlled test through the deployed public website and confirm it appears in Audit Inbox. Confirm Telegram separately; a Telegram failure must not discard a saved request.
 
 ## What is NOT deployed
 
 - Any Render service, database, or cloud resource.
 - The Neon retention function (`functions/audit-retention.ts`).
 - Any scheduled job (`db/audit_retention_pg_cron.sql` is inert SQL text).
-- Public audit intake (disabled).
+- Public audit intake is enabled in the current Blueprint, but live deployment and end-to-end delivery must be verified.
 - Any paid provider integration (all key-gated and unset).
