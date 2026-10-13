@@ -26,15 +26,15 @@ before, with no Telegram message. Credentials are read only on the server and ar
 never returned by the configuration endpoint.
 
 
-> **Status: inbox/API code exists. Production storage and Render configuration must be verified before claiming the form is live.**
+> **Production status: not verified by this document.** The code and Render Blueprint enable public intake, but verify the live `/api/config`, submit a real test request, and confirm it appears in this inbox before calling the workflow operational.
 
 | Capability | State |
 |---|---|
 | Code, schema, validation, session auth | ✅ Implemented |
 | Unit tests | ✅ 137/137 passing (`npm test`) |
-| Database deployed | ❌ No |
-| Owner credential configured | ❌ No |
-| Public intake enabled | ⚠️ Depends on Render environment configuration |
+| Database deployed | ⚠️ Verify in the live Render environment |
+| Owner credential configured | ⚠️ Verify in the live Render environment |
+| Public intake enabled | ✅ `true` in the current Render Blueprint; verify live configuration |
 | Scheduled retention cleanup | ❌ **Not deployed, not operational** |
 
 ---
@@ -191,17 +191,21 @@ out-of-range value.
 runs while the compute is active** — with scale-to-zero, scheduled runs are
 silently missed. Use it only on an always-on compute.
 
-## 5. Public intake — currently disabled
+## 5. Public intake — enabled in the current Blueprint; verify live
 
-`AUDIT_PUBLIC_INTAKE_ENABLED` defaults to `false` and is set to `false` in
-`render.yaml`. When it is `false`, `POST /api/audit/requests` returns **503**.
+`AUDIT_PUBLIC_INTAKE_ENABLED` defaults to `false` in local development and is set to `true` in the current `render.yaml` Blueprint. A committed Blueprint does not automatically update an existing Render service.
 
-**The deployed marketing website is unchanged.** Its “Claim Your Free Audit”
-form still builds a `mailto:` draft in the visitor's browser, exactly as before.
-Nothing in this repository sends form submissions to AgencyOS.
+The public marketing form sends `POST /api/audit/requests` to the URL configured by `VITE_AUDIT_API_BASE_URL` (default: `https://revoltz-agencyos.onrender.com`). The backend checks the intake flag, database/owner configuration, exact request origin, rate limit, and field validation before saving the request in PostgreSQL. It then attempts an optional Telegram notification.
 
-Do not claim that website enquiries reach AgencyOS until intake is enabled,
-deployed, and exercised end to end.
+### End-to-end verification checklist
+
+1. Check the live backend `GET /api/config`: `auditInboxConfigured`, `auditPublicIntakeEnabled`, and `telegramNotificationsConfigured` are booleans, not proof of delivery.
+2. Open the production website at its canonical origin and submit one controlled test enquiry.
+3. Confirm the form reports success and the request appears in the authenticated Audit Inbox after refresh.
+4. Confirm the Telegram message separately. If Telegram fails, the stored enquiry should still remain available.
+5. If submission fails, inspect the browser Network panel for `POST /api/audit/requests` and the Render service logs. Do not expose secrets when sharing diagnostics.
+
+Only after this checklist passes should the website-to-inbox path be called operational.
 
 ## 6. Security limitations (known, not fixed)
 
