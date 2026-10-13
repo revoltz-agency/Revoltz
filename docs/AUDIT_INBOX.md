@@ -26,15 +26,15 @@ before, with no Telegram message. Credentials are read only on the server and ar
 never returned by the configuration endpoint.
 
 
-> **Status: inbox/API code exists. Production storage and Render configuration must be verified before claiming the form is live.**
+> **Production status: not verified by this document.** The code and Render Blueprint enable public intake, but verify the live `/api/config`, submit a real test request, and confirm it appears in this inbox before calling the workflow operational.
 
 | Capability | State |
 |---|---|
 | Code, schema, validation, session auth | ✅ Implemented |
 | Unit tests | ✅ 137/137 passing (`npm test`) |
-| Database deployed | ❌ No |
-| Owner credential configured | ❌ No |
-| Public intake enabled | ⚠️ Depends on Render environment configuration |
+| Database deployed | ⚠️ Verify in the live Render environment |
+| Owner credential configured | ⚠️ Verify in the live Render environment |
+| Public intake enabled | ✅ `true` in the current Render Blueprint; verify live configuration |
 | Scheduled retention cleanup | ❌ **Not deployed, not operational** |
 
 ---
@@ -43,7 +43,9 @@ never returned by the configuration endpoint.
 
 - Requests are stored in the `audit_requests` table in PostgreSQL.
 - Prospect CRM data never reaches the server — it stays in the operator's
-  browser `localStorage`. The two stores are entirely separate.
+  browser `localStorage`. The two stores are entirely separate, so a website
+  enquiry appears in Audit Inbox and is not automatically inserted into Leads.
+  The operator must currently transfer a suitable enquiry into the CRM manually.
 - **No email or WhatsApp message is sent automatically.** Optional Telegram alerts
   are available for new enquiries when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
   are configured on the server.
@@ -191,17 +193,21 @@ out-of-range value.
 runs while the compute is active** — with scale-to-zero, scheduled runs are
 silently missed. Use it only on an always-on compute.
 
-## 5. Public intake — currently disabled
+## 5. Public intake — enabled in the current Blueprint; verify live
 
-`AUDIT_PUBLIC_INTAKE_ENABLED` defaults to `false` and is set to `false` in
-`render.yaml`. When it is `false`, `POST /api/audit/requests` returns **503**.
+`AUDIT_PUBLIC_INTAKE_ENABLED` defaults to `false` in local development and is set to `true` in the current `render.yaml` Blueprint. A committed Blueprint does not automatically update an existing Render service.
 
-**The deployed marketing website is unchanged.** Its “Claim Your Free Audit”
-form still builds a `mailto:` draft in the visitor's browser, exactly as before.
-Nothing in this repository sends form submissions to AgencyOS.
+The public marketing form sends `POST /api/audit/requests` to the URL configured by `VITE_AUDIT_API_BASE_URL` (default: `https://revoltz-agencyos.onrender.com`). The backend checks the intake flag, database/owner configuration, exact request origin, rate limit, and field validation before saving the request in PostgreSQL. It then attempts an optional Telegram notification.
 
-Do not claim that website enquiries reach AgencyOS until intake is enabled,
-deployed, and exercised end to end.
+### End-to-end verification checklist
+
+1. Check the live backend `GET /api/config`: `auditInboxConfigured`, `auditPublicIntakeEnabled`, and `telegramNotificationsConfigured` are booleans, not proof of delivery.
+2. Open the production website at its canonical origin and submit one controlled test enquiry.
+3. Confirm the form reports success and the request appears in the authenticated Audit Inbox after refresh.
+4. Confirm the Telegram message separately. If Telegram fails, the stored enquiry should still remain available.
+5. If submission fails, inspect the browser Network panel for `POST /api/audit/requests` and the Render service logs. Do not expose secrets when sharing diagnostics.
+
+Only after this checklist passes should the website-to-inbox path be called operational.
 
 ## 6. Security limitations (known, not fixed)
 
@@ -213,10 +219,12 @@ deployed, and exercised end to end.
    resets on restart or redeploy, and does not coordinate across instances.
 4. **`req.ip` is the proxy address unless `TRUST_PROXY_HOPS` is set**, which
    makes rate-limit buckets coarser (fail-closed, not fail-open).
-5. **CORS is not enabled and is not a control.** Same-origin policy deters
-   casual browser abuse but is not authentication for non-browser clients.
-6. **No CSRF protection is needed for the token header** today, but the design
-   assumes cookies — any future move to cookie-only auth must keep the CSRF check.
+5. **Public intake has a narrow CORS allowlist.** It permits the configured exact
+   origins for `POST`/`OPTIONS` and the `Content-Type` header. CORS is a browser
+   control, not authentication; non-browser clients can still call public intake.
+6. **Owner writes use session + CSRF checks.** The owner session is an HttpOnly
+   cookie and state-changing owner requests echo the readable CSRF cookie in
+   `X-Audit-CSRF`. Keep both protections if the authentication flow changes.
 7. **Session cookies require HTTPS.** `Secure` is only set when the request is
    detected as TLS; a plaintext deployment would leak the session token.
 8. **No audit log of owner actions** (view/update/delete of a request).

@@ -23,7 +23,7 @@ Local/self-hosted builds use `src/main.jsx` and can serve both views. The GitHub
 
 - Public site components, example data and styles live in `src/site/` (`RevoltzSite.jsx`, `demoData.js`, `site.css`). `src/site-main.jsx` is the dedicated Pages entry point.
 - Workspace styles remain in `src/styles.css`; marketing styles are scoped under `.rv-root` so the two surfaces remain independent.
-- The three public demos use fictional, browser-local examples. The business auditor is deterministic sample logic, not a live AI service. The contact form prepares an email draft; it does not submit to a backend.
+- The three public demos use fictional, browser-local examples. The business auditor is deterministic sample logic, not a live AI service. The Free AI Audit form submits to the Express backend at `VITE_AUDIT_API_BASE_URL` (defaulting to the AgencyOS Render service) and stores accepted requests in the PostgreSQL Audit Inbox. Telegram alerts are optional and do not replace database storage. Public intake must be enabled and the exact website origin allowlisted in the deployed backend.
 - `src/components/leadPrimitives.jsx` holds the small lead badges shared by both surfaces.
 
 ## Architecture
