@@ -34,8 +34,20 @@ const TAG_VALUE_PATTERN = /^[a-z0-9_:]{1,40}$/;
 function userAgent() {
   return process.env.OSM_USER_AGENT?.trim() || 'AgencyOS/1.0 (+https://github.com/revoltz-agency/Revoltz)';
 }
-function overpassUrl() {
-  return process.env.OVERPASS_API_URL?.trim() || DEFAULT_OVERPASS_URL;
+function overpassUrls() {
+  // Public Overpass instances are shared infrastructure and may be temporarily
+  // overloaded. Try the configured endpoint first, then independent public
+  // instances before failing the search. Operators can still pin one endpoint
+  // by setting OVERPASS_API_URL and OVERPASS_FALLBACK_URLS to an empty string.
+  const configured = process.env.OVERPASS_API_URL?.trim() || DEFAULT_OVERPASS_URL;
+  const fallbackValue = process.env.OVERPASS_FALLBACK_URLS;
+  const fallbacks = fallbackValue === ''
+    ? []
+    : (fallbackValue || 'https://overpass.kumi.systems/api/interpreter,https://overpass.nchc.org.tw/api/interpreter')
+      .split(',').map((value) => value.trim()).filter(Boolean);
+  return [...new Set([configured, ...fallbacks])].filter((value) => {
+    try { const url = new URL(value); return url.protocol === 'https:'; } catch { return false; }
+  });
 }
 function nominatimUrl() {
   return process.env.NOMINATIM_API_URL?.trim() || DEFAULT_NOMINATIM_URL;
@@ -167,40 +179,50 @@ function overpassError(response, remark) {
 }
 
 async function runOverpassQuery(query) {
-  let response;
-  try {
-    response = await fetch(overpassUrl(), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': userAgent(),
-      },
-      body: new URLSearchParams({ data: query }).toString(),
-      signal: AbortSignal.timeout(OVERPASS_TIMEOUT_MS),
-    });
-  } catch (error) {
-    if (error?.name === 'TimeoutError') {
-      const timeoutError = new Error('The OpenStreetMap search timed out. Try a smaller radius or a more specific category.');
-      timeoutError.statusCode = 504;
-      throw timeoutError;
+  const endpoints = overpassUrls();
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    let response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': userAgent(),
+        },
+        body: new URLSearchParams({ data: query }).toString(),
+        signal: AbortSignal.timeout(OVERPASS_TIMEOUT_MS),
+      });
+    } catch (error) {
+      if (error?.name === 'TimeoutError') {
+        lastError = new Error('The OpenStreetMap search timed out. Try a smaller radius or a more specific category.');
+        lastError.statusCode = 504;
+      } else {
+        lastError = new Error('OpenStreetMap (Overpass) could not be reached. Check the server connection and try again.');
+        lastError.statusCode = 502;
+      }
+      continue;
     }
-    const unreachable = new Error('OpenStreetMap (Overpass) could not be reached. Check the server connection and try again.');
-    unreachable.statusCode = 502;
-    throw unreachable;
+
+    let payload;
+    try { payload = await response.json(); } catch { payload = null; }
+    if (!response.ok) {
+      lastError = overpassError(response, trimText(payload?.remark, 200));
+      // Bad queries won't improve on another server; retry only availability,
+      // rate-limit, and gateway/server errors.
+      if (response.status !== 429 && response.status < 500) throw lastError;
+      continue;
+    }
+    if (!payload || !Array.isArray(payload.elements)) {
+      lastError = new Error('OpenStreetMap returned an unreadable response. Please try again.');
+      lastError.statusCode = 502;
+      continue;
+    }
+    return { elements: payload.elements, remark: trimText(payload.remark, 200) };
   }
-  let payload;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-  if (!response.ok) throw overpassError(response, trimText(payload?.remark, 200));
-  if (!payload || !Array.isArray(payload.elements)) {
-    const error = new Error('OpenStreetMap returned an unreadable response. Please try again.');
-    error.statusCode = 502;
-    throw error;
-  }
-  return { elements: payload.elements, remark: trimText(payload.remark, 200) };
+
+  throw lastError || Object.assign(new Error('OpenStreetMap (Overpass) is temporarily unavailable. Please try again shortly.'), { statusCode: 502 });
 }
 
 function composeAddress(tags) {
