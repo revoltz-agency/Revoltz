@@ -117,7 +117,7 @@ async function callGemini(apiKey, prompt, { mapsGrounding = true, responseSchema
     }
     if (response.ok) return data;
     const message = data?.error?.message || `Gemini request failed (HTTP ${response.status}).`;
-    lastError = new Error(message.slice(0, 500));
+    lastError = new Error(`HTTP ${response.status}: ${message.slice(0, 450)}`);
     // Try the next configured model when Google explicitly rejects a model ID.
     if (/model.*(not found|unavailable|does not exist|not supported)|unknown model/i.test(message)) continue;
     // Switching models cannot bypass a project-wide exhausted quota.
@@ -125,7 +125,7 @@ async function callGemini(apiKey, prompt, { mapsGrounding = true, responseSchema
   }
   const message = lastError?.message || 'Gemini request failed.';
   if (/quota|rate.?limit|resource.?exhausted|limit exceeded/i.test(message)) {
-    throw new Error('Gemini quota or rate limit reached for this Google project. Switching models cannot bypass a project-wide limit. Check Google AI Studio → Usage and limits, or try again after the limit resets.');
+    throw new Error(`Gemini API reported a quota/rate-limit error: ${message}. Check the exact model limit and project shown in Google AI Studio. If the dashboard still looks normal, this detailed response will help identify a model-specific or key/project access issue.`);
   }
   if (/high demand|overloaded|temporarily unavailable/i.test(message)) {
     throw new Error('Gemini is temporarily busy. Please try again later.');
