@@ -284,3 +284,26 @@ a.enrichment-fact-value:hover{color:#d9e8fa}
 .dashboard-page .insight-card { position:relative; overflow:hidden; background:radial-gradient(circle at 100% 0,#254b6326,transparent 46%),#101923; }
 @media (max-width: 900px) { .dashboard-hero { padding:23px; } .dashboard-hero-art { flex-basis:145px; margin-right:0; transform:scale(.85); } .dashboard-kpi-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media (max-width: 620px) { .dashboard-hero { min-height:0; padding:21px 18px; } .dashboard-hero-art { display:none; } .dashboard-hero h1 { font-size:30px; letter-spacing:-1px; } .dashboard-hero p { font-size:10px; } .dashboard-section-heading { align-items:flex-start; flex-direction:column; gap:7px; } .dashboard-kpi-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; } .dashboard-kpi-card { min-height:130px; padding:12px; } .dashboard-kpi-card .kpi-value { font-size:24px; } }
+
+/* Multi-user AgencyOS account gate */
+.workspace-auth-page{min-height:100vh;display:grid;place-items:center;padding:28px 18px;background:radial-gradient(ellipse at 50% 0%,rgba(61,91,135,.2),transparent 55%),#090e14;color:#e7edf4}
+.workspace-auth-card{width:min(100%,440px);padding:34px;border:1px solid #253241;border-radius:20px;background:linear-gradient(155deg,#121c28,#0d141d);box-shadow:0 28px 90px #0007}
+.workspace-auth-mark{width:44px;height:44px;display:grid;place-items:center;margin-bottom:21px;border:1px solid #6489bb66;border-radius:13px;background:linear-gradient(145deg,#42699d66,#48417c45);font-size:21px;font-weight:800;color:#dceaff}
+.workspace-auth-eyebrow{color:#8eabd1;font-size:9px;font-weight:800;letter-spacing:1.8px}
+.workspace-auth-card h1{margin:10px 0 8px;font-size:27px;letter-spacing:-.8px;color:#f0f5fb}
+.workspace-auth-description{margin:0 0 25px;color:#94a2b2;font-size:12px;line-height:1.7}
+.workspace-auth-field{display:block;margin:0 0 15px}
+.workspace-auth-field>span{display:block;margin:0 0 7px;color:#bac6d4;font-size:11px;font-weight:600}
+.workspace-auth-field>div{display:flex;align-items:center;gap:10px;min-height:45px;padding:0 12px;border:1px solid #2a3948;border-radius:10px;background:#0a1119;color:#788da4}
+.workspace-auth-field>div:focus-within{border-color:#6894d0;box-shadow:0 0 0 3px #6894d01c}
+.workspace-auth-field input{width:100%;min-width:0;padding:12px 0;border:0;outline:0;background:transparent;color:#e8eef6;font-size:12px}
+.workspace-auth-field input::placeholder{color:#536273}
+.workspace-auth-submit{width:100%;min-height:45px;display:flex;align-items:center;justify-content:center;gap:9px;margin-top:20px;border:1px solid #83a9e7;border-radius:10px;background:linear-gradient(120deg,#608dd0,#766ac3);color:white;font-size:12px;font-weight:700;cursor:pointer}
+.workspace-auth-submit:hover{filter:brightness(1.08)}
+.workspace-auth-submit:disabled{opacity:.65;cursor:wait}
+.workspace-auth-switch{width:100%;margin-top:15px;padding:8px;border:0;background:transparent;color:#a7c6f5;font-size:11px;cursor:pointer}
+.workspace-auth-switch:hover{color:#e0ebfb}
+.workspace-auth-error{padding:10px 12px;border:1px solid #b85d694c;border-radius:9px;background:#9f39411a;color:#ffabb1;font-size:11px;line-height:1.5}
+.workspace-auth-security{display:flex;align-items:center;gap:8px;margin-top:22px;padding-top:17px;border-top:1px solid #25313d;color:#8292a3;font-size:10px;line-height:1.5}
+.workspace-auth-security svg{flex:0 0 auto;color:#78c6a5}
+@media(max-width:480px){.workspace-auth-card{padding:25px 20px}.workspace-auth-card h1{font-size:24px}}

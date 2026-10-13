@@ -107,6 +107,31 @@ const SCHEMA_STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS audit_sessions_expires_idx
      ON audit_sessions (expires_at)`,
+  `CREATE TABLE IF NOT EXISTS workspace_users (
+     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     name          text        NOT NULL,
+     email         text        NOT NULL UNIQUE,
+     password_hash text        NOT NULL,
+     created_at    timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE TABLE IF NOT EXISTS workspace_sessions (
+     id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     user_id             uuid        NOT NULL REFERENCES workspace_users(id),
+     token_hash          text        NOT NULL UNIQUE,
+     csrf_hash           text        NOT NULL,
+     created_at          timestamptz NOT NULL DEFAULT now(),
+     expires_at          timestamptz NOT NULL,
+     absolute_expires_at timestamptz NOT NULL,
+     revoked_at          timestamptz,
+     last_used_at        timestamptz
+   )`,
+  `CREATE INDEX IF NOT EXISTS workspace_sessions_user_idx ON workspace_sessions (user_id)`,
+  `CREATE INDEX IF NOT EXISTS workspace_sessions_expires_idx ON workspace_sessions (expires_at)`,
+  `CREATE TABLE IF NOT EXISTS workspace_data (
+     user_id    uuid PRIMARY KEY REFERENCES workspace_users(id),
+     state      jsonb       NOT NULL DEFAULT '{}'::jsonb,
+     updated_at timestamptz NOT NULL DEFAULT now()
+   )`,
 ];
 
 /**

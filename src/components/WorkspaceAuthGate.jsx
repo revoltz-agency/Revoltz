@@ -1,0 +1,241 @@
+import { useCallback, useEffect, useState } from 'react';
+import { LockKeyhole, Mail, UserRound, ArrowRight, LoaderCircle, ShieldCheck } from 'lucide-react';
+import App from '../App.jsx';
+
+const SESSION_COOKIE = 'agencyos_workspace_csrf';
+
+function csrfFromCookie() {
+  if (!document.cookie) return '';
+  const match = document.cookie.split('; ').find((part) => part.startsWith(`${SESSION_COOKIE}=`));
+  return match ? decodeURIComponent(match.slice(SESSION_COOKIE.length + 1)) : '';
+}
+
+function installWorkspaceStorage(userId, remoteState) {
+  const prefix = `agencyos:account:${userId}:`;
+  const proto = Storage.prototype;
+  const native = {
+    getItem: proto.getItem,
+    setItem: proto.setItem,
+    removeItem: proto.removeItem,
+    clear: proto.clear,
+    key: proto.key,
+    length: Object.getOwnPropertyDescriptor(proto, 'length'),
+  };
+  let active = true;
+  let syncTimer = null;
+  let inFlight = Promise.resolve();
+
+  // Seed only this account's browser cache from its cloud snapshot. Other
+  // accounts' namespaced values are untouched and never visible through the app.
+  for (let i = native.length.get.call(window.localStorage) - 1; i >= 0; i -= 1) {
+    const key = native.key.call(window.localStorage, i);
+    if (key?.startsWith(prefix)) native.removeItem.call(window.localStorage, key);
+  }
+  for (const [key, value] of Object.entries(remoteState || {})) {
+    if (typeof key === 'string' && typeof value === 'string' && key.length <= 300) {
+      native.setItem.call(window.localStorage, prefix + key, value);
+    }
+  }
+
+  function collectState() {
+    const state = {};
+    const storage = window.localStorage;
+    for (let i = 0; i < native.length.get.call(storage); i += 1) {
+      const key = native.key.call(storage, i);
+      if (key?.startsWith(prefix)) state[key.slice(prefix.length)] = native.getItem.call(storage, key);
+    }
+    return state;
+  }
+  function scheduleSync() {
+    if (!active) return;
+    window.clearTimeout(syncTimer);
+    syncTimer = window.setTimeout(() => {
+      const state = collectState();
+      inFlight = inFlight.catch(() => {}).then(async () => {
+        if (!active) return;
+        const response = await fetch('/api/workspace/state', {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'X-Workspace-CSRF': csrfFromCookie() },
+          body: JSON.stringify({ state }),
+        });
+        if (!response.ok) throw new Error('Workspace cloud sync failed.');
+      }).catch(() => {
+        // Keep the local cache usable while offline; the next edit retries sync.
+      });
+    }, 700);
+  }
+
+  proto.getItem = function (key) {
+    return this === window.localStorage
+      ? native.getItem.call(this, prefix + String(key))
+      : native.getItem.call(this, key);
+  };
+  proto.setItem = function (key, value) {
+    if (this !== window.localStorage) return native.setItem.call(this, key, value);
+    native.setItem.call(this, prefix + String(key), String(value));
+    scheduleSync();
+  };
+  proto.removeItem = function (key) {
+    if (this !== window.localStorage) return native.removeItem.call(this, key);
+    native.removeItem.call(this, prefix + String(key));
+    scheduleSync();
+  };
+  proto.clear = function () {
+    if (this !== window.localStorage) return native.clear.call(this);
+    for (let i = native.length.get.call(this) - 1; i >= 0; i -= 1) {
+      const key = native.key.call(this, i);
+      if (key?.startsWith(prefix)) native.removeItem.call(this, key);
+    }
+    scheduleSync();
+  };
+  proto.key = function (index) {
+    if (this !== window.localStorage) return native.key.call(this, index);
+    const keys = [];
+    for (let i = 0; i < native.length.get.call(this); i += 1) {
+      const key = native.key.call(this, i);
+      if (key?.startsWith(prefix)) keys.push(key.slice(prefix.length));
+    }
+    return keys[index] ?? null;
+  };
+  Object.defineProperty(proto, 'length', {
+    configurable: true,
+    enumerable: true,
+    get() {
+      if (this !== window.localStorage) return native.length.get.call(this);
+      let count = 0;
+      for (let i = 0; i < native.length.get.call(this); i += 1) {
+        if (native.key.call(this, i)?.startsWith(prefix)) count += 1;
+      }
+      return count;
+    },
+  });
+
+  return () => {
+    active = false;
+    window.clearTimeout(syncTimer);
+    proto.getItem = native.getItem;
+    proto.setItem = native.setItem;
+    proto.removeItem = native.removeItem;
+    proto.clear = native.clear;
+    proto.key = native.key;
+    Object.defineProperty(proto, 'length', native.length);
+  };
+}
+
+export default function WorkspaceAuthGate() {
+  const [user, setUser] = useState(null);
+  const [mode, setMode] = useState('login');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [storageReady, setStorageReady] = useState(false);
+  const [cleanupStorage, setCleanupStorage] = useState(null);
+
+  const loadWorkspace = useCallback(async (account) => {
+    const response = await fetch('/api/workspace/state', { credentials: 'include', cache: 'no-store' });
+    if (!response.ok) throw new Error('Could not load your saved workspace. Please sign in again.');
+    const result = await response.json();
+    const cleanup = installWorkspaceStorage(account.id, result.state || {});
+    window.__agencyOSUser = account;
+    setCleanupStorage(() => cleanup);
+    setUser(account);
+    setStorageReady(true);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const response = await fetch('/api/workspace/me', { credentials: 'include', cache: 'no-store' });
+        if (response.ok) {
+          const body = await response.json();
+          if (alive) await loadWorkspace(body.user);
+        }
+      } catch {
+        if (alive) setError('Could not reach the sign-in service. Check your connection and try again.');
+      } finally {
+        if (alive) setBusy(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [loadWorkspace]);
+
+  useEffect(() => () => {
+    cleanupStorage?.();
+    window.__agencyOSUser = null;
+  }, [cleanupStorage]);
+
+  const signOut = useCallback(async () => {
+    try {
+      await fetch('/api/workspace/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-Workspace-CSRF': csrfFromCookie() },
+      });
+    } finally {
+      cleanupStorage?.();
+      setCleanupStorage(null);
+      setUser(null);
+      setStorageReady(false);
+      window.__agencyOSUser = null;
+      setPassword('');
+      setError('');
+    }
+  }, [cleanupStorage]);
+
+  useEffect(() => {
+    window.addEventListener('agencyos:logout', signOut);
+    return () => window.removeEventListener('agencyos:logout', signOut);
+  }, [signOut]);
+
+  async function submit(event) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError('');
+    try {
+      const endpoint = mode === 'register' ? '/api/workspace/register' : '/api/workspace/login';
+      const payload = mode === 'register' ? { name, email, password } : { email, password };
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Could not sign in. Please try again.');
+      await loadWorkspace(body.user);
+      setPassword('');
+    } catch (submitError) {
+      setError(submitError.message || 'Could not sign in. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (busy) {
+    return <div className="workspace-auth-page"><div className="workspace-auth-card"><LoaderCircle className="spin" size={24} /><p>Checking your workspace session…</p></div></div>;
+  }
+  if (user && storageReady) return <App />;
+
+  return (
+    <div className="workspace-auth-page">
+      <form className="workspace-auth-card" onSubmit={submit}>
+        <div className="workspace-auth-mark">R</div>
+        <div className="workspace-auth-eyebrow">REVOLTZ AI · AGENCYOS</div>
+        <h1>{mode === 'register' ? 'Create your workspace' : 'Welcome back'}</h1>
+        <p className="workspace-auth-description">{mode === 'register' ? 'Create a private account for your own leads, clients, notes and agency workflow.' : 'Sign in to open your own saved workspace from any device.'}</p>
+        {mode === 'register' && <label className="workspace-auth-field"><span>Your name</span><div><UserRound size={16} /><input autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} required minLength={2} maxLength={100} placeholder="Your name" /></div></label>}
+        <label className="workspace-auth-field"><span>Email address</span><div><Mail size={16} /><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} placeholder="you@example.com" /></div></label>
+        <label className="workspace-auth-field"><span>Password</span><div><LockKeyhole size={16} /><input type="password" autoComplete={mode === 'register' ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={mode === 'register' ? 12 : 1} maxLength={128} placeholder={mode === 'register' ? 'At least 12 characters' : 'Your password'} /></div></label>
+        {error && <div className="workspace-auth-error" role="alert">{error}</div>}
+        <button className="workspace-auth-submit" type="submit" disabled={submitting}>{submitting ? <LoaderCircle className="spin" size={16} /> : <ArrowRight size={16} />}{submitting ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Sign in'}</button>
+        <button className="workspace-auth-switch" type="button" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}>{mode === 'register' ? 'Already have an account? Sign in' : 'New to AgencyOS? Create an account'}</button>
+        <div className="workspace-auth-security"><ShieldCheck size={14} /> Your workspace is private to your account and saved to the cloud.</div>
+      </form>
+    </div>
+  );
+}
