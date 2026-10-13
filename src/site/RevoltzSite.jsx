@@ -481,6 +481,7 @@ function ContactForm() {
       const response = await fetch(AUDIT_API_BASE_URL + '/api/audit/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
           name: form.name.trim(),
           business: form.business.trim(),
@@ -491,6 +492,9 @@ function ContactForm() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data.received !== true) {
+        // Keep the visitor-facing message simple, but preserve the safe status
+        // and server-provided reason for troubleshooting in the browser console.
+        console.warn('[REVOLTZ audit form] Submission rejected:', response.status, data.error || 'No server error details.');
         if (response.status === 429) {
           throw new Error('We have received several requests from this connection. Please try again later or email us directly.');
         }
@@ -499,7 +503,8 @@ function ContactForm() {
       setResult({ kind: 'success', message: 'Thanks — your request has been received and added to our private review inbox. We will follow up by email.' });
       setForm({ name: '', business: '', email: '', service: '', problem: '' });
     } catch (error) {
-      setResult({ kind: 'error', message: error?.message || 'We could not submit your request. Please email revoltz.agency@gmail.com instead.' });
+      console.warn('[REVOLTZ audit form] Request failed before acceptance:', error?.name || 'Error', error?.message || 'No details.');
+      setResult({ kind: 'error', message: error?.name === 'TimeoutError' ? 'The request took too long and may not have reached us. Please try once more, or email revoltz.agency@gmail.com.' : 'We could not confirm your request was received. Please try again, or email revoltz.agency@gmail.com.' });
     } finally {
       setSubmitting(false);
     }
