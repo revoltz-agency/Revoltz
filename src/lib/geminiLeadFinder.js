@@ -119,7 +119,7 @@ async function callGemini(apiKey, prompt, { mapsGrounding = true, responseSchema
     }
     if (response.ok) return data;
     const message = data?.error?.message || `Gemini request failed (HTTP ${response.status}).`;
-    lastError = new Error(`HTTP ${response.status}: ${message.slice(0, 450)}`);
+    lastError = new Error(`HTTP ${response.status}: ${message.slice(0, 2500)}`);
     // Only switch models for a model-ID/access error. Do not retry 429 quota
     // responses or 503 overload responses: an immediate second request can
     // waste quota and usually does not help.
@@ -128,7 +128,7 @@ async function callGemini(apiKey, prompt, { mapsGrounding = true, responseSchema
   }
   const message = lastError?.message || 'Gemini request failed.';
   if (/HTTP 429|quota|rate.?limit|resource.?exhausted|limit exceeded|too many requests/i.test(message)) {
-    throw new Error(`Google rejected the Gemini request with a quota/rate-limit response. AgencyOS stopped automatic model retries to avoid generating extra failed requests. Details: ${message}. Check the Gemini 3.5 Flash Lite quota and project in Google AI Studio; creating another key in the same project will not reset quota.`);
+    throw new Error(`Google rejected the Gemini request with a quota/rate-limit response. AgencyOS stopped automatic model retries to avoid generating extra failed requests. Details: ${message}. Check the specific quota metric, model, and project shown in Google AI Studio; creating another key in the same project will not reset quota.`);
   }
   if (/HTTP 503|high demand|overloaded|temporarily unavailable|service unavailable/i.test(message)) {
     throw new Error(`Google Gemini is temporarily overloaded (HTTP 503). AgencyOS did not retry automatically to avoid repeated failed requests. Please wait briefly and try once more. Details: ${message}`);
