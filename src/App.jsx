@@ -467,20 +467,28 @@ function AgencyOSApp() {
       return { success: true, message: 'This audit request is already in Leads.' };
     }
 
+    const requestedService = String(request.service || '').trim();
+    const assignedService = SERVICES.find((service) => service.toLowerCase() === requestedService.toLowerCase()) || 'Website';
+
     const existingByName = leads.find((lead) => normalizeSearch(lead.name) === normalizeSearch(businessName));
     if (existingByName) {
-      const currentNotes = getCrm(existingByName).notes.trim();
-      updateCrm(existingByName, { notes: [currentNotes, auditNote].filter(Boolean).join(String.fromCharCode(10, 10)).slice(0, 5000) });
+      const currentCrm = getCrm(existingByName);
+      const currentNotes = currentCrm.notes.trim();
+      updateCrm(existingByName, {
+        notes: [currentNotes, auditNote].filter(Boolean).join(String.fromCharCode(10, 10)).slice(0, 5000),
+        ...(requestedService ? { assignedService } : {}),
+      });
       showToast('Business already existed in Leads; audit details were added to its notes.');
       return { success: true, message: 'Business already existed in Leads; audit details were added to its notes.' };
     }
 
     const lead = createManualLead({
       name: businessName,
-      category: request.service || 'Free Audit',
+      category: 'Audit enquiry',
       city: '',
       notes: auditNote,
     }, { id });
+    lead.initialCRM = { ...lead.initialCRM, assignedService };
     setManualLeads((current) => [...current.filter((item) => getLeadKey(item) !== id), lead].slice(-1000));
     setLeads((current) => current.some((item) => getLeadKey(item) === id) ? current : [lead, ...current]);
     showToast('Audit enquiry added to Leads. Contact email was kept out of the CRM.');
