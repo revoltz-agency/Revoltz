@@ -245,7 +245,7 @@ function AgencyOSApp() {
   const [finderRequests, setFinderRequests] = useState(0);
   const [finderGeocodingRequests, setFinderGeocodingRequests] = useState(0);
   const [refreshingDetailsIds, setRefreshingDetailsIds] = useState({});
-  const [searchForm, setSearchForm] = useState({ category: '', city: 'Pune', radiusKm: '10', maxResults: '10', source: 'osm' });
+  const [searchForm, setSearchForm] = useState({ category: '', city: 'Pune', radiusKm: '10', maxResults: '10', source: 'gemini' });
   const [osmMeta, setOsmMeta] = useState({ queriedTags: [], matchedCategory: '', resolvedLocation: '' });
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -282,7 +282,7 @@ function AgencyOSApp() {
         if (!initialConfigLoaded.current) {
           initialConfigLoaded.current = true;
           // Gemini is the primary lead source; Google Places is retained only for legacy saved-place refresh.
-          setSearchForm((current) => ({ ...current, source: 'osm' }));
+          setSearchForm((current) => ({ ...current, source: 'gemini' }));
           const savedReferences = savedPlaceIds.map((id) => savedLeadPlaceholder(id));
           setLeads((current) => {
             const retained = current.filter((lead) => !lead.demo);
@@ -373,7 +373,7 @@ function AgencyOSApp() {
       const response = await fetch('/api/config', { cache: 'no-store' });
       const data = await response.json();
       setApiConfig({ loading: false, reachable: true, ...data });
-      setSearchForm((current) => ({ ...current, source: data.googlePlacesConfigured ? 'google' : 'osm' }));
+      setSearchForm((current) => ({ ...current, source: 'gemini' }));
       const savedReferences = savedPlaceIds.map((id) => savedLeadPlaceholder(id));
       setLeads((current) => {
         const retained = current.filter((lead) => !lead.demo && !lead.needsRefresh);
@@ -405,22 +405,15 @@ function AgencyOSApp() {
         setFinderGeocodingRequests(0);
         if (!results.length) showToast('No sample matches found. Try another category.');
       } else {
-        // Use the free server-side business listing search; Gemini is not required.
-        const validation = buildFreeSearchPayload({
+        // Live lead discovery uses Gemini + Google Maps grounding. OpenStreetMap
+        // is no longer a selectable or fallback source.
+        const { leads: discovered } = await searchGeminiLeads({
+          apiKey: geminiApiKey,
           category,
-          city,
+          location: city,
           radiusKm: Number(searchForm.radiusKm),
           maxResults: Number(searchForm.maxResults),
         });
-        if (!validation.valid) throw new Error(validation.errors.join(' '));
-        const response = await fetch('/api/free/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(validation.payload),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Free business search failed.');
-        const discovered = Array.isArray(data.results) ? data.results : [];
         const hasUsablePhone = (lead) => {
           const digits = String(lead.phone || lead.internationalPhoneNumber || '').replace(/\D/g, '');
           return digits.length >= 10 && digits.length <= 15;
@@ -429,18 +422,12 @@ function AgencyOSApp() {
           .map((lead) => applyManualLeadOverride(lead, manualOverrides));
         setFinderResults(results);
         setFinderWarnings([
-          ...(Array.isArray(data.warnings) ? data.warnings : []),
-          'Strict contact filter is on: only businesses with a listed phone number are shown. Phone numbers are format-checked, not independently phone-verified.',
+          'Only businesses returned by Google Maps grounding are included. Phone numbers are format-checked, not independently phone-verified.',
           discovered.length && !results.length ? 'Businesses were found, but none had a usable listed phone number. No incomplete leads were shown.' : '',
         ].filter(Boolean));
-        setFinderRequests(Number(data.requests) || 1);
-        setFinderGeocodingRequests(Number(data.geocodingRequests) || 0);
-        setFinderSource('osm');
-        setOsmMeta({
-          queriedTags: Array.isArray(data.queriedTags) ? data.queriedTags : [],
-          matchedCategory: data.matchedCategory || '',
-          resolvedLocation: data.resolvedLocation || '',
-        });
+        setFinderRequests(1);
+        setFinderGeocodingRequests(0);
+        setFinderSource('gemini');
         if (!results.length) showToast('No businesses with usable phone numbers were found. Try a nearby area or another category.');
       }
     } catch (error) { setSearchError(error.message || 'Search failed. Please try again.'); }
