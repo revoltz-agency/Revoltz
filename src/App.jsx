@@ -295,7 +295,7 @@ function AgencyOSApp() {
         setApiConfig({ loading: false, reachable: false, googlePlacesConfigured: false, freeSearchEnabled: true });
         if (!initialConfigLoaded.current) {
           initialConfigLoaded.current = true;
-          setSearchForm((current) => ({ ...current, source: 'gemini' }));
+          setSearchForm((current) => ({ ...current, source: 'osm' }));
           setLeads((current) => dedupeLeads([...manualLeads, ...current.filter((lead) => lead.source === 'manual')].map((lead) => applyManualLeadOverride(lead, manualOverrides))));
         }
       }
@@ -422,7 +422,7 @@ function AgencyOSApp() {
         if (!response.ok) throw new Error(data.error || 'Free business search failed.');
         const discovered = Array.isArray(data.results) ? data.results : [];
         const hasUsablePhone = (lead) => {
-          const digits = String(lead.phone || lead.internationalPhoneNumber || '').replace(/\\D/g, '');
+          const digits = String(lead.phone || lead.internationalPhoneNumber || '').replace(/\D/g, '');
           return digits.length >= 10 && digits.length <= 15;
         };
         const results = dedupeLeads(discovered.filter((lead) => lead?.name && hasUsablePhone(lead)))
