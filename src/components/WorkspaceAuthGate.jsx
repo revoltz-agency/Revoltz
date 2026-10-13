@@ -10,6 +10,45 @@ function csrfFromCookie() {
   return match ? decodeURIComponent(match.slice(SESSION_COOKIE.length + 1)) : '';
 }
 
+const LEGACY_WORKSPACE_KEYS = new Set([
+  'agencyos:workflow:v1',
+  'agencyos:saved-place-ids:v1',
+  'agencyos:search-history:v1',
+  'agencyos:manual-leads:v1',
+  'agencyos:manual-lead-overrides:v1',
+]);
+
+function mergeLegacyValue(key, cloudValue, legacyValue) {
+  if (typeof cloudValue !== 'string') return legacyValue;
+  if (typeof legacyValue !== 'string' || cloudValue === legacyValue) return cloudValue;
+  try {
+    const cloud = JSON.parse(cloudValue);
+    const legacy = JSON.parse(legacyValue);
+    if (key === 'agencyos:workflow:v1' || key === 'agencyos:manual-lead-overrides:v1') {
+      return JSON.stringify({ ...(legacy && typeof legacy === 'object' && !Array.isArray(legacy) ? legacy : {}), ...(cloud && typeof cloud === 'object' && !Array.isArray(cloud) ? cloud : {}) });
+    }
+    if (key === 'agencyos:manual-leads:v1' && Array.isArray(cloud) && Array.isArray(legacy)) {
+      const byId = new Map();
+      for (const item of legacy) if (item && typeof item.id === 'string') byId.set(item.id, item);
+      for (const item of cloud) if (item && typeof item.id === 'string') byId.set(item.id, item);
+      return JSON.stringify([...byId.values()].slice(-1000));
+    }
+    if ((key === 'agencyos:saved-place-ids:v1') && Array.isArray(cloud) && Array.isArray(legacy)) {
+      return JSON.stringify([...new Set([...legacy, ...cloud].filter((id) => typeof id === 'string'))].slice(-500));
+    }
+    if (key === 'agencyos:search-history:v1' && Array.isArray(cloud) && Array.isArray(legacy)) {
+      const seen = new Set();
+      return JSON.stringify([...cloud, ...legacy].filter((item) => {
+        const signature = JSON.stringify(item);
+        if (seen.has(signature)) return false;
+        seen.add(signature);
+        return true;
+      }).slice(0, 8));
+    }
+  } catch { /* Keep the valid cloud value when a legacy value is malformed. */ }
+  return cloudValue;
+}
+
 function installWorkspaceStorage(userId, remoteState) {
   const prefix = `agencyos:account:${userId}:`;
   const proto = Storage.prototype;
@@ -25,17 +64,33 @@ function installWorkspaceStorage(userId, remoteState) {
   let syncTimer = null;
   let inFlight = Promise.resolve();
 
-  // Seed only this account's browser cache from its cloud snapshot. Other
+  // Migrate the older, un-namespaced browser cache without discarding it.
+  // The cloud wins conflicts, while distinct legacy leads/CRM entries are merged.
+  const legacyState = {};
+  for (const key of LEGACY_WORKSPACE_KEYS) {
+    const value = native.getItem.call(window.localStorage, key);
+    if (value !== null) legacyState[key] = value;
+  }
+  const mergedState = { ...(remoteState || {}) };
+  for (const [key, value] of Object.entries(legacyState)) {
+    mergedState[key] = mergeLegacyValue(key, mergedState[key], value);
+  }
+
+  // Seed only this account's browser cache from its merged cloud snapshot. Other
   // accounts' namespaced values are untouched and never visible through the app.
   for (let i = native.length.get.call(window.localStorage) - 1; i >= 0; i -= 1) {
     const key = native.key.call(window.localStorage, i);
     if (key?.startsWith(prefix)) native.removeItem.call(window.localStorage, key);
   }
-  for (const [key, value] of Object.entries(remoteState || {})) {
+  for (const [key, value] of Object.entries(mergedState)) {
     if (typeof key === 'string' && typeof value === 'string' && key.length <= 300) {
       native.setItem.call(window.localStorage, prefix + key, value);
     }
   }
+
+  // Preserve the legacy keys until the merged snapshot has successfully reached
+  // the server. This avoids losing pre-account data if cloud sync is unavailable.
+  let migrationPending = Object.keys(legacyState).length > 0;
 
   function collectState() {
     const state = {};
@@ -60,6 +115,10 @@ function installWorkspaceStorage(userId, remoteState) {
           body: JSON.stringify({ state }),
         });
         if (!response.ok) throw new Error('Workspace cloud sync failed.');
+        if (migrationPending) {
+          for (const key of Object.keys(legacyState)) native.removeItem.call(window.localStorage, key);
+          migrationPending = false;
+        }
       }).catch(() => {
         // Keep the local cache usable while offline; the next edit retries sync.
       });
