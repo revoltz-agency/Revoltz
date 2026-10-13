@@ -128,7 +128,7 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS workspace_sessions_user_idx ON workspace_sessions (user_id)`,
   `CREATE INDEX IF NOT EXISTS workspace_sessions_expires_idx ON workspace_sessions (expires_at)`,
   `CREATE TABLE IF NOT EXISTS workspace_data (
-     user_id    uuid PRIMARY KEY REFERENCES workspace_users(id) ON DELETE CASCADE,
+     user_id    uuid PRIMARY KEY REFERENCES workspace_users(id),
      state      jsonb       NOT NULL DEFAULT '{}'::jsonb,
      updated_at timestamptz NOT NULL DEFAULT now()
    )`,
