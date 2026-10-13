@@ -43,7 +43,9 @@ never returned by the configuration endpoint.
 
 - Requests are stored in the `audit_requests` table in PostgreSQL.
 - Prospect CRM data never reaches the server — it stays in the operator's
-  browser `localStorage`. The two stores are entirely separate.
+  browser `localStorage`. The two stores are entirely separate, so a website
+  enquiry appears in Audit Inbox and is not automatically inserted into Leads.
+  The operator must currently transfer a suitable enquiry into the CRM manually.
 - **No email or WhatsApp message is sent automatically.** Optional Telegram alerts
   are available for new enquiries when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
   are configured on the server.
@@ -217,10 +219,12 @@ Only after this checklist passes should the website-to-inbox path be called oper
    resets on restart or redeploy, and does not coordinate across instances.
 4. **`req.ip` is the proxy address unless `TRUST_PROXY_HOPS` is set**, which
    makes rate-limit buckets coarser (fail-closed, not fail-open).
-5. **CORS is not enabled and is not a control.** Same-origin policy deters
-   casual browser abuse but is not authentication for non-browser clients.
-6. **No CSRF protection is needed for the token header** today, but the design
-   assumes cookies — any future move to cookie-only auth must keep the CSRF check.
+5. **Public intake has a narrow CORS allowlist.** It permits the configured exact
+   origins for `POST`/`OPTIONS` and the `Content-Type` header. CORS is a browser
+   control, not authentication; non-browser clients can still call public intake.
+6. **Owner writes use session + CSRF checks.** The owner session is an HttpOnly
+   cookie and state-changing owner requests echo the readable CSRF cookie in
+   `X-Audit-CSRF`. Keep both protections if the authentication flow changes.
 7. **Session cookies require HTTPS.** `Secure` is only set when the request is
    detected as TLS; a plaintext deployment would leak the session token.
 8. **No audit log of owner actions** (view/update/delete of a request).
