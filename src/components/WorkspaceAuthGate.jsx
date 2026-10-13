@@ -170,6 +170,8 @@ function installWorkspaceStorage(userId, remoteState) {
     },
   });
 
+  if (migrationPending) scheduleSync();
+
   return () => {
     active = false;
     window.clearTimeout(syncTimer);
