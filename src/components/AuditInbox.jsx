@@ -302,7 +302,7 @@ export default function AuditInbox({ onAddToLeads }) {
         <div>
           <h1 style={{ margin: '0 0 6px', fontSize: 26 }}>Audit Inbox</h1>
           <p style={{ ...muted, margin: 0, maxWidth: 700, lineHeight: 1.6 }}>
-            Requests submitted through the public “Claim Your Free Audit” form. Stored in Postgres, separate from prospect CRM data. No automatic email or WhatsApp message is ever sent.
+            Requests submitted through the public “Claim Your Free Audit” form are stored in Postgres. Use “Add to Leads” to copy the business and request notes into your browser-based CRM; the contact email is not copied. No automatic email or WhatsApp message is ever sent.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
