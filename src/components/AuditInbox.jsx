@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  AlertTriangle, Clock3, Inbox, LoaderCircle, LogOut, RefreshCw, ShieldCheck, Trash2,
+  AlertTriangle, CheckCircle2, Clock3, Inbox, LoaderCircle, LogOut, RefreshCw, ShieldCheck, Trash2,
 } from 'lucide-react';
 
 // Owner-only Audit Inbox.
