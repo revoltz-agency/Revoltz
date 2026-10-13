@@ -2,7 +2,9 @@
 // The API key is supplied by the user at runtime and is never committed.
 
 export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
-const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+// Keep requests on the configured free-tier model. Trying other models after a
+// quota response can create extra failed requests without restoring project quota.
+const GEMINI_MODELS = ['gemini-3.5-flash-lite'];
 export const GEMINI_KEY_STORAGE = 'agencyos:gemini-api-key:v1';
 
 const LEAD_SCHEMA = {
@@ -118,17 +120,18 @@ async function callGemini(apiKey, prompt, { mapsGrounding = true, responseSchema
     if (response.ok) return data;
     const message = data?.error?.message || `Gemini request failed (HTTP ${response.status}).`;
     lastError = new Error(`HTTP ${response.status}: ${message.slice(0, 450)}`);
-    // Try the next configured model when Google explicitly rejects a model ID.
+    // Only switch models for a model-ID/access error. Do not retry 429 quota
+    // responses or 503 overload responses: an immediate second request can
+    // waste quota and usually does not help.
     if (/model.*(not found|unavailable|does not exist|not supported)|unknown model/i.test(message)) continue;
-    // Switching models cannot bypass a project-wide exhausted quota.
-    if (![429, 500, 502, 503, 504].includes(response.status)) break;
+    break;
   }
   const message = lastError?.message || 'Gemini request failed.';
-  if (/quota|rate.?limit|resource.?exhausted|limit exceeded/i.test(message)) {
-    throw new Error(`Gemini API reported a quota/rate-limit error: ${message}. Check the exact model limit and project shown in Google AI Studio. If the dashboard still looks normal, this detailed response will help identify a model-specific or key/project access issue.`);
+  if (/HTTP 429|quota|rate.?limit|resource.?exhausted|limit exceeded|too many requests/i.test(message)) {
+    throw new Error(`Google rejected the Gemini request with a quota/rate-limit response. AgencyOS stopped automatic model retries to avoid generating extra failed requests. Details: ${message}. Check the Gemini 3.5 Flash Lite quota and project in Google AI Studio; creating another key in the same project will not reset quota.`);
   }
-  if (/high demand|overloaded|temporarily unavailable/i.test(message)) {
-    throw new Error('Gemini is temporarily busy. Please try again later.');
+  if (/HTTP 503|high demand|overloaded|temporarily unavailable|service unavailable/i.test(message)) {
+    throw new Error(`Google Gemini is temporarily overloaded (HTTP 503). AgencyOS did not retry automatically to avoid repeated failed requests. Please wait briefly and try once more. Details: ${message}`);
   }
   throw lastError || new Error('Gemini request failed. Please try again.');
 }
