@@ -450,7 +450,7 @@ function AgencyOSApp() {
       request.service ? `Service of interest: ${String(request.service).slice(0, 160)}` : '',
       request.createdAt ? `Received: ${String(request.createdAt).slice(0, 40)}` : '',
       request.message ? `Request: ${String(request.message).slice(0, 4000)}` : '',
-    ].filter(Boolean).join('\\n');
+    ].filter(Boolean).join(String.fromCharCode(10));
 
     const existingById = leads.find((lead) => getLeadKey(lead) === id);
     if (existingById) {
@@ -461,7 +461,7 @@ function AgencyOSApp() {
     const existingByName = leads.find((lead) => normalizeSearch(lead.name) === normalizeSearch(businessName));
     if (existingByName) {
       const currentNotes = getCrm(existingByName).notes.trim();
-      updateCrm(existingByName, { notes: [currentNotes, auditNote].filter(Boolean).join('\\n\\n').slice(0, 5000) });
+      updateCrm(existingByName, { notes: [currentNotes, auditNote].filter(Boolean).join(String.fromCharCode(10, 10)).slice(0, 5000) });
       showToast('Business already existed in Leads; audit details were added to its notes.');
       return { success: true, message: 'Business already existed in Leads; audit details were added to its notes.' };
     }
