@@ -299,7 +299,9 @@ app.put('/api/workspace/state', async (req, res) => {
 app.use(['/api/places', '/api/website'], async (req, res, next) => {
   const session = await requireWorkspaceUser(req, res);
   if (!session) return;
-  const moduleKey = req.path.startsWith('/api/places') ? 'growth_sales' : 'tools';
+  // Express strips a mounted prefix from req.path; use baseUrl to identify
+  // which protected API family matched this middleware.
+  const moduleKey = req.baseUrl.startsWith('/api/places') ? 'growth_sales' : 'tools';
   try {
     await requireOrganizationModule(session.user.id, moduleKey);
     req.workspaceUser = session.user;
