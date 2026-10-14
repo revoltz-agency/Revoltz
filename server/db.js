@@ -207,6 +207,11 @@ const SCHEMA_STATEMENTS = [
      SELECT id, 'starter', 'inactive'
      FROM organizations
      ON CONFLICT (organization_id) DO NOTHING`,
+  `INSERT INTO organization_modules (organization_id, module_key, enabled)
+     SELECT o.id, keys.module_key, true
+     FROM organizations o
+     CROSS JOIN unnest(ARRAY['growth_sales', 'clients_delivery', 'finance_reports', 'tools']::text[]) AS keys(module_key)
+     ON CONFLICT (organization_id, module_key) DO NOTHING`,
   // Copy each legacy user's saved state into their owner's organization once.
   // ON CONFLICT preserves any organization state already written by the app.
   `INSERT INTO organization_workspace_data (organization_id, state, updated_at)
@@ -268,6 +273,13 @@ export async function ensureWorkspaceOrganization(userId, userName = 'Workspace'
     `INSERT INTO organization_subscriptions (organization_id, plan_key, status)
      VALUES ($1, 'starter', 'inactive')
      ON CONFLICT (organization_id) DO NOTHING`,
+    [organizationId],
+  );
+  await queryDatabase(
+    `INSERT INTO organization_modules (organization_id, module_key, enabled)
+     SELECT $1, keys.module_key, true
+     FROM unnest(ARRAY['growth_sales', 'clients_delivery', 'finance_reports', 'tools']::text[]) AS keys(module_key)
+     ON CONFLICT (organization_id, module_key) DO NOTHING`,
     [organizationId],
   );
   return { id: organizationId };
