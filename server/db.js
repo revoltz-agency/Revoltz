@@ -186,6 +186,13 @@ const SCHEMA_STATEMENTS = [
      received_at          timestamptz NOT NULL DEFAULT now(),
      processed_at         timestamptz
    )`,
+  // Organization-owned cloud state. The legacy user-keyed table remains intact
+  // so deployments can backfill without dropping or rewriting existing rows.
+  `CREATE TABLE IF NOT EXISTS organization_workspace_data (
+     organization_id uuid PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+     state jsonb NOT NULL DEFAULT '{}'::jsonb,
+     updated_at timestamptz NOT NULL DEFAULT now()
+   )`,
   // Non-destructive backfill for existing accounts. Existing data and sessions
   // remain untouched; every pre-existing user gets one owner organization.
   `INSERT INTO organizations (name, owner_user_id)
@@ -199,6 +206,13 @@ const SCHEMA_STATEMENTS = [
   `INSERT INTO organization_subscriptions (organization_id, plan_key, status)
      SELECT id, 'starter', 'inactive'
      FROM organizations
+     ON CONFLICT (organization_id) DO NOTHING`,
+  // Copy each legacy user's saved state into their owner's organization once.
+  // ON CONFLICT preserves any organization state already written by the app.
+  `INSERT INTO organization_workspace_data (organization_id, state, updated_at)
+     SELECT o.id, wd.state, wd.updated_at
+     FROM workspace_data wd
+     JOIN organizations o ON o.owner_user_id = wd.user_id
      ON CONFLICT (organization_id) DO NOTHING`,
 ];
 
