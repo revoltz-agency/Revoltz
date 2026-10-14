@@ -174,6 +174,10 @@ const SCHEMA_STATEMENTS = [
      created_at                 timestamptz NOT NULL DEFAULT now(),
      updated_at                 timestamptz NOT NULL DEFAULT now()
    )`,
+  // Track provider event time so delayed webhook deliveries cannot overwrite a
+  // newer subscription state. ALTER is additive and safe for existing installs.
+  `ALTER TABLE organization_subscriptions
+     ADD COLUMN IF NOT EXISTS last_provider_event_created bigint`,
   `CREATE INDEX IF NOT EXISTS organization_subscriptions_status_idx
      ON organization_subscriptions (status)`,
   // Webhook event IDs provide an idempotency boundary: duplicate deliveries
