@@ -117,7 +117,7 @@ test('schema initialization only issues IF NOT EXISTS DDL and never destroys dat
   assert.ok(pool.calls.length >= 2, 'creates the tables and indexes');
   for (const { text, values } of pool.calls) {
     assert.deepEqual(values, [], 'DDL must not carry parameters');
-    assert.match(text, /^\s*(?:CREATE TABLE IF NOT EXISTS|CREATE INDEX IF NOT EXISTS|INSERT INTO|ALTER TABLE organization_subscriptions\s+ADD COLUMN IF NOT EXISTS last_provider_event_created bigint)\s/i, 'schema setup may create objects, add the one nullable webhook-ordering column, and run idempotent backfills');
+    assert.match(text, /^\s*(?:CREATE TABLE IF NOT EXISTS|CREATE INDEX IF NOT EXISTS|INSERT INTO)\s|^\s*ALTER TABLE organization_subscriptions\s+ADD COLUMN IF NOT EXISTS last_provider_event_created bigint\s*$/i, 'schema setup may create objects, add the one nullable webhook-ordering column, and run idempotent backfills');
     assert.doesNotMatch(text, /^\s*(?:DROP|TRUNCATE|DELETE|UPDATE)\b/im, 'schema initialization must not run destructive statements');
     if (/^\s*ALTER\b/i.test(text)) assert.match(text, /^\s*ALTER TABLE organization_subscriptions\s+ADD COLUMN IF NOT EXISTS last_provider_event_created bigint\s*$/i, 'only the additive webhook-ordering column is allowed');
   }
