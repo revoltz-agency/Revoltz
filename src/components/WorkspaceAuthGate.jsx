@@ -3,6 +3,7 @@ import { LockKeyhole, Mail, UserRound, ArrowRight, LoaderCircle, ShieldCheck } f
 import App from '../App.jsx';
 
 const SESSION_COOKIE = 'agencyos_workspace_csrf';
+const VERCEL_PREVIEW = import.meta.env.VERCEL_ENV === 'preview';
 
 function csrfFromCookie() {
   if (!document.cookie) return '';
@@ -209,6 +210,15 @@ export default function WorkspaceAuthGate() {
   }, []);
 
   useEffect(() => {
+    if (VERCEL_PREVIEW) {
+      const previewAccount = { id: 'preview-local', name: 'Preview workspace', email: 'preview@local.test' };
+      window.__agencyOSPreview = true;
+      window.__agencyOSUser = previewAccount;
+      setUser(previewAccount);
+      setStorageReady(true);
+      setBusy(false);
+      return () => { window.__agencyOSPreview = false; window.__agencyOSUser = null; };
+    }
     let alive = true;
     (async () => {
       try {
