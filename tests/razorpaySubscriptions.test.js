@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { cancelRazorpaySubscriptionAtPeriodEnd, processRazorpayWebhook, razorpayEventStatus, verifyRazorpayWebhookSignature } from '../server/razorpaySubscriptions.js';
+import { cancelRazorpaySubscriptionAtPeriodEnd, createRazorpaySubscription, processRazorpayWebhook, razorpayEventStatus, verifyRazorpayWebhookSignature } from '../server/razorpaySubscriptions.js';
 import { __setPoolForTests } from '../server/db.js';
 
 test('Razorpay webhook signatures are checked against the exact raw body', () => {
@@ -144,5 +144,79 @@ test('webhook subscription updates carry provider event time to prevent stale st
     else process.env.DATABASE_URL = oldDatabaseUrl;
     if (oldWebhookSecret === undefined) delete process.env.RAZORPAY_WEBHOOK_SECRET;
     else process.env.RAZORPAY_WEBHOOK_SECRET = oldWebhookSecret;
+  }
+});
+
+
+test('subscription checkout locks the organization row and commits the hosted subscription ID', async () => {
+  const oldEnv = {
+    DATABASE_URL: process.env.DATABASE_URL,
+    RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID,
+    RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET,
+    RAZORPAY_PLAN_ID_STARTER: process.env.RAZORPAY_PLAN_ID_STARTER,
+  };
+  const oldFetch = globalThis.fetch;
+  process.env.DATABASE_URL = 'postgres://example.invalid/agencyos-checkout-test';
+  process.env.RAZORPAY_KEY_ID = 'test_key_id';
+  process.env.RAZORPAY_KEY_SECRET = 'test_key_secret';
+  process.env.RAZORPAY_PLAN_ID_STARTER = 'plan_monthly_test';
+  const queries = [];
+  const client = {
+    async query(text, values = []) {
+      queries.push({ text, values });
+      if (/SELECT o\.id AS organization_id, m\.role, s\.status/i.test(text)) {
+        return { rows: [{
+          organization_id: '3f0c1e2a-4b5d-4c6e-8f90-1a2b3c4d5e6f',
+          role: 'owner',
+          status: 'inactive',
+          razorpay_subscription_id: null,
+        }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    },
+    release() {},
+  };
+  const pool = {
+    on() {},
+    async end() {},
+    async query(text) {
+      if (/^\s*(CREATE TABLE|CREATE INDEX) IF NOT EXISTS/i.test(text) ||
+          /^\s*ALTER TABLE organization_subscriptions/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*INSERT INTO /i.test(text) && /\bSELECT\b/i.test(text)) return { rows: [], rowCount: 0 };
+      throw new Error(`Unexpected checkout schema SQL: ${text}`);
+    },
+    async connect() { return client; },
+  };
+  __setPoolForTests(pool);
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'https://api.razorpay.com/v1/subscriptions');
+    assert.equal(options.method, 'POST');
+    const body = JSON.parse(options.body);
+    assert.equal(body.plan_id, 'plan_monthly_test');
+    assert.equal(body.notes.organization_id, '3f0c1e2a-4b5d-4c6e-8f90-1a2b3c4d5e6f');
+    return {
+      ok: true,
+      async json() { return { id: 'sub_checkout_test', customer_id: 'cus_checkout_test', short_url: 'https://rzp.io/i/test', status: 'created' }; },
+    };
+  };
+  try {
+    const result = await createRazorpaySubscription('user-owner');
+    assert.deepEqual(result, {
+      checkoutUrl: 'https://rzp.io/i/test',
+      subscriptionId: 'sub_checkout_test',
+      status: 'created',
+    });
+    const select = queries.find((query) => query.text.includes('FOR UPDATE OF s'));
+    assert.ok(select, 'checkout selects the subscription row under lock');
+    assert.ok(queries.some((query) => query.text === 'BEGIN'));
+    assert.ok(queries.some((query) => query.text.includes('last_provider_event_created = NULL') && query.values[1] === 'sub_checkout_test'));
+    assert.ok(queries.some((query) => query.text === 'COMMIT'));
+  } finally {
+    __setPoolForTests(null);
+    globalThis.fetch = oldFetch;
+    for (const [key, value] of Object.entries(oldEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 });
