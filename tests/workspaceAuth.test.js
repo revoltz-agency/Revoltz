@@ -26,6 +26,7 @@ function workspaceDatabase() {
   const users = new Map();
   const sessions = new Map();
   const states = new Map();
+  const organizations = new Map();
   const pool = {
     calls,
     on() {},
@@ -33,6 +34,22 @@ function workspaceDatabase() {
     async query(text, values = []) {
       calls.push({ text, values });
       if (/^\s*CREATE (TABLE|INDEX) IF NOT EXISTS/i.test(text)) return { rows: [], rowCount: 0 };
+      // Schema backfills are no-ops in this in-memory database; focused
+      // organization helper queries below exercise per-user provisioning.
+      if (/^\s*INSERT INTO organizations\s*\(name, owner_user_id\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*INSERT INTO organization_memberships\s*\(organization_id, user_id, role\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*INSERT INTO organization_subscriptions\s*\(organization_id, plan_key, status\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
+      if (text.includes('INSERT INTO organizations (name, owner_user_id)')) {
+        const [name, userId] = values;
+        if (!organizations.has(userId)) organizations.set(userId, { id: 'org-' + userId, name, owner_user_id: userId });
+        return { rows: [], rowCount: 1 };
+      }
+      if (text.includes('SELECT id FROM organizations WHERE owner_user_id')) {
+        const organization = organizations.get(values[0]);
+        return { rows: organization ? [{ id: organization.id }] : [], rowCount: organization ? 1 : 0 };
+      }
+      if (text.includes('INSERT INTO organization_memberships')) return { rows: [], rowCount: 1 };
+      if (text.includes('INSERT INTO organization_subscriptions')) return { rows: [], rowCount: 1 };
 
       if (text.includes('INSERT INTO workspace_users')) {
         const [name, email, passwordHash] = values;
