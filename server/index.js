@@ -39,6 +39,7 @@ import {
 import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed } from './security.js';
 import { notifyTelegramAuditRequest } from './telegram.js';
 import { readOrganizationWorkspace, updateOrganizationModules } from './organizationWorkspace.js';
+import { createRazorpaySubscription, processRazorpayWebhook } from './razorpaySubscriptions.js';
 import {
   authenticateWorkspaceUser,
   clearWorkspaceCookies,
@@ -94,7 +95,13 @@ app.use('/api/audit/requests', (req, res, next) => {
   return next();
 });
 
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({
+  limit: '2mb',
+  verify(req, _res, buffer) {
+    // Razorpay signs the exact bytes, not a re-serialized JSON object.
+    if (req.path === '/api/webhooks/razorpay') req.rawBody = Buffer.from(buffer);
+  },
+}));
 
 // --- Multi-user AgencyOS workspace accounts --------------------------------
 const workspaceLoginLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 10 });
@@ -179,6 +186,37 @@ app.post('/api/workspace/logout', async (req, res) => {
   await revokeWorkspaceSession(req).catch(() => false);
   for (const cookie of clearWorkspaceCookies(req)) res.append('Set-Cookie', cookie);
   return res.json({ ok: true });
+});
+
+app.post('/api/workspace/subscription/checkout', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  try {
+    return res.json(await createRazorpaySubscription(session.user.id));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return workspaceUnavailable(res);
+  }
+});
+
+app.post('/api/webhooks/razorpay', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!req.rawBody) return res.status(400).json({ error: 'Raw webhook body is required.' });
+  try {
+    const result = await processRazorpayWebhook({
+      rawBody: req.rawBody,
+      signature: req.get('X-Razorpay-Signature'),
+      eventId: req.get('X-Razorpay-Event-Id'),
+    });
+    return res.json(result);
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    console.error('[razorpay] webhook processing failed:', error?.message || error);
+    return res.status(500).json({ error: 'Webhook processing failed. Razorpay should retry this event.' });
+  }
 });
 
 app.get('/api/workspace/organization', async (req, res) => {
