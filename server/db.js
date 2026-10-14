@@ -132,6 +132,74 @@ const SCHEMA_STATEMENTS = [
      state      jsonb       NOT NULL DEFAULT '{}'::jsonb,
      updated_at timestamptz NOT NULL DEFAULT now()
    )`,
+  // SaaS foundation: a workspace owner receives an organization automatically.
+  // This keeps current single-user accounts working while enabling future teams.
+  `CREATE TABLE IF NOT EXISTS organizations (
+     id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     name               text NOT NULL,
+     owner_user_id      uuid NOT NULL UNIQUE REFERENCES workspace_users(id),
+     created_at         timestamptz NOT NULL DEFAULT now(),
+     updated_at         timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE TABLE IF NOT EXISTS organization_memberships (
+     organization_id    uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     user_id            uuid NOT NULL REFERENCES workspace_users(id) ON DELETE CASCADE,
+     role               text NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member')),
+     created_at         timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (organization_id, user_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS organization_memberships_user_idx
+     ON organization_memberships (user_id)`,
+  // Module preferences are organization-scoped; server-side entitlements will
+  // later determine which modules may be enabled for each subscription plan.
+  `CREATE TABLE IF NOT EXISTS organization_modules (
+     organization_id    uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     module_key         text NOT NULL,
+     enabled            boolean NOT NULL DEFAULT true,
+     settings           jsonb NOT NULL DEFAULT '{}'::jsonb,
+     updated_at         timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (organization_id, module_key)
+   )`,
+  `CREATE TABLE IF NOT EXISTS organization_subscriptions (
+     id                         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     organization_id            uuid NOT NULL UNIQUE REFERENCES organizations(id) ON DELETE CASCADE,
+     plan_key                   text NOT NULL DEFAULT 'starter',
+     status                     text NOT NULL DEFAULT 'inactive'
+                                CHECK (status IN ('inactive', 'created', 'authenticated', 'active', 'pending', 'halted', 'cancelled', 'completed', 'expired', 'past_due')),
+     razorpay_customer_id       text,
+     razorpay_subscription_id   text UNIQUE,
+     current_period_start       timestamptz,
+     current_period_end         timestamptz,
+     cancel_at_period_end       boolean NOT NULL DEFAULT false,
+     created_at                 timestamptz NOT NULL DEFAULT now(),
+     updated_at                 timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS organization_subscriptions_status_idx
+     ON organization_subscriptions (status)`,
+  // Webhook event IDs provide an idempotency boundary: duplicate deliveries
+  // must not apply the same subscription transition twice.
+  `CREATE TABLE IF NOT EXISTS payment_webhook_events (
+     event_id             text PRIMARY KEY,
+     provider             text NOT NULL DEFAULT 'razorpay',
+     event_type           text NOT NULL,
+     payload              jsonb NOT NULL DEFAULT '{}'::jsonb,
+     received_at          timestamptz NOT NULL DEFAULT now(),
+     processed_at         timestamptz
+   )`,
+  // Non-destructive backfill for existing accounts. Existing data and sessions
+  // remain untouched; every pre-existing user gets one owner organization.
+  `INSERT INTO organizations (name, owner_user_id)
+     SELECT left(name || '''s workspace', 200), id
+     FROM workspace_users
+     ON CONFLICT (owner_user_id) DO NOTHING`,
+  `INSERT INTO organization_memberships (organization_id, user_id, role)
+     SELECT id, owner_user_id, 'owner'
+     FROM organizations
+     ON CONFLICT (organization_id, user_id) DO NOTHING`,
+  `INSERT INTO organization_subscriptions (organization_id, plan_key, status)
+     SELECT id, 'starter', 'inactive'
+     FROM organizations
+     ON CONFLICT (organization_id) DO NOTHING`,
 ];
 
 /**
