@@ -336,6 +336,9 @@ const auditIntakeLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 5 }
 // disables it entirely. See docs/API_ABUSE_AND_COST_REVIEW.md — this is a
 // backstop only and is not a global spending cap.
 const placesLimiter = createPlacesRateLimiter();
+// Website audits perform outbound requests and parsing, so cap them per signed-in
+// workspace user as a cost/abuse backstop. This is independent of the Places quota.
+const websiteAuditLimiter = createRateLimiter({ windowMs: 60_000, limit: 10 });
 
 /**
  * Applies the Places rate limit. Returns true when the request may continue.
@@ -412,6 +415,14 @@ app.post('/api/places/details', async (req, res) => {
 });
 
 app.post('/api/website/analyze', async (req, res) => {
+  const rate = websiteAuditLimiter.check(`website-audit:${req.workspaceUser.id}`);
+  if (!rate.allowed) {
+    res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(429).json({
+      error: `Website audit limit reached (10/minute). Wait ${rate.retryAfterSeconds}s and try again.`,
+    });
+  }
   const website = typeof req.body?.website === 'string' ? req.body.website.trim() : '';
   if (!website || website.length > 2_000) {
     return res.status(400).json({ error: 'A valid website URL is required.' });
