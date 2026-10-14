@@ -35,6 +35,7 @@ import AuditInbox from './components/AuditInbox.jsx';
 import CashFlowPlanner from './components/CashFlowPlanner.jsx';
 import ClientActivityLog from './components/ClientActivityLog.jsx';
 import PageErrorBoundary from './components/PageErrorBoundary.jsx';
+import BusinessManagement, { BusinessSetup } from './components/BusinessManagement.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedGeminiLeadPlaceholder, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
 import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
 import { markLeadContacted, stripLegacyCrmEmail, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
@@ -54,9 +55,11 @@ const SEARCH_HISTORY_KEY = 'agencyos:search-history:v1';
 const GEMINI_API_KEY_STORAGE = GEMINI_KEY_STORAGE;
 const MANUAL_LEADS_STORAGE_KEY = 'agencyos:manual-leads:v1';
 const MANUAL_OVERRIDES_STORAGE_KEY = 'agencyos:manual-lead-overrides:v1';
+const BUSINESS_PROFILE_KEY = 'agencyos:business-profile:v1';
 const EXAMPLE_SEARCHES = ['Restaurants in Pune', 'Dental clinics in Pune', 'CA firms in Pune', 'Gyms in Pune', 'Salons in Pune', 'Real estate agencies in Pune', 'Cloud kitchens in Pune'];
 const NAV_ITEMS = [
-  { label: 'Dashboard', icon: LayoutDashboard },
+  { label: 'Business Management', icon: Building2 },
+  { label: 'Growth Dashboard', icon: LayoutDashboard },
   { label: 'Find Leads', icon: Search },
   { label: 'AI Business Auditor', icon: ClipboardList },
   { label: 'Audit Inbox', icon: Inbox },
@@ -227,7 +230,10 @@ function safeHttpUrl(value) {
 function getDefaultCrm(lead) { return cleanCrmRecord({ ...DEFAULT_CRM, ...(lead?.initialCRM || {}) }); }
 
 function AgencyOSApp() {
-  const [activePage, setActivePage] = useState('Dashboard');
+  const [activePage, setActivePage] = useState('Business Management');
+  const [businessProfile, setBusinessProfile] = useState(() => {
+    try { const value = JSON.parse(window.localStorage.getItem(BUSINESS_PROFILE_KEY) || 'null'); return value && typeof value === 'object' ? value : null; } catch { return null; }
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [apiConfig, setApiConfig] = useState({ loading: true, googlePlacesConfigured: false, reachable: true });
   const [geminiApiKey, setGeminiApiKey] = useState(() => {
@@ -267,6 +273,12 @@ function AgencyOSApp() {
   const initialConfigLoaded = useRef(false);
   const toastTimer = useRef(null);
   const detailsRequestsRef = useRef(new Map());
+
+  useEffect(() => {
+    if (!businessProfile) return;
+    try { window.localStorage.setItem(BUSINESS_PROFILE_KEY, JSON.stringify(businessProfile)); }
+    catch { /* The current session remains usable if browser storage is unavailable. */ }
+  }, [businessProfile]);
 
   const getCrm = (lead) => cleanCrmRecord({ ...getDefaultCrm(lead), ...(workflow[getLeadKey(lead)] || {}) });
   const allLeads = useMemo(() => dedupeLeads([...leads, ...finderResults]).filter((lead) => !lead.demo), [leads, finderResults]);
@@ -729,7 +741,8 @@ function AgencyOSApp() {
   return (
     <div className="app-shell">
       {sidebarOpen && <button type="button" className="mobile-scrim" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} />}
-      <Sidebar activePage={activePage} onNavigate={(page) => { setActivePage(page); setSidebarOpen(false); }} open={sidebarOpen} />
+      {!businessProfile ? <BusinessSetup onSave={setBusinessProfile} /> : <>
+      <Sidebar activePage={activePage} onNavigate={(page) => { setActivePage(page); setSidebarOpen(false); }} open={sidebarOpen} profile={businessProfile} />
       <div className="main-shell">
         <header className="topbar">
           <button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Menu size={19} /></button>
@@ -738,7 +751,8 @@ function AgencyOSApp() {
         </header>
         <main className="main-content">
 
-          {activePage === 'Dashboard' && <DashboardPage leads={leads} getCrm={getCrm} onNavigate={setActivePage} onOpenLead={openLead} onExport={() => exportCsv(leads)} />}
+          {activePage === 'Business Management' && <BusinessManagement profile={businessProfile} onUpdateProfile={setBusinessProfile} onNavigate={setActivePage} />}
+          {activePage === 'Growth Dashboard' && <DashboardPage leads={leads} getCrm={getCrm} onNavigate={setActivePage} onOpenLead={openLead} onExport={() => exportCsv(leads)} />}
           {activePage === 'AI Business Auditor' && <BusinessAuditor apiKey={geminiApiKey} />}
           {activePage === 'Sales Engine' && <SalesEngine leads={leads} getCrm={getCrm} apiKey={geminiApiKey} />}
           {activePage === 'Deal Pipeline' && <DealTracker />}
@@ -778,22 +792,23 @@ function AgencyOSApp() {
           {activePage === 'Privacy Policy' && <LegalPage type="privacy" onNavigate={setActivePage} />}
           {activePage === 'Terms' && <LegalPage type="terms" onNavigate={setActivePage} />}
         </main>
-        <footer className="app-footer"><span>AgencyOS <i>·</i> Evidence-led prospecting</span><div><a className="footer-site-link" href={withBase('/')} onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey) return; event.preventDefault(); navigate('/'); }}>REVOLTZ AI</a><button type="button" onClick={() => setActivePage('Privacy Policy')}>Privacy</button><button type="button" onClick={() => setActivePage('Terms')}>Terms</button><span className="footer-version">V1.0</span></div></footer>
+        <footer className="app-footer"><span>AgencyOS <i>·</i> Business management</span><div><a className="footer-site-link" href={withBase('/')} onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey) return; event.preventDefault(); navigate('/'); }}>REVOLTZ AI</a><button type="button" onClick={() => setActivePage('Privacy Policy')}>Privacy</button><button type="button" onClick={() => setActivePage('Terms')}>Terms</button><span className="footer-version">V1.0</span></div></footer>
       </div>
       {selectedLead && <LeadDrawer key={getLeadKey(selectedLead)} lead={selectedLead} crm={getCrm(selectedLead)} onClose={() => setSelectedLeadId('')} onUpdate={(patch) => updateCrm(selectedLead, patch)} onStatus={(status) => updateStatus(selectedLead, status)} onMarkContacted={() => markContacted(selectedLead)} onRemove={() => removeSavedLead(selectedLead)} onRefreshPlace={() => refreshSavedPlace(selectedLead)} refreshingPlace={Boolean(refreshingDetailsIds[getLeadKey(selectedLead)])} onAnalyze={() => analyzeWebsite(selectedLead)} analyzing={Boolean(auditLoadingIds[getLeadKey(selectedLead)])} auditRevealed={Boolean(auditRevealedIds[getLeadKey(selectedLead)])} onPitch={() => handleOpenPitch(selectedLead)} />}
       {outreachLead && <OutreachModal key={getLeadKey(outreachLead)} lead={outreachLead} crm={getCrm(outreachLead)} onClose={() => setOutreachLeadId('')} onToast={showToast} onMarkContacted={() => markContacted(outreachLead)} onReviewLead={() => { setOutreachLeadId(''); setSelectedLeadId(getLeadKey(outreachLead)); }} />}
       {toast && <div className="toast-message" role="status"><CheckCircle2 size={17} />{toast}</div>}
+      </>}
     </div>
   );
 }
 
 const NAV_GROUPS = [
-  { label: 'Sales & follow-ups', icon: Target, items: ['AI Business Auditor', 'Audit Inbox', 'Campaigns', 'Sales Engine', 'Deal Pipeline', 'Follow-up Assistant'] },
+  { label: 'Growth & sales', icon: Target, items: ['Growth Dashboard', 'Find Leads', 'Leads', 'AI Business Auditor', 'Audit Inbox', 'Campaigns', 'Sales Engine', 'Deal Pipeline', 'Follow-up Assistant'] },
   { label: 'Clients & delivery', icon: Users, items: ['Client Onboarding', 'Client Retention', 'Website Delivery Hub', 'Project Tracker', 'Client Activity Log'] },
   { label: 'Finance & reports', icon: CircleDollarSign, items: ['Invoice Tracker', 'Cash Flow Planner', 'Expense Tracker', 'Revenue Goals', 'Business Reports'] },
   { label: 'Tools', icon: Zap, items: ['Daily Action Center', 'Quick Notes', 'Website Demo Builder', 'Proposal Builder', 'Data Backup'] },
 ];
-function Sidebar({ activePage, onNavigate, open }) {
+function Sidebar({ activePage, onNavigate, open, profile }) {
   const [expandedGroup, setExpandedGroup] = useState(() => NAV_GROUPS.find(group => group.items.includes(activePage))?.label || '');
   useEffect(() => {
     const group = NAV_GROUPS.find(item => item.items.includes(activePage));
@@ -804,13 +819,11 @@ function Sidebar({ activePage, onNavigate, open }) {
     return <button type="button" key={item.label} onClick={() => onNavigate(item.label)} className={`nav-item ${activePage === item.label ? 'nav-item-active' : ''}`} style={{width:'100%'}}><Icon size={18} strokeWidth={1.8} /><span>{item.label}</span>{item.label === 'Leads' && <span className="nav-count">•</span>}</button>;
   };
   return <aside className={`sidebar ${open ? 'sidebar-open' : ''}`}>
-    <div className="brand-lockup"><div className="brand-mark"><Sparkles size={20} strokeWidth={1.8} /></div><div><span className="brand-name">Agency<span>OS</span></span><span className="brand-caption">GROW WITH CLARITY</span></div></div>
-    <div className="workspace-switcher"><div className="workspace-monogram">AR</div><div className="workspace-label"><strong>Agency workspace</strong><span>Starter plan</span></div><ChevronDown size={15} /></div>
+    <div className="brand-lockup"><div className="brand-mark"><Sparkles size={20} strokeWidth={1.8} /></div><div><span className="brand-name">Agency<span>OS</span></span><span className="brand-caption">BUSINESS MANAGEMENT</span></div></div>
+    <div className="workspace-switcher"><div className="workspace-monogram">{initials(profile?.name || 'Business')}</div><div className="workspace-label"><strong>{profile?.name || 'Business workspace'}</strong><span>{profile?.industry || 'Business management'}</span></div><ChevronDown size={15} /></div>
     <div className="nav-section-label">WORKSPACE</div>
     <nav className="main-nav" aria-label="Main navigation">
-      {navButton({label:'Dashboard',icon:LayoutDashboard})}
-      {navButton({label:'Find Leads',icon:Search})}
-      {navButton({label:'Leads',icon:Users})}
+      {navButton({label:'Business Management',icon:Building2})}
       {NAV_GROUPS.map(group => {
         const GroupIcon = group.icon;
         const expanded = expandedGroup === group.label;
@@ -1225,14 +1238,15 @@ function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onG
 
 function LegalPage({ type, onNavigate }) {
   const privacy = type === 'privacy';
-  return <div className="page-stack legal-page"><PageHeading eyebrow="AGENCYOS POLICIES" title={privacy ? 'Privacy Policy' : 'Terms of Use'} description={privacy ? 'A plain-language summary of what this MVP does with workspace data.' : 'The rules and limits for this early-access prospecting workspace.'}><button className="button button-secondary" type="button" onClick={() => onNavigate('Settings')}><SettingsIcon size={15} /> Settings</button></PageHeading>
-    <article className="surface-card legal-card"><div className="legal-updated"><ShieldCheck size={15} /> Last updated October 7, 2026 <span>·</span> MVP version</div>
+  return <div className="page-stack legal-page"><PageHeading eyebrow="AGENCYOS POLICIES" title={privacy ? 'Privacy Policy' : 'Terms of Use'} description={privacy ? 'A plain-language summary of what this MVP does with workspace data.' : 'The rules and limits for this early-access business workspace.'}><button className="button button-secondary" type="button" onClick={() => onNavigate('Settings')}><SettingsIcon size={15} /> Settings</button></PageHeading>
+    <article className="surface-card legal-card"><div className="legal-updated"><ShieldCheck size={15} /> Last updated October 14, 2026 <span>·</span> MVP version</div>
       {privacy ? <>
-        <section><h2>What AgencyOS does</h2><p>AgencyOS helps an agency research local businesses through the official Google Places API, qualify prospects from visible signals, draft outreach for review, and manage a simple CRM workflow. The optional sample dataset contains only fictional businesses and reserved example URLs.</p></section>
-        <section><h2>Information and storage</h2><p>Google Places responses are held in browser memory for the active session and are not written to the AgencyOS server or browser storage. The browser stores manually entered leads (name, category, city, website, phone, maps URL, address, rating, review count, Instagram, Facebook and notes, but no email address), explicit user-entered overrides, CRM fields (status, notes, tags, follow-up dates, assigned service, estimate, and WhatsApp opt-in confirmation). Prospect email addresses are not collected or stored. The browser also stores saved Google place IDs and recent user-entered search terms. Manual lead details are stored locally in this browser. Place IDs are exempt from Google Places caching restrictions; after a reload, a saved ID is a placeholder until you explicitly refresh its current listing details. Avoid putting sensitive personal information in notes.</p><p>CSV export contains manual/user-entered lead details, labeled CRM workflow fields, and Google place IDs, not Google Places business details. A user-initiated export creates a file on your device.</p></section>
+        <section><h2>What AgencyOS does</h2><p>AgencyOS provides a business workspace for business profile, employee and manual salary records, and optional business tools such as lead research or coaching-centre batch, attendance, and fee tracking. The optional sample dataset contains fictional businesses and reserved example URLs.</p></section>
+        <section><h2>Information and storage</h2><p>When signed in, the workspace stores the business profile and records you add, including employee names, job titles, salary amounts, batch names, adult learner names, centre IDs, attendance, and fee amounts/statuses. Workspace data is kept in the account service database and synced to your signed-in account so it can be opened on another device. Do not enter bank details, government IDs, contact details, health information, exam results, or information about minors in this MVP. The coaching-centre pilot requires you to confirm learners are adults; you are responsible for providing any required notices and obtaining appropriate permissions.</p><p>Google Places results are held in memory for the active session and are not saved to the workspace. Saved Google Place IDs and user-entered search history, manual lead details, CRM workflow fields, and other records are synced with your account. CSV and backup exports create files on your device and may contain personal or salary data; keep them private. Google-backed results are subject to current Google Maps Platform terms.</p>
+          <p>Signing out does not delete saved workspace data. This MVP does not yet provide self-service account or data deletion; do not use it for production employee or learner records until deletion and retention controls are available.</p></section>
         <section><h2>Website checks and external actions</h2><p>Website analysis makes a limited server-side request to the submitted public website, follows only a small number of safe redirects, and returns basic HTML signals. It does not attempt a visual audit. The WhatsApp button opens your own application only after you click; AgencyOS does not send messages, schedule sends, scrape Maps pages, or automate WhatsApp. Any email field stored by an earlier version is discarded when your data is loaded.</p></section>
-        <section><h2>Credentials and service providers</h2><p>Google credentials are read by the server from environment variables and are never returned to the browser. Search requests are sent to Google Maps Platform. Your use of Google data is also subject to <a href="https://cloud.google.com/maps-platform/terms" target="_blank" rel="noreferrer">Google Maps Platform terms</a> and <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Google’s privacy practices</a>. This MVP does not include accounts, passwords, an email provider, or an external AI model.</p></section>
-        <section><h2>Your responsibilities and choices</h2><p>You decide whether and how to contact a prospect. Confirm the recipient’s WhatsApp opt-in before opening a conversation; AgencyOS does not prepare or send email outreach. Use “Do not contact” when appropriate, honor opt-outs, and follow applicable privacy, marketing, and platform rules. You can clear local CRM data by clearing this site’s browser storage.</p></section>
+        <section><h2>Credentials and service providers</h2><p>Workspace login uses an account service. Google credentials are read by the server from environment variables and are not returned to the browser. Search requests are sent to Google Maps Platform when configured. Gemini features may send a user-initiated request to Google using a key held for the active browser session. Use of Google services is subject to <a href="https://cloud.google.com/maps-platform/terms" target="_blank" rel="noreferrer">Google Maps Platform terms</a> and <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Google’s privacy practices</a>.</p></section>
+        <section><h2>Your responsibilities and choices</h2><p>You decide what business records to enter and how to use them. Do not store data the MVP warns against. For learner records, use the adult-only pilot and provide any required notice or consent. Workspace data is account-synced; clearing browser storage does not delete the server copy. Contact the product owner for assistance with data questions or deletion until self-service controls are built.</p></section>
         <section><h2>Contact and changes</h2><p>This policy is a product MVP summary, not legal advice. Replace it with a reviewed policy and a real contact address before public deployment. The workspace owner is responsible for publishing accurate contact information and updating this notice.</p></section>
       </> : <>
         <section><h2>Use of prospect data</h2><p>Use AgencyOS only for lawful, appropriate prospect research. You are responsible for confirming a lawful basis for outreach, honoring contact preferences and opt-outs, and complying with privacy, consumer-protection, and WhatsApp Business policies.</p></section>
@@ -1334,100 +1348,8 @@ function LeadDrawer({ lead, crm, onClose, onUpdate, onStatus, onMarkContacted, o
           </section>
         </div>
         <div className="drawer-bottom-bar"><button className="button button-quiet drawer-remove-button" type="button" onClick={onRemove} title="Delete this lead and its saved CRM details"><Trash2 size={14} /> Delete lead</button><button className="button button-secondary drawer-close-button" type="button" onClick={closeDrawer}>Close</button><button className="button button-primary" type="button" onClick={onPitch} disabled={dnc || lead.needsRefresh}><Sparkles size={15} /> Generate pitch</button></div>
-      </aside>
-    </div>
-  );
-}
-
-function AuditReport({ audit, demo, showOrdering = false }) {
-  const checks = [
-    { label: 'Mobile viewport declaration', present: audit.mobileViewportDetected, detail: 'This checks for a viewport meta tag, not actual mobile rendering.' },
-    { label: 'Clear CTA in page links/buttons', present: audit.ctaDetected, detail: 'Only visible link/button labels and selected paths were inspected.' },
-    { label: 'Obvious contact flow', present: audit.contactFlowDetected, detail: 'Checks for a phone, email, contact, or booking link.' },
-    { label: 'WhatsApp entry point', present: audit.whatsappFlowDetected, detail: 'Checks for a WhatsApp link or link/button labelled WhatsApp.' },
-    ...(showOrdering && typeof audit.onlineOrderingDetected === 'boolean' ? [{ label: 'Online-ordering link', present: audit.onlineOrderingDetected, detail: 'Checks fetched public HTML link text and URLs only; no ordering flow was tested.' }] : []),
-    { label: 'Structured business contact details', present: audit.structuredContactInfoDetected, detail: 'Checks for an address element or contact fields in JSON-LD.' },
-    { label: 'Page title', present: audit.titleDetected, detail: 'A non-empty HTML title element was detected.' },
-  ];
-  const gaps = checks.filter((check) => check.present === false);
-  return (
-    <div className="audit-report">
-      <div className="audit-report-top"><span className={demo ? 'demo-audit-tag' : 'live-audit-tag'}>{demo ? 'DEMO PREVIEW · NOT LIVE' : 'LIMITED HTML CHECK'}</span>{!demo && audit.finalUrl && <a href={audit.finalUrl} target="_blank" rel="noreferrer" aria-label="Open analyzed website"><ExternalLink size={13} /></a>}</div>
-      <div className="audit-check-list">{checks.map((check) => <div className="audit-check-row" key={check.label}><span className={`audit-check-icon ${check.present ? 'audit-positive' : 'audit-caution'}`}>{check.present ? <Check size={12} /> : <Info size={12} />}</span><div><strong>{check.label}</strong><small>{check.present ? 'Detected in fetched HTML' : 'Not detected in fetched HTML'} · {check.detail}</small></div></div>)}</div>
-      <div className="audit-opportunity"><strong>Potential opportunity</strong>{gaps.length ? <ul>{gaps.slice(0, 4).map((gap) => <li key={gap.label}>{gap.label} was not detected in the fetched page HTML.</li>)}</ul> : <p>No obvious gaps were detected by these limited checks. This does not confirm the page is conversion-ready.</p>}</div>
-      <div className="audit-caveat"><Info size={13} /> Visual freshness, responsive behavior, accessibility, and content loaded by scripts are not assessed. {demo ? 'All sample signals are fictional.' : 'Automated HTML checks can miss dynamic content.'}</div>
-    </div>
-  );
-}
-
-function OutreachModal({ lead, crm, onClose, onToast, onMarkContacted, onReviewLead }) {
-  const draft = useMemo(() => buildOutreach(lead), [lead]);
-  const [whatsappBody, setWhatsappBody] = useState(draft.whatsappBody);
-  const isDnc = crm.status === 'DO NOT CONTACT';
-  const whatsappValidation = validateOutreachContact('whatsapp', lead, crm);
-  const phoneDigits = safePhoneDigits(lead.internationalPhoneNumber || lead.phone);
-  const whatsappPhoneDigits = phoneDigits.length === 10 ? `91${phoneDigits}` : phoneDigits;
-  const whatsappAllowed = whatsappValidation.allowed && Boolean(whatsappPhoneDigits);
-  const whatsappDraftAllowed = !isDnc && !lead.demo && !lead.needsRefresh;
-  const whatsappAppAllowed = whatsappDraftAllowed && Boolean(whatsappPhoneDigits);
-  // Use WhatsApp's universal HTTPS link: on mobile it hands off to the installed app;
-  // otherwise it falls back to WhatsApp Web instead of leaving the site on a blank scheme page.
-  const whatsappHref = whatsappAppAllowed ? `https://wa.me/${whatsappPhoneDigits}?text=${encodeURIComponent(whatsappBody)}` : '';
-  const whatsappOpenReason = whatsappAppAllowed ? 'WhatsApp will open with the message prefilled. Review it and tap Send yourself.' : 'Add a valid phone number to open WhatsApp.';
-
-  async function copy(text, label) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const field = document.createElement('textarea');
-      field.value = text;
-      field.style.position = 'fixed';
-      field.style.opacity = '0';
-      document.body.appendChild(field);
-      field.select();
-      document.execCommand('copy');
-      field.remove();
-    }
-    onToast(`${label} copied. Review before sending.`);
-  }
-
-  return (
-    <div className="modal-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} onTouchEnd={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="outreach-modal" role="dialog" aria-modal="true" aria-labelledby="outreach-title">
-        <div className="modal-header"><div><div className="card-kicker">PERSONALIZED OUTREACH</div><h2 id="outreach-title">A message that sounds like you.</h2><p>Drafted from available public details. Edit it freely before using.</p></div><button className="icon-button modal-close-button" type="button" aria-label="Close pitch composer" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }}><X size={18} /></button></div>
-        <div className="pitch-recipient"><div className="business-avatar">{initials(lead.name)}</div><div><strong>{lead.name}</strong><span>{lead.category} · {lead.city || lead.address || 'Location not returned'}</span></div><ModeBadge lead={lead} /></div>
-        <div className="pitch-recipient-links">{!lead.demo && safeHttpUrl(lead.website) && <a href={safeHttpUrl(lead.website)} target="_blank" rel="noreferrer"><Globe2 size={13} /> Open website <ExternalLink size={11} /></a>}{!lead.demo && safeHttpUrl(lead.mapsUrl) && <a href={safeHttpUrl(lead.mapsUrl)} target="_blank" rel="noreferrer"><MapPin size={13} /> Google Maps <ExternalLink size={11} /></a>}</div>
-        {lead.source === 'google' && <GoogleDisclosure compact />}
-        <div className="pitch-tabs"><span className="pitch-tab active"><MessageCircle size={15} /> WhatsApp draft</span><span className="pitch-channel-note">Email outreach was removed from prospect CRM.</span></div>
-        <div className={`outreach-contact-status ${whatsappDraftAllowed ? 'contact-basis-ready' : 'contact-basis-blocked'}`}><ShieldCheck size={14} /><span>{whatsappDraftAllowed ? 'WhatsApp draft is ready to copy. Opening WhatsApp requires a valid business phone number and confirmed opt-in.' : whatsappValidation.reason}{lead.phone && <small>Phone source: {isUserProvidedManualField(lead, 'phone') ? 'user-entered business number.' : lead.demo ? 'fictional demo sample.' : lead.source === 'gemini' ? 'Google Maps grounding.' : 'Google Places.'}</small>}</span></div>
-        <div className="pitch-editor"><label className="field-group"><span>WhatsApp message</span><textarea rows={7} value={whatsappBody} onChange={(event) => setWhatsappBody(event.target.value)} maxLength={1500} /></label><div className="pitch-editor-foot"><span>{whatsappBody.length} / 1,500 characters</span><button className="text-button" type="button" onClick={() => copy(whatsappBody, 'WhatsApp draft')} disabled={!whatsappDraftAllowed}><Copy size={14} /> Copy message</button></div></div>
-        <div className="pitch-evidence"><ShieldCheck size={14} /><span>{lead.demo ? 'Fictional demo details. The sample cannot be contacted.' : lead.source === 'manual' || lead.manualUserFields?.length ? 'Draft uses details entered by you and any completed page check. User-entered claims are not independently verified.' : 'Draft uses only returned listing details and any completed page check. No unsupported business claims are added.'}</span></div>
-        {isDnc && <div className="dnc-notice modal-dnc"><ShieldCheck size={14} /> Do Not Contact is active. Draft copy and channel actions are disabled.</div>}
-        <div className="modal-actions">
-          <button className="button button-secondary" type="button" onClick={() => copy(whatsappBody, 'WhatsApp draft')} disabled={!whatsappDraftAllowed}><Copy size={15} /> Copy draft</button>
-          {whatsappAppAllowed ? <a className="button button-whatsapp" href={whatsappHref}><MessageCircle size={15} /> Open WhatsApp app <ArrowUpRight size={14} /></a> : <button className="button button-whatsapp" type="button" disabled title={whatsappOpenReason}><MessageCircle size={15} /> Open WhatsApp app</button>}
-          <button type="button" className="button button-secondary mark-contacted-button" onClick={onMarkContacted} disabled={isDnc || lead.demo}><Check size={14} /> Mark as Contacted</button>
-          <button type="button" className="modal-review-link" onClick={onReviewLead}>Review contact details <ArrowRight size={14} /></button>
-        </div>
-        <div className="manual-send-note"><Info size={14} /><span>Click Open WhatsApp once to open the installed WhatsApp app with the message prefilled. Then review it and tap Send yourself; AgencyOS never sends automatically and no longer prepares email outreach.</span></div>
-      </section>
-    </div>
-  );
-}
-
-// Top-level shell: the public REVOLTZ AI site lives at "/", the AgencyOS
-// workspace at "/agencyos". Both share one bundle; no server routes changed.
-function App() {
-  const path = useRouterPath();
-  useEffect(() => {
-    if (window.location.hash) return;
-    window.scrollTo({ top: 0, behavior: 'auto' });
-  }, [path]);
-
-  // The public GitHub Pages build is intentionally website-only. AgencyOS
-  // remains available in local/self-hosted builds for internal use.
-  const publicSiteOnly = import.meta.env.VITE_PUBLIC_SITE_ONLY === 'true';
-  return !publicSiteOnly && isAppPath(path) ? <AgencyOSApp /> : <RevoltzSite />;
-}
-
-export default App;
+      </aMethodInvocationException: 
+Line |
+   2 |  … [START]]'); [Console]::Write($fileText.Substring(140000,9938)); [Cons …
+     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Exception calling "Substring" with "2" argument(s): "Index and length must refer to a location within the string. (Parameter 'length')"
