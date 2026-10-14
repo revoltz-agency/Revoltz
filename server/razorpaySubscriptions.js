@@ -188,6 +188,7 @@ export async function processRazorpayWebhook({ rawBody, signature, eventId }) {
     // An invoice's identifier is not a subscription identifier.
     const subscriptionId = subscription?.id || invoice?.subscription_id;
     const entity = subscription || {};
+    const providerEventCreated = Number.isSafeInteger(event.created) && event.created > 0 ? event.created : null;
     if (nextStatus && subscriptionId) {
       await client.query(
         `UPDATE organization_subscriptions
@@ -195,9 +196,14 @@ export async function processRazorpayWebhook({ rawBody, signature, eventId }) {
              razorpay_customer_id = COALESCE($3, razorpay_customer_id),
              current_period_start = CASE WHEN $4::double precision IS NULL THEN current_period_start ELSE to_timestamp($4::double precision) END,
              current_period_end = CASE WHEN $5::double precision IS NULL THEN current_period_end ELSE to_timestamp($5::double precision) END,
+             last_provider_event_created = COALESCE($6::bigint, last_provider_event_created),
              updated_at = now()
-         WHERE razorpay_subscription_id = $1`,
-        [subscriptionId, nextStatus, entity.customer_id || invoice?.customer_id || null, entity.current_start ?? null, entity.current_end ?? null],
+         WHERE razorpay_subscription_id = $1
+           AND (
+             ($6::bigint IS NOT NULL AND (last_provider_event_created IS NULL OR last_provider_event_created <= $6::bigint))
+             OR ($6::bigint IS NULL AND last_provider_event_created IS NULL)
+           )`,
+        [subscriptionId, nextStatus, entity.customer_id || invoice?.customer_id || null, entity.current_start ?? null, entity.current_end ?? null, providerEventCreated],
       );
     }
     await client.query('UPDATE payment_webhook_events SET processed_at = now() WHERE event_id = $1', [eventId.trim()]);
