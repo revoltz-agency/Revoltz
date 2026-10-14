@@ -40,6 +40,7 @@ function workspaceDatabase() {
       if (/^\s*INSERT INTO organizations\s*\(name, owner_user_id\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
       if (/^\s*INSERT INTO organization_memberships\s*\(organization_id, user_id, role\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
       if (/^\s*INSERT INTO organization_subscriptions\s*\(organization_id, plan_key, status\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*INSERT INTO organization_modules\s*\(organization_id, module_key, enabled\)\s*SELECT o\.id/i.test(text)) return { rows: [], rowCount: 0 };
       if (text.includes('INSERT INTO organization_workspace_data') && text.includes('SELECT o.id, wd.state')) return { rows: [], rowCount: 0 };
       if (text.includes('INSERT INTO organizations (name, owner_user_id)')) {
         const [name, userId] = values;
@@ -52,6 +53,7 @@ function workspaceDatabase() {
       }
       if (text.includes('INSERT INTO organization_memberships')) return { rows: [], rowCount: 1 };
       if (text.includes('INSERT INTO organization_subscriptions')) return { rows: [], rowCount: 1 };
+      if (text.includes('INSERT INTO organization_modules')) return { rows: [], rowCount: 4 };
       if (text.includes('FROM organization_memberships') && text.includes('SELECT organization_id')) {
         const organization = organizations.get(values[0]);
         return { rows: organization ? [{ organization_id: organization.id }] : [], rowCount: organization ? 1 : 0 };
