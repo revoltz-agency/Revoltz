@@ -75,8 +75,8 @@ export async function updateOrganizationModules(userId, requestedKeys) {
   }
   await queryDatabase(
     `INSERT INTO organization_modules (organization_id, module_key, enabled)
-     SELECT $1, module_key, module_key = ANY($2::text[])
-     FROM unnest($3::text[]) AS module_key
+     SELECT $1, keys.module_key, keys.module_key = ANY($2::text[])
+     FROM unnest($3::text[]) AS keys(module_key)
      ON CONFLICT (organization_id, module_key)
      DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()`,
     [membership.organization_id, enabledKeys, MODULE_KEYS],
