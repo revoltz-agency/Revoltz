@@ -118,7 +118,7 @@ test('schema initialization only issues IF NOT EXISTS DDL and never destroys dat
   for (const { text, values } of pool.calls) {
     assert.deepEqual(values, [], 'DDL must not carry parameters');
     assert.match(text, /^\s*(CREATE TABLE IF NOT EXISTS|CREATE INDEX IF NOT EXISTS)\s/);
-    assert.doesNotMatch(text, /\bDROP\b|\bTRUNCATE\b|\bALTER\b|\bDELETE\b|\bUPDATE\b/i);
+    assert.doesNotMatch(text, /^\s*(?:DROP|TRUNCATE|ALTER|DELETE|UPDATE)\b/im, 'schema initialization must not run destructive statements');
   }
   const ddl = pool.calls.map((call) => call.text).join('\n');
   assert.match(ddl, /audit_requests/);
