@@ -122,8 +122,11 @@ export async function processRazorpayWebhook({ rawBody, signature, eventId }) {
     }
 
     const nextStatus = razorpayEventStatus(event.event);
-    const subscription = event.payload?.subscription?.entity || event.payload?.invoice?.entity || {};
-    const subscriptionId = subscription.id || subscription.subscription_id;
+    const subscription = event.payload?.subscription?.entity || null;
+    const invoice = event.payload?.invoice?.entity || null;
+    // An invoice's identifier is not a subscription identifier.
+    const subscriptionId = subscription?.id || invoice?.subscription_id;
+    const entity = subscription || {};
     if (nextStatus && subscriptionId) {
       await client.query(
         `UPDATE organization_subscriptions
@@ -133,7 +136,7 @@ export async function processRazorpayWebhook({ rawBody, signature, eventId }) {
              current_period_end = CASE WHEN $5::double precision IS NULL THEN current_period_end ELSE to_timestamp($5::double precision) END,
              updated_at = now()
          WHERE razorpay_subscription_id = $1`,
-        [subscriptionId, nextStatus, subscription.customer_id || null, subscription.current_start ?? null, subscription.current_end ?? null],
+        [subscriptionId, nextStatus, entity.customer_id || invoice?.customer_id || null, entity.current_start ?? null, entity.current_end ?? null],
       );
     }
     await client.query('UPDATE payment_webhook_events SET processed_at = now() WHERE event_id = $1', [eventId.trim()]);
