@@ -1224,10 +1224,97 @@ function CampaignsPage({ leads, getCrm, onOpenLead, onPitch }) {
 }
 
 function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onGeminiApiKeyChange, geminiTesting, onTestGemini }) {
+  const [organizationWorkspace, setOrganizationWorkspace] = useState(null);
+  const [organizationLoading, setOrganizationLoading] = useState(true);
+  const [organizationError, setOrganizationError] = useState('');
+  const [organizationSaving, setOrganizationSaving] = useState(false);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [organizationNotice, setOrganizationNotice] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/workspace/organization', { credentials: 'include', cache: 'no-store' })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not load organization settings.');
+        if (active) {
+          setOrganizationWorkspace(payload);
+          setOrganizationError('');
+        }
+      })
+      .catch((error) => { if (active) setOrganizationError(error.message || 'Organization settings are unavailable.'); })
+      .finally(() => { if (active) setOrganizationLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  const workspaceCsrf = () => {
+    const cookie = document.cookie.split('; ').find((part) => part.startsWith('agencyos_workspace_csrf='));
+    return cookie ? decodeURIComponent(cookie.slice('agencyos_workspace_csrf='.length)) : '';
+  };
+
+  const saveOrganizationModules = async () => {
+    if (!organizationWorkspace) return;
+    setOrganizationSaving(true);
+    setOrganizationNotice('');
+    try {
+      const response = await fetch('/api/workspace/modules', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-Workspace-CSRF': workspaceCsrf() },
+        body: JSON.stringify({ modules: organizationWorkspace.modules.filter((module) => module.enabled).map((module) => module.key) }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Could not save module settings.');
+      setOrganizationWorkspace(payload);
+      setOrganizationNotice('Module access saved.');
+    } catch (error) {
+      setOrganizationNotice(error.message || 'Could not save module settings.');
+    } finally {
+      setOrganizationSaving(false);
+    }
+  };
+
+  const startSubscriptionCheckout = async () => {
+    setCheckoutBusy(true);
+    setOrganizationNotice('');
+    try {
+      const response = await fetch('/api/workspace/subscription/checkout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-Workspace-CSRF': workspaceCsrf() },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Checkout could not be started.');
+      if (!payload.checkoutUrl || !/^https:\/\//i.test(payload.checkoutUrl)) throw new Error('The payment provider returned an invalid checkout link.');
+      window.location.assign(payload.checkoutUrl);
+    } catch (error) {
+      setOrganizationNotice(error.message || 'Checkout is unavailable. Check the server billing configuration.');
+      setCheckoutBusy(false);
+    }
+  };
+
+  const subscriptionStatus = organizationWorkspace?.subscription?.status || 'inactive';
   return <div className="page-stack">
     <PageHeading eyebrow="WORKSPACE PREFERENCES" title="Settings & integrations." description="Know what is connected, where data lives, and what AgencyOS will never do." />
     <section className={`integration-status-card ${config.googlePlacesConfigured ? 'integration-ready' : ''}`}><div className="integration-icon"><Globe2 size={20} /></div><div className="integration-copy"><div className="card-kicker">GOOGLE PLACES INTEGRATION</div><h2>{config.loading ? 'Checking server configuration…' : config.googlePlacesConfigured ? 'Server key configured' : 'Places search unavailable'}</h2><p>{config.googlePlacesConfigured ? 'Google Places is available as a selectable source in Find Leads. The key stays on the server; searches run only when you choose Google Places and submit a search.' : config.reachable ? 'Add GOOGLE_MAPS_API_KEY to the server environment to enable Google Places searches. Gemini search, manual entry, CSV import, and demo mode remain available.' : 'The server status endpoint could not be reached. Gemini search, manual entry, CSV import, and demo mode remain available.'}</p></div><div className={`integration-state ${config.googlePlacesConfigured ? 'integration-state-ready' : ''}`}><span />{config.loading ? 'Checking' : config.googlePlacesConfigured ? 'Configured' : 'Not configured'}</div></section>
     <div className="settings-grid">
+      <section className="surface-card settings-card">
+        <div className="card-heading-row"><div><div className="card-kicker">ORGANIZATION & BILLING</div><h2>{organizationLoading ? 'Loading workspace…' : organizationWorkspace?.organization?.name || 'Workspace plan'}</h2></div><CircleDollarSign size={19} className="muted-icon" /></div>
+        {organizationError ? <p className="settings-paragraph">{organizationError} Billing controls are unavailable until the organization service is reachable.</p> : <>
+          <p className="settings-paragraph">Plan: <strong>{organizationWorkspace?.subscription?.planKey || 'Starter'}</strong> · Status: <strong>{organizationLoading ? 'Loading' : subscriptionStatus.replaceAll('_', ' ')}</strong></p>
+          <p className="settings-paragraph settings-small-note">Payment status is confirmed by signed server webhooks. Prices and billing intervals are managed in the Razorpay plan configured by the workspace administrator.</p>
+          {subscriptionStatus === 'active'
+            ? <div className="settings-callout"><CheckCircle2 size={15} /><span>Your subscription is active.</span></div>
+            : <button className="button button-primary" type="button" onClick={startSubscriptionCheckout} disabled={organizationLoading || checkoutBusy || organizationWorkspace?.organization?.role !== 'owner'}>{checkoutBusy ? 'Connecting to Razorpay…' : organizationWorkspace?.organization?.role === 'owner' ? 'Continue to secure checkout' : 'Only the owner can manage billing'}</button>}
+        </>}
+      </section>
+      <section className="surface-card settings-card">
+        <div className="card-heading-row"><div><div className="card-kicker">WORKSPACE MODULES</div><h2>Choose your tools</h2></div><SlidersHorizontal size={19} className="muted-icon" /></div>
+        <p className="settings-paragraph">Choose which modules this organization keeps enabled. Disabled modules are denied by the server for protected lead-search and website-audit APIs.</p>
+        {organizationLoading ? <p className="settings-paragraph">Loading module access…</p> : organizationWorkspace?.modules?.map((module) => <label key={module.key} className="settings-feature-list" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><input type="checkbox" checked={Boolean(module.enabled)} disabled={!['owner', 'admin'].includes(organizationWorkspace?.organization?.role) || organizationSaving} onChange={(event) => setOrganizationWorkspace((current) => ({ ...current, modules: current.modules.map((item) => item.key === module.key ? { ...item, enabled: event.target.checked } : item) }))} /><span>{module.label}</span></label>)}
+        <button className="button button-secondary" type="button" onClick={saveOrganizationModules} disabled={organizationLoading || organizationSaving || !organizationWorkspace || !['owner', 'admin'].includes(organizationWorkspace?.organization?.role)}>{organizationSaving ? 'Saving…' : 'Save module access'}</button>
+        {organizationNotice && <p className="settings-paragraph" role="status">{organizationNotice}</p>}
+      </section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">GEMINI AI ENGINE</div><h2>Connect Gemini</h2></div><Globe2 size={18} className="muted-icon" /></div><p className="settings-paragraph">All AgencyOS AI features use Gemini. Add your Google AI Studio API key here to power lead discovery and AI-assisted tools.</p><label className="field-group"><span>Gemini API key</span><input className="field-input" type="password" autoComplete="off" value={geminiApiKey} onChange={(event) => onGeminiApiKeyChange(event.target.value)} placeholder="Paste your Gemini API key" /></label><div className="settings-inline-actions"><button className="button button-secondary" type="button" onClick={onTestGemini} disabled={!geminiApiKey || geminiTesting}>{geminiTesting ? 'Testing…' : 'Test Gemini key'}</button>{geminiApiKey && <button className="text-button" type="button" onClick={() => onGeminiApiKeyChange('')}>Clear key</button>}</div><p className="settings-paragraph settings-small-note">The Gemini key stays in this browser session and is sent directly to Google for grounded lead discovery. Do not share it or commit it to GitHub.</p></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">EXPLAINABLE AI QUALIFICATION</div><h2>Evidence in, reason out</h2></div><div className="engine-icon"><Sparkles size={16} /></div></div><p className="settings-paragraph">Lead scoring and draft outreach remain deterministic and evidence-based; Gemini is used for grounded lead discovery and the AI Business Auditor, not for every button in the CRM.</p><div className="score-rule-list"><div><span>No website listed (Google only; manual missing = unknown)</span><strong>+30</strong></div><div><span>Weak website checks</span><strong>+20</strong></div><div><span>100+ reviews / 4.5+ rating</span><strong>+15 / +10</strong></div><div><span>Operational / contact gap / social link</span><strong>+10 / +10 / +5</strong></div></div><div className="settings-callout"><Info size={15} /><span>Priority bands: HOT 80–100, WARM 50–79, COLD 0–49. These are deterministic signals, not a forecast of conversion.</span></div><div className="settings-callout"><Info size={15} /><span>Mutually exclusive website signals cap the raw sum at 70. The app normalizes the observed raw score to 0–100 for the requested priority bands and shows both values in lead details.</span></div></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">DATA & RETENTION</div><h2>Minimal by default</h2></div><ShieldCheck size={18} className="muted-icon" /></div><div className="settings-feature-list"><div><CheckCircle2 size={16} /><span>Google Places business content stays in browser memory for this session only.</span></div><div><CheckCircle2 size={16} /><span>Local storage holds user-entered manual leads, their CRM fields, saved Google place IDs, and recent search terms. Google Places listing content is not cached.</span></div><div><CheckCircle2 size={16} /><span>Saved place details refresh only on request; the same place ID is not fetched twice in one app session.</span></div><div><CheckCircle2 size={16} /><span>CSV export includes user-entered manual lead details and CRM fields; Google Places business listing content remains excluded.</span></div></div><button className="text-button settings-link" type="button" onClick={() => onNavigate('Privacy Policy')}>Read the Privacy Policy <ArrowRight size={14} /></button></section>
