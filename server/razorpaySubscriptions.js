@@ -203,6 +203,11 @@ export async function processRazorpayWebhook({ rawBody, signature, eventId }) {
     const subscriptionId = subscription?.id || invoice?.subscription_id;
     const entity = subscription || {};
     const providerEventCreated = Number.isSafeInteger(event.created) && event.created > 0 ? event.created : null;
+    const candidateOrganizationId = entity.notes?.organization_id || invoice?.notes?.organization_id || null;
+    const eventOrganizationId = typeof candidateOrganizationId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidateOrganizationId)
+      ? candidateOrganizationId
+      : null;
     if (nextStatus && subscriptionId) {
       await client.query(
         `UPDATE organization_subscriptions
@@ -212,12 +217,16 @@ export async function processRazorpayWebhook({ rawBody, signature, eventId }) {
              current_period_end = CASE WHEN $5::double precision IS NULL THEN current_period_end ELSE to_timestamp($5::double precision) END,
              last_provider_event_created = COALESCE($6::bigint, last_provider_event_created),
              updated_at = now()
-         WHERE razorpay_subscription_id = $1
+         WHERE (
+           razorpay_subscription_id = $1
+           OR ($7::uuid IS NOT NULL AND organization_id = $7::uuid
+               AND (razorpay_subscription_id IS NULL OR razorpay_subscription_id = $1))
+         )
            AND (
              ($6::bigint IS NOT NULL AND (last_provider_event_created IS NULL OR last_provider_event_created <= $6::bigint))
              OR ($6::bigint IS NULL AND last_provider_event_created IS NULL)
            )`,
-        [subscriptionId, nextStatus, entity.customer_id || invoice?.customer_id || null, entity.current_start ?? null, entity.current_end ?? null, providerEventCreated],
+        [subscriptionId, nextStatus, entity.customer_id || invoice?.customer_id || null, entity.current_start ?? null, entity.current_end ?? null, providerEventCreated, eventOrganizationId],
       );
     }
     await client.query('UPDATE payment_webhook_events SET processed_at = now() WHERE event_id = $1', [eventId.trim()]);
