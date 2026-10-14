@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { LockKeyhole, Mail, UserRound, ArrowRight, LoaderCircle, ShieldCheck } from 'lucide-react';
 import App from '../App.jsx';
+import { WORKSPACE_STORAGE_KEYS } from '../lib/workspaceStorageKeys.js';
 
 const SESSION_COOKIE = 'agencyos_workspace_csrf';
 const VERCEL_PREVIEW = import.meta.env.VERCEL_ENV === 'preview';
@@ -11,14 +12,7 @@ function csrfFromCookie() {
   return match ? decodeURIComponent(match.slice(SESSION_COOKIE.length + 1)) : '';
 }
 
-const LEGACY_WORKSPACE_KEYS = new Set([
-  'agencyos:workflow:v1',
-  'agencyos:saved-place-ids:v1',
-  'agencyos:saved-gemini-place-ids:v1',
-  'agencyos:search-history:v1',
-  'agencyos:manual-leads:v1',
-  'agencyos:manual-lead-overrides:v1',
-]);
+const LEGACY_WORKSPACE_KEYS = new Set(WORKSPACE_STORAGE_KEYS);
 
 function mergeLegacyValue(key, cloudValue, legacyValue) {
   if (typeof cloudValue !== 'string') return legacyValue;

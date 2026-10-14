@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowRight, BriefcaseBusiness, Building2, Check, Download, Plus, Save, ShieldCheck, UserRoundPlus, Users, WalletCards } from 'lucide-react';
+import { ArrowRight, BriefcaseBusiness, Building2, Check, CheckCircle2, Download, Plus, Save, ShieldCheck, Users, WalletCards } from 'lucide-react';
 import CoachingCenter from './CoachingCenter.jsx';
 
 const TEAM_KEY = 'agencyos:business-team:v1';
@@ -142,9 +142,17 @@ export default function BusinessManagement({ profile, onUpdateProfile, onNavigat
     {tab === 'Centre Operations' && hasLearningCentre && <CoachingCenter profile={profile} />}
 
     {tab === 'Overview' && <>
-      <section className="business-welcome-card"><div><span className="business-eyebrow">YOUR WORKSPACE, YOUR WAY</span><h2>Run {profile.name} from one place.</h2><p>Start with your team and payroll records. Add clients, projects, sales, and finance workflows as your business needs them.</p></div><Building2 size={35} /></section>
-      <div className="business-stat-grid"><article><span>Active team</span><strong>{activeEmployees.length}</strong><small>{team.employees.length} employee records</small></article><article><span>This month's payroll</span><strong>{money(currentPayroll, currency)}</strong><small>{payrollThisMonth ? payrollThisMonth.status : 'Not created yet'}</small></article><article><span>Payroll periods saved</span><strong>{team.payrollRuns.length}</strong><small>Records in this business workspace</small></article></div>
-      <div className="business-quick-grid"><button type="button" onClick={() => { setTab('Employees'); setEmployeeForm(blankEmployee()); }}><span><UserRoundPlus size={19} /></span><strong>Add an employee</strong><small>Keep roles and monthly salary together.</small><ArrowRight size={15} /></button><button type="button" onClick={createPayroll}><span><WalletCards size={19} /></span><strong>Create this month's payroll</strong><small>Review manual adjustments before saving.</small><ArrowRight size={15} /></button><button type="button" onClick={() => setTab('Business Profile')}><span><Building2 size={19} /></span><strong>Business profile</strong><small>Change the details that personalize your workspace.</small><ArrowRight size={15} /></button></div>
+      <section className="business-welcome-card"><div><span className="business-eyebrow">YOUR BUSINESS HOME</span><h2>Welcome to {profile.name}</h2><p>Start with a team list, then prepare a monthly salary record. You stay in control of every change.</p></div><Building2 size={35} /></section>
+      <section className="business-start-card" aria-labelledby="business-start-title">
+        <div className="business-start-heading"><div><span className="business-eyebrow">A SIMPLE PLACE TO START</span><h2 id="business-start-title">Get your workspace ready</h2></div><span className="business-start-progress">{1 + Number(activeEmployees.length > 0) + Number(team.payrollRuns.length > 0)} of 3 done</span></div>
+        <ol className="business-start-steps">
+          <li className="business-start-step business-start-step-done"><CheckCircle2 size={19} /><div><strong>Set up your business</strong><small>{profile.name} · {profile.industry}</small></div><button type="button" onClick={() => setTab('Business Profile')}>Edit details</button></li>
+          <li className={activeEmployees.length ? 'business-start-step business-start-step-done' : 'business-start-step'}>{activeEmployees.length ? <CheckCircle2 size={19} /> : <span className="business-step-number">2</span>}<div><strong>Add your team</strong><small>{activeEmployees.length ? activeEmployees.length + ' active ' + (activeEmployees.length === 1 ? 'employee' : 'employees') : 'Add names, roles, and monthly salary.'}</small></div><button type="button" onClick={() => { setTab('Employees'); if (!team.employees.length) setEmployeeForm(blankEmployee()); }}>{activeEmployees.length ? 'View team' : 'Add employee'}</button></li>
+          <li className={team.payrollRuns.length ? 'business-start-step business-start-step-done' : 'business-start-step'}>{team.payrollRuns.length ? <CheckCircle2 size={19} /> : <span className="business-step-number">3</span>}<div><strong>Prepare monthly payroll</strong><small>{team.payrollRuns.length ? team.payrollRuns.length + ' payroll ' + (team.payrollRuns.length === 1 ? 'period' : 'periods') + ' saved' : 'Create a draft and review the amounts.'}</small></div><button type="button" disabled={!activeEmployees.length} onClick={createPayroll}>{team.payrollRuns.length ? 'Open payroll' : 'Prepare payroll'}</button></li>
+        </ol>
+        {hasLearningCentre && <button className="business-centre-shortcut" type="button" onClick={() => setTab('Centre Operations')}><BriefcaseBusiness size={17} /><span><strong>Run your learning centre</strong><small>Manage batches, attendance, and fee records.</small></span><ArrowRight size={16} /></button>}
+      </section>
+      <div className="business-stat-grid"><article><span>Active team</span><strong>{activeEmployees.length}</strong><small>{team.employees.length} employee records</small></article><article><span>This month's payroll</span><strong>{payrollThisMonth ? money(currentPayroll, currency) : 'Not prepared'}</strong><small>{payrollThisMonth?.status || 'No record yet'}</small></article><article><span>Past payrolls</span><strong>{team.payrollRuns.length}</strong><small>Saved salary records</small></article></div>
     </>}
 
     {tab === 'Employees' && <section className="business-panel">
