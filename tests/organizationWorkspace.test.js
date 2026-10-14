@@ -101,6 +101,22 @@ test('server module entitlements permit enabled modules and deny disabled or mis
   await assert.rejects(requireOrganizationModule(USER_ID, 'not_a_module'), { statusCode: 500 });
 });
 
+test('billing enforcement requires an active subscription when the rollout switch is enabled', async () => {
+  const db = useOrganizationDatabase();
+  const original = process.env.AGENCYOS_BILLING_ENFORCED;
+  process.env.AGENCYOS_BILLING_ENFORCED = 'true';
+  try {
+    await assert.rejects(requireOrganizationModule(USER_ID, 'growth_sales'), {
+      statusCode: 402,
+      code: 'SUBSCRIPTION_REQUIRED',
+    });
+    assert.equal(db.calls.some((call) => call.text.includes('SELECT enabled FROM organization_modules')), false);
+  } finally {
+    if (original === undefined) delete process.env.AGENCYOS_BILLING_ENFORCED;
+    else process.env.AGENCYOS_BILLING_ENFORCED = original;
+  }
+});
+
 test('module selection rejects unknown keys and non-owner members', async () => {
   useOrganizationDatabase();
   await assert.rejects(updateOrganizationModules(USER_ID, ['admin_override']), { statusCode: 400 });
