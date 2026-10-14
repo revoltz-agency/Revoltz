@@ -46,7 +46,7 @@ test('subscription cancellation is owner-only, scheduled at period end, and pers
     async query(text, values = []) {
       calls.push({ text, values });
       if (/^\s*(CREATE TABLE|CREATE INDEX) IF NOT EXISTS/i.test(text)) return { rows: [], rowCount: 0 };
-      if (/^\s*INSERT INTO .*\bSELECT\b/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*INSERT INTO /i.test(text) && /\bSELECT\b/i.test(text)) return { rows: [], rowCount: 0 };
       if (text.includes('FROM organization_memberships m') && text.includes('JOIN organization_subscriptions s')) {
         return { rows: [{
           organization_id: 'org-test',
