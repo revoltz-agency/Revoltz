@@ -34,7 +34,7 @@ function workspaceDatabase() {
     async end() {},
     async query(text, values = []) {
       calls.push({ text, values });
-      if (/^\s*(CREATE (TABLE|INDEX) IF NOT EXISTS|ALTER TABLE organization_subscriptions\s+ADD COLUMN IF NOT EXISTS last_provider_event_created)/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*(CREATE (TABLE|INDEX) IF NOT EXISTS|ALTER TABLE organization_subscriptions)/i.test(text)) return { rows: [], rowCount: 0 };
       // Schema backfills are no-ops in this in-memory database; focused
       // organization helper queries below exercise per-user provisioning.
       if (/^\s*INSERT INTO organizations\s*\(name, owner_user_id\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
