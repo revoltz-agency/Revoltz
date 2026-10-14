@@ -1229,6 +1229,7 @@ function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onG
   const [organizationError, setOrganizationError] = useState('');
   const [organizationSaving, setOrganizationSaving] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
   const [organizationNotice, setOrganizationNotice] = useState('');
 
   useEffect(() => {
@@ -1293,6 +1294,29 @@ function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onG
     }
   };
 
+  const cancelSubscriptionAtPeriodEnd = async () => {
+    if (!window.confirm('Schedule cancellation at the end of the current billing period? Access remains active until then.')) return;
+    setCancelBusy(true);
+    setOrganizationNotice('');
+    try {
+      const response = await fetch('/api/workspace/subscription/cancel', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-Workspace-CSRF': workspaceCsrf() },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Cancellation could not be scheduled.');
+      const refresh = await fetch('/api/workspace/organization', { credentials: 'include', cache: 'no-store' });
+      const refreshed = await refresh.json().catch(() => ({}));
+      if (refresh.ok) setOrganizationWorkspace(refreshed);
+      setOrganizationNotice('Cancellation scheduled for the end of the billing period.');
+    } catch (error) {
+      setOrganizationNotice(error.message || 'Cancellation could not be scheduled.');
+    } finally {
+      setCancelBusy(false);
+    }
+  };
+
   const subscriptionStatus = organizationWorkspace?.subscription?.status || 'inactive';
   return <div className="page-stack">
     <PageHeading eyebrow="WORKSPACE PREFERENCES" title="Settings & integrations." description="Know what is connected, where data lives, and what AgencyOS will never do." />
@@ -1304,8 +1328,10 @@ function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onG
           <p className="settings-paragraph">Plan: <strong>{organizationWorkspace?.subscription?.planKey || 'Starter'}</strong> · Status: <strong>{organizationLoading ? 'Loading' : subscriptionStatus.replaceAll('_', ' ')}</strong></p>
           <p className="settings-paragraph settings-small-note">Payment status is confirmed by signed server webhooks. Prices and billing intervals are managed in the Razorpay plan configured by the workspace administrator.</p>
           {subscriptionStatus === 'active'
-            ? <div className="settings-callout"><CheckCircle2 size={15} /><span>Your subscription is active.</span></div>
+            ? <div className="settings-callout"><CheckCircle2 size={15} /><span>{organizationWorkspace?.subscription?.cancelAtPeriodEnd ? 'Cancellation is scheduled for the end of the billing period.' : 'Your subscription is active.'}</span></div>
             : <button className="button button-primary" type="button" onClick={startSubscriptionCheckout} disabled={organizationLoading || checkoutBusy || organizationWorkspace?.organization?.role !== 'owner'}>{checkoutBusy ? 'Connecting to Razorpay…' : organizationWorkspace?.organization?.role === 'owner' ? 'Continue to secure checkout' : 'Only the owner can manage billing'}</button>}
+          {subscriptionStatus === 'active' && !organizationWorkspace?.subscription?.cancelAtPeriodEnd && organizationWorkspace?.organization?.role === 'owner' && <button className="button button-secondary" type="button" onClick={cancelSubscriptionAtPeriodEnd} disabled={cancelBusy}>{cancelBusy ? 'Scheduling cancellation…' : 'Cancel at period end'}</button>}
+          {organizationNotice && <p className="settings-paragraph" role="status">{organizationNotice}</p>}
         </>}
       </section>
       <section className="surface-card settings-card">
