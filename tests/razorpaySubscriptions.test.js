@@ -116,6 +116,7 @@ test('webhook subscription updates carry provider event time to prevent stale st
       id: 'sub_order_test',
       customer_id: 'cus_order_test',
       notes: { organization_id: '3f0c1e2a-4b5d-4c6e-8f90-1a2b3c4d5e6f' },
+      cancel_at_cycle_end: 1,
       current_start: 1_780_000_000,
       current_end: 1_782_592_000,
     } } },
@@ -133,6 +134,8 @@ test('webhook subscription updates carry provider event time to prevent stale st
     assert.equal(update.values[1], 'active');
     assert.equal(update.values[5], 1_780_000_000);
     assert.equal(update.values[6], '3f0c1e2a-4b5d-4c6e-8f90-1a2b3c4d5e6f');
+    assert.equal(update.values[7], true);
+    assert.match(update.text, /cancel_at_period_end = COALESCE\(\$8::boolean, cancel_at_period_end\)/);
     assert.match(update.text, /organization_id = \$7::uuid/);
     assert.ok(queries.some((query) => query.text === 'COMMIT'));
   } finally {
