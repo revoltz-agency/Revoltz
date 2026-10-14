@@ -88,7 +88,7 @@ test('owners can save a bounded allowlisted module selection', async () => {
   const db = useOrganizationDatabase();
   const result = await updateOrganizationModules(USER_ID, ['growth_sales', 'tools', 'growth_sales']);
   assert.deepEqual(result.modules.filter((module) => module.enabled).map((module) => module.key), ['growth_sales', 'tools']);
-  const upsert = db.calls.find((call) => call.text.includes('INSERT INTO organization_modules'));
+  const upsert = db.calls.find((call) => call.text.includes('INSERT INTO organization_modules') && call.text.includes('FROM unnest($3::text[])'));
   assert.deepEqual(upsert.values, [ORGANIZATION_ID, ['growth_sales', 'tools'], WORKSPACE_MODULES.map((module) => module.key)]);
   assert.match(upsert.text, /ON CONFLICT \(organization_id, module_key\)/);
 });
