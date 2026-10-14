@@ -80,13 +80,16 @@ export async function createRazorpaySubscription(userId) {
     console.error('[razorpay] subscription creation failed:', response.status, payload?.error?.code || 'provider_error');
     throw Object.assign(new Error('Razorpay could not create the subscription. Please try again later.'), { statusCode: 502 });
   }
+  const initialStatus = ['created', 'authenticated', 'active', 'pending', 'halted'].includes(payload.status)
+    ? payload.status
+    : 'created';
   await queryDatabase(
     `UPDATE organization_subscriptions
      SET razorpay_subscription_id = $2, razorpay_customer_id = $3, status = $4, updated_at = now()
      WHERE organization_id = $1`,
-    [membership.organization_id, payload.id, payload.customer_id || null, payload.status || 'created'],
+    [membership.organization_id, payload.id, payload.customer_id || null, initialStatus],
   );
-  return { checkoutUrl: payload.short_url, subscriptionId: payload.id, status: payload.status || 'created' };
+  return { checkoutUrl: payload.short_url, subscriptionId: payload.id, status: initialStatus };
 }
 
 export async function processRazorpayWebhook({ rawBody, signature, eventId }) {
