@@ -139,17 +139,43 @@ export function workspaceCsrfAllowed(req, session) {
   const cookie = readCookie(req, WORKSPACE_CSRF_COOKIE);
   return Boolean(session && header && cookie && timingSafeEqualStrings(header, cookie) && timingSafeEqualStrings(sha256Hex(cookie), session.csrfHash));
 }
+async function resolveWorkspaceOrganizationId(userId) {
+  const result = await queryDatabase(
+    `SELECT organization_id
+     FROM organization_memberships
+     WHERE user_id = $1
+     ORDER BY CASE WHEN role = 'owner' THEN 0 ELSE 1 END, created_at ASC
+     LIMIT 1`,
+    [userId],
+  );
+  const organizationId = result.rows[0]?.organization_id;
+  if (!organizationId) {
+    throw Object.assign(new Error('No organization is available for this workspace account.'), { statusCode: 403 });
+  }
+  return organizationId;
+}
+
 export async function readWorkspaceState(userId) {
   await ensureSchema();
-  const result = await queryDatabase('SELECT state, updated_at FROM workspace_data WHERE user_id = $1', [userId]);
+  const result = await queryDatabase(
+    `SELECT d.state, d.updated_at
+     FROM organization_workspace_data d
+     JOIN organization_memberships m ON m.organization_id = d.organization_id
+     WHERE m.user_id = $1
+     ORDER BY CASE WHEN m.role = 'owner' THEN 0 ELSE 1 END, m.created_at ASC
+     LIMIT 1`,
+    [userId],
+  );
   return { state: result.rows[0]?.state && typeof result.rows[0].state === 'object' ? result.rows[0].state : {}, updatedAt: result.rows[0]?.updated_at || null };
 }
+
 export async function writeWorkspaceState(userId, state) {
   await ensureSchema();
+  const organizationId = await resolveWorkspaceOrganizationId(userId);
   await queryDatabase(
-    `INSERT INTO workspace_data (user_id, state, updated_at) VALUES ($1, $2::jsonb, now())
-     ON CONFLICT (user_id) DO UPDATE SET state = EXCLUDED.state, updated_at = now()`,
-    [userId, JSON.stringify(state)],
+    `INSERT INTO organization_workspace_data (organization_id, state, updated_at) VALUES ($1, $2::jsonb, now())
+     ON CONFLICT (organization_id) DO UPDATE SET state = EXCLUDED.state, updated_at = now()`,
+    [organizationId, JSON.stringify(state)],
   );
   return { saved: true };
 }
