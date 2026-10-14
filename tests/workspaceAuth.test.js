@@ -194,6 +194,7 @@ test('workspace session cookies are secure, CSRF-bound, renewable, and revocable
 
 test('workspace state is upserted and read back for its account only', async () => {
   const db = useWorkspaceDatabase();
+  await registerWorkspaceUser({ name: 'Priya', email: 'priya@example.test', password: 'a-strong-test-password' });
   const state = { 'agencyos:business-profile:v1': { name: 'North Star Cafe' }, employees: [{ name: 'Example Worker', salary: 0 }] };
 
   assert.deepEqual(await writeWorkspaceState(USER_ID, state), { saved: true });
