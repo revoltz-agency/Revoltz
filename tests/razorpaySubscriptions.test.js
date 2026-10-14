@@ -81,3 +81,62 @@ test('subscription cancellation is owner-only, scheduled at period end, and pers
     }
   }
 });
+
+
+test('webhook subscription updates carry provider event time to prevent stale state overwrites', async () => {
+  const oldDatabaseUrl = process.env.DATABASE_URL;
+  const oldWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  process.env.DATABASE_URL = 'postgres://example.invalid/agencyos-webhook-test';
+  process.env.RAZORPAY_WEBHOOK_SECRET = 'webhook-order-test-secret';
+  const queries = [];
+  const client = {
+    async query(text, values = []) {
+      queries.push({ text, values });
+      if (/^\s*INSERT INTO payment_webhook_events/i.test(text)) return { rows: [{ event_id: 'evt_newer' }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    },
+    release() {},
+  };
+  const pool = {
+    on() {},
+    async end() {},
+    async query(text, values = []) {
+      if (/^\s*(CREATE TABLE|CREATE INDEX) IF NOT EXISTS/i.test(text) ||
+          /^\s*ALTER TABLE organization_subscriptions\s+ADD COLUMN IF NOT EXISTS last_provider_event_created/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*INSERT INTO /i.test(text) && /\bSELECT\b/i.test(text)) return { rows: [], rowCount: 0 };
+      throw new Error(`Unexpected webhook schema SQL: ${text}`);
+    },
+    async connect() { return client; },
+  };
+  __setPoolForTests(pool);
+  const event = {
+    event: 'subscription.activated',
+    created: 1_780_000_000,
+    payload: { subscription: { entity: {
+      id: 'sub_order_test',
+      customer_id: 'cus_order_test',
+      current_start: 1_780_000_000,
+      current_end: 1_782_592_000,
+    } } },
+  };
+  const rawBody = Buffer.from(JSON.stringify(event));
+  const signature = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET).update(rawBody).digest('hex');
+  try {
+    const result = await processRazorpayWebhook({ rawBody, signature, eventId: 'evt_newer' });
+    assert.deepEqual(result, { received: true, duplicate: false });
+    const update = queries.find((query) => query.text.includes('UPDATE organization_subscriptions'));
+    assert.ok(update, 'the subscription row is updated');
+    assert.match(update.text, /last_provider_event_created\s*=\s*COALESCE\(\$6::bigint, last_provider_event_created\)/);
+    assert.match(update.text, /last_provider_event_created IS NULL OR last_provider_event_created <= \$6::bigint/);
+    assert.equal(update.values[0], 'sub_order_test');
+    assert.equal(update.values[1], 'active');
+    assert.equal(update.values[5], 1_780_000_000);
+    assert.ok(queries.some((query) => query.text === 'COMMIT'));
+  } finally {
+    __setPoolForTests(null);
+    if (oldDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = oldDatabaseUrl;
+    if (oldWebhookSecret === undefined) delete process.env.RAZORPAY_WEBHOOK_SECRET;
+    else process.env.RAZORPAY_WEBHOOK_SECRET = oldWebhookSecret;
+  }
+});
