@@ -39,7 +39,7 @@ import {
 import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed } from './security.js';
 import { notifyTelegramAuditRequest } from './telegram.js';
 import { readOrganizationWorkspace, requireOrganizationModule, updateOrganizationModules } from './organizationWorkspace.js';
-import { createRazorpaySubscription, processRazorpayWebhook } from './razorpaySubscriptions.js';
+import { cancelRazorpaySubscriptionAtPeriodEnd, createRazorpaySubscription, processRazorpayWebhook } from './razorpaySubscriptions.js';
 import {
   authenticateWorkspaceUser,
   clearWorkspaceCookies,
@@ -196,6 +196,20 @@ app.post('/api/workspace/subscription/checkout', async (req, res) => {
   if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
   try {
     return res.json(await createRazorpaySubscription(session.user.id));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return workspaceUnavailable(res);
+  }
+});
+
+app.post('/api/workspace/subscription/cancel', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  try {
+    return res.json(await cancelRazorpaySubscriptionAtPeriodEnd(session.user.id));
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     return workspaceUnavailable(res);
