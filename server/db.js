@@ -225,6 +225,41 @@ export function ensureSchema() {
 }
 
 /**
+ * Ensures a workspace account has its default organization and starter subscription.
+ * Called at registration and successful login because ensureSchema() is memoized
+ * after the first schema pass and therefore cannot backfill users created later.
+ */
+export async function ensureWorkspaceOrganization(userId, userName = 'Workspace') {
+  await ensureSchema();
+  const cleanName = String(userName || 'Workspace').trim().slice(0, 100) || 'Workspace';
+  await queryDatabase(
+    `INSERT INTO organizations (name, owner_user_id)
+     VALUES (left($1 || '''s workspace', 200), $2)
+     ON CONFLICT (owner_user_id) DO NOTHING`,
+    [cleanName, userId],
+  );
+  const organization = await queryDatabase(
+    'SELECT id FROM organizations WHERE owner_user_id = $1',
+    [userId],
+  );
+  const organizationId = organization.rows[0]?.id;
+  if (!organizationId) throw new Error('Unable to initialize workspace organization.');
+  await queryDatabase(
+    `INSERT INTO organization_memberships (organization_id, user_id, role)
+     VALUES ($1, $2, 'owner')
+     ON CONFLICT (organization_id, user_id) DO NOTHING`,
+    [organizationId, userId],
+  );
+  await queryDatabase(
+    `INSERT INTO organization_subscriptions (organization_id, plan_key, status)
+     VALUES ($1, 'starter', 'inactive')
+     ON CONFLICT (organization_id) DO NOTHING`,
+    [organizationId],
+  );
+  return { id: organizationId };
+}
+
+/**
  * Test seam: swaps the pool for a stub so the SQL layer can be asserted
  * without a live PostgreSQL instance. Never called by the application.
  */
