@@ -231,6 +231,35 @@ function getDefaultCrm(lead) { return cleanCrmRecord({ ...DEFAULT_CRM, ...(lead?
 
 function AgencyOSApp() {
   const [activePage, setActivePage] = useState('Business Management');
+  const [workspaceModules, setWorkspaceModules] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    const refreshModules = async () => {
+      try {
+        const response = await fetch('/api/workspace/organization', { credentials: 'include', cache: 'no-store' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !Array.isArray(payload.modules)) throw new Error('Module settings unavailable.');
+        if (active) setWorkspaceModules(Object.fromEntries(payload.modules.map((module) => [module.key, Boolean(module.enabled)])));
+      } catch {
+        // Fail open for the local/internal workspace if SaaS settings are unavailable.
+        if (active) setWorkspaceModules(null);
+      }
+    };
+    const handleModulesUpdated = () => { void refreshModules(); };
+    window.addEventListener('agencyos:modules-updated', handleModulesUpdated);
+    void refreshModules();
+    return () => {
+      active = false;
+      window.removeEventListener('agencyos:modules-updated', handleModulesUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!workspaceModules) return;
+    const group = NAV_GROUPS.find((item) => item.items.includes(activePage));
+    if (group && workspaceModules[group.key] === false) setActivePage('Business Management');
+  }, [activePage, workspaceModules]);
   const [businessProfile, setBusinessProfile] = useState(() => {
     try { const value = JSON.parse(window.localStorage.getItem(BUSINESS_PROFILE_KEY) || 'null'); return value && typeof value === 'object' ? value : null; } catch { return null; }
   });
@@ -742,7 +771,7 @@ function AgencyOSApp() {
     <div className="app-shell">
       {sidebarOpen && <button type="button" className="mobile-scrim" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} />}
       {!businessProfile ? <BusinessSetup onSave={setBusinessProfile} /> : <>
-      <Sidebar activePage={activePage} onNavigate={(page) => { setActivePage(page); setSidebarOpen(false); }} open={sidebarOpen} profile={businessProfile} />
+      <Sidebar activePage={activePage} onNavigate={(page) => { setActivePage(page); setSidebarOpen(false); }} open={sidebarOpen} profile={businessProfile} enabledModules={workspaceModules} />
       <div className="main-shell">
         <header className="topbar">
           <button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Menu size={19} /></button>
@@ -803,17 +832,20 @@ function AgencyOSApp() {
 }
 
 const NAV_GROUPS = [
-  { label: 'Growth & sales', icon: Target, items: ['Growth Dashboard', 'Find Leads', 'Leads', 'AI Business Auditor', 'Audit Inbox', 'Campaigns', 'Sales Engine', 'Deal Pipeline', 'Follow-up Assistant'] },
-  { label: 'Clients & delivery', icon: Users, items: ['Client Onboarding', 'Client Retention', 'Website Delivery Hub', 'Project Tracker', 'Client Activity Log'] },
-  { label: 'Finance & reports', icon: CircleDollarSign, items: ['Invoice Tracker', 'Cash Flow Planner', 'Expense Tracker', 'Revenue Goals', 'Business Reports'] },
-  { label: 'Tools', icon: Zap, items: ['Daily Action Center', 'Quick Notes', 'Website Demo Builder', 'Proposal Builder', 'Data Backup'] },
+  { key: 'growth_sales', label: 'Growth & sales', icon: Target, items: ['Growth Dashboard', 'Find Leads', 'Leads', 'AI Business Auditor', 'Audit Inbox', 'Campaigns', 'Sales Engine', 'Deal Pipeline', 'Follow-up Assistant'] },
+  { key: 'clients_delivery', label: 'Clients & delivery', icon: Users, items: ['Client Onboarding', 'Client Retention', 'Website Delivery Hub', 'Project Tracker', 'Client Activity Log'] },
+  { key: 'finance_reports', label: 'Finance & reports', icon: CircleDollarSign, items: ['Invoice Tracker', 'Cash Flow Planner', 'Expense Tracker', 'Revenue Goals', 'Business Reports'] },
+  { key: 'tools', label: 'Tools', icon: Zap, items: ['Daily Action Center', 'Quick Notes', 'Website Demo Builder', 'Proposal Builder', 'Data Backup'] },
 ];
-function Sidebar({ activePage, onNavigate, open, profile }) {
+function Sidebar({ activePage, onNavigate, open, profile, enabledModules }) {
+  const visibleGroups = enabledModules
+    ? NAV_GROUPS.filter((group) => enabledModules[group.key] !== false)
+    : NAV_GROUPS;
   const [expandedGroup, setExpandedGroup] = useState(() => NAV_GROUPS.find(group => group.items.includes(activePage))?.label || '');
   useEffect(() => {
-    const group = NAV_GROUPS.find(item => item.items.includes(activePage));
+    const group = visibleGroups.find(item => item.items.includes(activePage));
     if (group) setExpandedGroup(group.label);
-  }, [activePage]);
+  }, [activePage, enabledModules]);
   const navButton = (item) => {
     const Icon = item.icon || NAV_ITEMS.find(nav => nav.label === item.label)?.icon || LayoutDashboard;
     return <button type="button" key={item.label} onClick={() => onNavigate(item.label)} className={`nav-item ${activePage === item.label ? 'nav-item-active' : ''}`} style={{width:'100%'}}><Icon size={18} strokeWidth={1.8} /><span>{item.label}</span>{item.label === 'Leads' && <span className="nav-count">•</span>}</button>;
@@ -824,7 +856,7 @@ function Sidebar({ activePage, onNavigate, open, profile }) {
     <div className="nav-section-label">WORKSPACE</div>
     <nav className="main-nav" aria-label="Main navigation">
       {navButton({label:'Business Management',icon:Building2})}
-      {NAV_GROUPS.map(group => {
+      {visibleGroups.map(group => {
         const GroupIcon = group.icon;
         const expanded = expandedGroup === group.label;
         const active = group.items.includes(activePage);
