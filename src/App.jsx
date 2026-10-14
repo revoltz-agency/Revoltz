@@ -1231,6 +1231,7 @@ function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onG
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [organizationNotice, setOrganizationNotice] = useState('');
+  const [moduleNotice, setModuleNotice] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -1256,7 +1257,7 @@ function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onG
   const saveOrganizationModules = async () => {
     if (!organizationWorkspace) return;
     setOrganizationSaving(true);
-    setOrganizationNotice('');
+    setModuleNotice('');
     try {
       const response = await fetch('/api/workspace/modules', {
         method: 'PUT',
@@ -1267,9 +1268,9 @@ function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onG
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Could not save module settings.');
       setOrganizationWorkspace(payload);
-      setOrganizationNotice('Module access saved.');
+      setModuleNotice('Module access saved.');
     } catch (error) {
-      setOrganizationNotice(error.message || 'Could not save module settings.');
+      setModuleNotice(error.message || 'Could not save module settings.');
     } finally {
       setOrganizationSaving(false);
     }
@@ -1339,7 +1340,7 @@ function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onG
         <p className="settings-paragraph">Choose which modules this organization keeps enabled. Disabled modules are denied by the server for protected lead-search and website-audit APIs.</p>
         {organizationLoading ? <p className="settings-paragraph">Loading module access…</p> : organizationWorkspace?.modules?.map((module) => <label key={module.key} className="settings-feature-list" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><input type="checkbox" checked={Boolean(module.enabled)} disabled={!['owner', 'admin'].includes(organizationWorkspace?.organization?.role) || organizationSaving} onChange={(event) => setOrganizationWorkspace((current) => ({ ...current, modules: current.modules.map((item) => item.key === module.key ? { ...item, enabled: event.target.checked } : item) }))} /><span>{module.label}</span></label>)}
         <button className="button button-secondary" type="button" onClick={saveOrganizationModules} disabled={organizationLoading || organizationSaving || !organizationWorkspace || !['owner', 'admin'].includes(organizationWorkspace?.organization?.role)}>{organizationSaving ? 'Saving…' : 'Save module access'}</button>
-        {organizationNotice && <p className="settings-paragraph" role="status">{organizationNotice}</p>}
+        {moduleNotice && <p className="settings-paragraph" role="status">{moduleNotice}</p>}
       </section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">GEMINI AI ENGINE</div><h2>Connect Gemini</h2></div><Globe2 size={18} className="muted-icon" /></div><p className="settings-paragraph">All AgencyOS AI features use Gemini. Add your Google AI Studio API key here to power lead discovery and AI-assisted tools.</p><label className="field-group"><span>Gemini API key</span><input className="field-input" type="password" autoComplete="off" value={geminiApiKey} onChange={(event) => onGeminiApiKeyChange(event.target.value)} placeholder="Paste your Gemini API key" /></label><div className="settings-inline-actions"><button className="button button-secondary" type="button" onClick={onTestGemini} disabled={!geminiApiKey || geminiTesting}>{geminiTesting ? 'Testing…' : 'Test Gemini key'}</button>{geminiApiKey && <button className="text-button" type="button" onClick={() => onGeminiApiKeyChange('')}>Clear key</button>}</div><p className="settings-paragraph settings-small-note">The Gemini key stays in this browser session and is sent directly to Google for grounded lead discovery. Do not share it or commit it to GitHub.</p></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">EXPLAINABLE AI QUALIFICATION</div><h2>Evidence in, reason out</h2></div><div className="engine-icon"><Sparkles size={16} /></div></div><p className="settings-paragraph">Lead scoring and draft outreach remain deterministic and evidence-based; Gemini is used for grounded lead discovery and the AI Business Auditor, not for every button in the CRM.</p><div className="score-rule-list"><div><span>No website listed (Google only; manual missing = unknown)</span><strong>+30</strong></div><div><span>Weak website checks</span><strong>+20</strong></div><div><span>100+ reviews / 4.5+ rating</span><strong>+15 / +10</strong></div><div><span>Operational / contact gap / social link</span><strong>+10 / +10 / +5</strong></div></div><div className="settings-callout"><Info size={15} /><span>Priority bands: HOT 80–100, WARM 50–79, COLD 0–49. These are deterministic signals, not a forecast of conversion.</span></div><div className="settings-callout"><Info size={15} /><span>Mutually exclusive website signals cap the raw sum at 70. The app normalizes the observed raw score to 0–100 for the requested priority bands and shows both values in lead details.</span></div></section>
