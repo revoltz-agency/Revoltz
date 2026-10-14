@@ -26,6 +26,7 @@ function workspaceDatabase() {
   const users = new Map();
   const sessions = new Map();
   const states = new Map();
+  const organizationStates = new Map();
   const organizations = new Map();
   const pool = {
     calls,
@@ -39,6 +40,7 @@ function workspaceDatabase() {
       if (/^\s*INSERT INTO organizations\s*\(name, owner_user_id\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
       if (/^\s*INSERT INTO organization_memberships\s*\(organization_id, user_id, role\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
       if (/^\s*INSERT INTO organization_subscriptions\s*\(organization_id, plan_key, status\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*INSERT INTO organization_workspace_data\s*\(organization_id, state, updated_at\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
       if (text.includes('INSERT INTO organizations (name, owner_user_id)')) {
         const [name, userId] = values;
         if (!organizations.has(userId)) organizations.set(userId, { id: 'org-' + userId, name, owner_user_id: userId });
@@ -50,6 +52,10 @@ function workspaceDatabase() {
       }
       if (text.includes('INSERT INTO organization_memberships')) return { rows: [], rowCount: 1 };
       if (text.includes('INSERT INTO organization_subscriptions')) return { rows: [], rowCount: 1 };
+      if (text.includes('FROM organization_memberships') && text.includes('SELECT organization_id')) {
+        const organization = organizations.get(values[0]);
+        return { rows: organization ? [{ organization_id: organization.id }] : [], rowCount: organization ? 1 : 0 };
+      }
 
       if (text.includes('INSERT INTO workspace_users')) {
         const [name, email, passwordHash] = values;
@@ -88,20 +94,21 @@ function workspaceDatabase() {
         return { rows: [], rowCount: session && session.revoked_at ? 1 : 0 };
       }
 
-      if (text.includes('SELECT state, updated_at FROM workspace_data')) {
-        const row = states.get(values[0]);
+      if (text.includes('FROM organization_workspace_data d')) {
+        const organization = organizations.get(values[0]);
+        const row = organization ? organizationStates.get(organization.id) : null;
         return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
       }
 
-      if (text.includes('INSERT INTO workspace_data')) {
-        states.set(values[0], { state: JSON.parse(values[1]), updated_at: new Date('2026-01-02T00:00:00.000Z') });
+      if (text.includes('INSERT INTO organization_workspace_data (organization_id, state, updated_at) VALUES')) {
+        organizationStates.set(values[0], { state: JSON.parse(values[1]), updated_at: new Date('2026-01-02T00:00:00.000Z') });
         return { rows: [], rowCount: 1 };
       }
 
       throw new Error(`Unexpected workspace SQL: ${text}`);
     },
   };
-  return { calls, pool, users, sessions, states };
+  return { calls, pool, users, sessions, states, organizations, organizationStates };
 }
 
 function useWorkspaceDatabase() {
@@ -193,8 +200,10 @@ test('workspace state is upserted and read back for its account only', async () 
   assert.deepEqual((await readWorkspaceState(USER_ID)).state, state);
   assert.deepEqual((await readWorkspaceState('another-user-id')).state, {});
 
-  const write = db.calls.find((call) => call.text.includes('INSERT INTO workspace_data'));
-  assert.deepEqual(write.values, [USER_ID, JSON.stringify(state)]);
-  assert.match(write.text, /ON CONFLICT \(user_id\) DO UPDATE/);
-  assert.match(db.calls.find((call) => call.text.includes('SELECT state, updated_at')).text, /WHERE user_id = \$1/);
+  const write = db.calls.find((call) => call.text.includes('INSERT INTO organization_workspace_data (organization_id, state, updated_at) VALUES'));
+  assert.deepEqual(write.values, ['org-' + USER_ID, JSON.stringify(state)]);
+  assert.match(write.text, /ON CONFLICT \(organization_id\) DO UPDATE/);
+  assert.match(db.calls.find((call) => call.text.includes('FROM organization_workspace_data d')).text, /JOIN organization_memberships m ON m\.organization_id = d\.organization_id/);
+  assert.match(db.calls.find((call) => call.text.includes('SELECT organization_id')).text, /WHERE user_id = \$1/);
+  assert.equal(db.organizationStates.get('org-' + USER_ID).state['agencyos:business-profile:v1'].name, 'North Star Cafe');
 });
