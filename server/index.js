@@ -38,6 +38,7 @@ import {
 } from './session.js';
 import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed } from './security.js';
 import { notifyTelegramAuditRequest } from './telegram.js';
+import { readOrganizationWorkspace, updateOrganizationModules } from './organizationWorkspace.js';
 import {
   authenticateWorkspaceUser,
   clearWorkspaceCookies,
@@ -178,6 +179,32 @@ app.post('/api/workspace/logout', async (req, res) => {
   await revokeWorkspaceSession(req).catch(() => false);
   for (const cookie of clearWorkspaceCookies(req)) res.append('Set-Cookie', cookie);
   return res.json({ ok: true });
+});
+
+app.get('/api/workspace/organization', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  try {
+    return res.json(await readOrganizationWorkspace(session.user.id));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return workspaceUnavailable(res);
+  }
+});
+
+app.put('/api/workspace/modules', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  try {
+    return res.json(await updateOrganizationModules(session.user.id, req.body?.modules));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return workspaceUnavailable(res);
+  }
 });
 
 app.get('/api/workspace/state', async (req, res) => {
