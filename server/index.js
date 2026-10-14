@@ -38,7 +38,7 @@ import {
 } from './session.js';
 import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed } from './security.js';
 import { notifyTelegramAuditRequest } from './telegram.js';
-import { readOrganizationWorkspace, updateOrganizationModules } from './organizationWorkspace.js';
+import { readOrganizationWorkspace, requireOrganizationModule, updateOrganizationModules } from './organizationWorkspace.js';
 import { createRazorpaySubscription, processRazorpayWebhook } from './razorpaySubscriptions.js';
 import {
   authenticateWorkspaceUser,
@@ -285,8 +285,19 @@ app.put('/api/workspace/state', async (req, res) => {
 app.use(['/api/places', '/api/website'], async (req, res, next) => {
   const session = await requireWorkspaceUser(req, res);
   if (!session) return;
-  req.workspaceUser = session.user;
-  return next();
+  const moduleKey = req.path.startsWith('/api/places') ? 'growth_sales' : 'tools';
+  try {
+    await requireOrganizationModule(session.user.id, moduleKey);
+    req.workspaceUser = session.user;
+    return next();
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({
+      error: error.message,
+      code: error.code || 'WORKSPACE_ENTITLEMENT_DENIED',
+      module: error.moduleKey || moduleKey,
+    });
+    return workspaceUnavailable(res);
+  }
 });
 
 const googleApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
