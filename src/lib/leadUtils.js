@@ -1,5 +1,5 @@
-import { isOsmLead, listingSourceNoun } from './freeLeadFinder.js';
 import { getWebsiteAudit } from './qualification.js';
+const listingSourceNoun = () => 'Google';
 
 export function dedupeLeads(leads = []) {
   const byId = new Map();
@@ -49,6 +49,7 @@ function manualReasons(lead) {
 
 export function whyThisLead(lead) {
   if (lead?.needsRefresh) return [{ key: 'refresh', text: 'Refresh this saved Google place to retrieve current details before qualification or outreach.', type: 'neutral' }];
+  if (lead?.source === 'gemini') return [{ key: 'grounded-identity', text: 'Business name and Maps link match a Google Maps grounding source. Phone, website, address, ratings, and review counts were not fetched; verify details before outreach.', type: 'neutral' }];
   if (lead?.source === 'manual') return manualReasons(lead);
   const reasons = [];
   const reviews = Number(lead.reviews);
@@ -59,9 +60,6 @@ export function whyThisLead(lead) {
   if (rating >= 4.5) reasons.push({ key: 'rating', text: lead.demo ? `Fictional sample rating (${rating.toFixed(1)} / 5).` : lead.manualUserFields?.includes('rating') ? `A ${rating.toFixed(1)} rating was entered manually; verify its source before relying on it.` : `Strong local rating (${rating.toFixed(1)} / 5)`, type: 'positive' });
   if (lead.phone) reasons.push({ key: 'phone', text: lead.demo ? 'A phone number is included in this fictional sample.' : lead.manualUserFields?.includes('phone') ? 'A phone number was entered manually; confirm it belongs to the business before use.' : 'Public business phone is available in the listing.', type: 'positive' });
   if (!lead.phone) reasons.push({ key: 'phone-missing', text: lead.demo ? 'No phone number is included in this fictional sample.' : `Phone was not returned in the ${listingSourceNoun(lead)} listing.`, type: 'neutral' });
-  // OpenStreetMap carries no reputation or operational-status fields; say so
-  // instead of letting the absence look like a scored weakness.
-  if (isOsmLead(lead)) reasons.push({ key: 'osm-no-reputation', text: 'OpenStreetMap does not provide ratings, review counts, or business status, so those signals are absent rather than poor.', type: 'neutral' });
   if ((lead.instagram || lead.facebook) && lead.manualUserFields?.some((field) => ['instagram', 'facebook'].includes(field))) reasons.push({ key: 'social-manual', text: 'A social profile link was entered manually; verify the profile belongs to the business.', type: 'positive' });
   if (lead.businessStatus === 'OPERATIONAL') reasons.push({ key: 'active', text: lead.demo ? 'Fictional sample data marks this business operational.' : 'Google lists the business as operational.', type: 'positive' });
   if (audit?.ctaDetected === false) reasons.push({ key: 'cta', text: lead.demo ? 'Illustrative demo check did not detect an enquiry CTA.' : 'No obvious enquiry CTA detected in the limited HTML check.', type: 'opportunity' });
@@ -79,6 +77,7 @@ export function isFoodBusiness(lead) {
 
 export function recommendService(lead) {
   if (lead?.needsRefresh) return [{ service: 'Manual review', reason: 'Refresh current Google details before making a service recommendation.' }];
+  if (lead?.source === 'gemini' && !lead.website) return [{ service: 'Manual review', reason: 'Gemini grounding confirmed the listing identity but did not return website details. Verify the business profile before recommending a service.' }];
   if (lead?.source === 'manual' && !lead.website) {
     return [{ service: 'Manual review', reason: 'Website was not provided, so a website need has not been established. Verify the supplied details before recommending a service.' }];
   }
@@ -115,6 +114,26 @@ export function savedLeadPlaceholder(placeId) {
     placeId,
     source: 'google',
     name: 'Saved business — refresh listing details',
+    category: 'Saved place ID',
+    city: '',
+    address: '',
+    phone: '',
+    internationalPhoneNumber: '',
+    website: '',
+    rating: null,
+    reviews: 0,
+    mapsUrl: '',
+    businessStatus: 'UNKNOWN',
+    needsRefresh: true,
+  };
+}
+
+export function savedGeminiLeadPlaceholder(placeId) {
+  return {
+    id: `gemini-${placeId}`,
+    placeId,
+    source: 'gemini',
+    name: 'Saved Google Maps lead — refresh listing details',
     category: 'Saved place ID',
     city: '',
     address: '',

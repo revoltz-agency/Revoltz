@@ -4,6 +4,7 @@ import { Download, Upload, ShieldCheck, AlertTriangle } from 'lucide-react';
 const BACKUP_KEYS = [
   'agencyos:workflow:v1',
   'agencyos:saved-place-ids:v1',
+  'agencyos:saved-gemini-place-ids:v1',
   'agencyos:search-history:v1',
   'agencyos:manual-leads:v1',
   'agencyos:manual-lead-overrides:v1',

@@ -90,7 +90,7 @@ export default function ProductPreview() {
           <div className="rv-mock-main">
             <div className="rv-mock-topbar" aria-hidden="true">
               <span>Workspace / <b>Dashboard</b></span>
-              <span className="rv-mock-env"><i /> OpenStreetMap available</span>
+              <span className="rv-mock-env"><i /> Gemini and Google Places</span>
               <span className="rv-mock-avatar">A</span>
             </div>
 
