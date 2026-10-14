@@ -23,6 +23,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), ...(publicSiteOnly ? [publicMarketingEntry()] : [])],
+    // Vercel Preview gets a browser-local workspace for safe, interactive demos.
+    // Production and all non-Vercel builds continue to use the real account API.
+    define: {
+      'import.meta.env.VERCEL_ENV': JSON.stringify(process.env.VERCEL_ENV || ''),
+    },
     server: {
       // Arena proxies previews under *.e2b.app; allow the proxied host while
       // retaining Vite's Host-header protection for unrelated domains.

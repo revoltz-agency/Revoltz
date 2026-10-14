@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { LockKeyhole, Mail, UserRound, ArrowRight, LoaderCircle, ShieldCheck } from 'lucide-react';
 import App from '../App.jsx';
+import { WORKSPACE_STORAGE_KEYS } from '../lib/workspaceStorageKeys.js';
 
 const SESSION_COOKIE = 'agencyos_workspace_csrf';
+const VERCEL_PREVIEW = import.meta.env.VERCEL_ENV === 'preview';
 
 function csrfFromCookie() {
   if (!document.cookie) return '';
@@ -10,14 +12,7 @@ function csrfFromCookie() {
   return match ? decodeURIComponent(match.slice(SESSION_COOKIE.length + 1)) : '';
 }
 
-const LEGACY_WORKSPACE_KEYS = new Set([
-  'agencyos:workflow:v1',
-  'agencyos:saved-place-ids:v1',
-  'agencyos:saved-gemini-place-ids:v1',
-  'agencyos:search-history:v1',
-  'agencyos:manual-leads:v1',
-  'agencyos:manual-lead-overrides:v1',
-]);
+const LEGACY_WORKSPACE_KEYS = new Set(WORKSPACE_STORAGE_KEYS);
 
 function mergeLegacyValue(key, cloudValue, legacyValue) {
   if (typeof cloudValue !== 'string') return legacyValue;
@@ -209,6 +204,15 @@ export default function WorkspaceAuthGate() {
   }, []);
 
   useEffect(() => {
+    if (VERCEL_PREVIEW) {
+      const previewAccount = { id: 'preview-local', name: 'Preview workspace', email: 'preview@local.test' };
+      window.__agencyOSPreview = true;
+      window.__agencyOSUser = previewAccount;
+      setUser(previewAccount);
+      setStorageReady(true);
+      setBusy(false);
+      return () => { window.__agencyOSPreview = false; window.__agencyOSUser = null; };
+    }
     let alive = true;
     (async () => {
       try {
@@ -289,7 +293,7 @@ export default function WorkspaceAuthGate() {
         <div className="workspace-auth-mark">R</div>
         <div className="workspace-auth-eyebrow">REVOLTZ AI · AGENCYOS</div>
         <h1>{mode === 'register' ? 'Create your workspace' : 'Welcome back'}</h1>
-        <p className="workspace-auth-description">{mode === 'register' ? 'Create a private account for your own leads, clients, notes and agency workflow.' : 'Sign in to open your own saved workspace from any device.'}</p>
+        <p className="workspace-auth-description">{mode === 'register' ? 'Create a private account for your business profile, team, payroll and work records.' : 'Sign in to open your saved business workspace from any device.'}</p>
         {mode === 'register' && <label className="workspace-auth-field"><span>Your name</span><div><UserRound size={16} /><input autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} required minLength={2} maxLength={100} placeholder="Your name" /></div></label>}
         <label className="workspace-auth-field"><span>Email address</span><div><Mail size={16} /><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} placeholder="you@example.com" /></div></label>
         <label className="workspace-auth-field"><span>Password</span><div><LockKeyhole size={16} /><input type="password" autoComplete={mode === 'register' ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={mode === 'register' ? 12 : 1} maxLength={128} placeholder={mode === 'register' ? 'At least 12 characters' : 'Your password'} /></div></label>
