@@ -66,6 +66,7 @@ The `npm start` script sets production mode in a cross-platform Node script and 
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Server-only Razorpay API credentials used to create subscription checkout links. Never expose the secret to the browser. |
 | `RAZORPAY_PLAN_ID_STARTER` | Razorpay dashboard plan ID for the Starter subscription. Configure the plan's billing interval and amount in Razorpay before enabling checkout. |
 | `RAZORPAY_WEBHOOK_SECRET` | Server-only secret configured for the Razorpay webhook endpoint; used to verify signed webhook payloads. |
+| `AGENCYOS_BILLING_ENFORCED` | Set to `true` only after checkout and webhooks are verified; protected lead-search and website-audit APIs then require an active subscription. Defaults to `false` during rollout. |
 | `AUDIT_OWNER_PASSWORD_HASH` | Scrypt hash for the Audit Inbox owner login. Generate locally with `npm run audit:hash-password`; never commit a real hash. |
 | `AUDIT_PUBLIC_INTAKE_ENABLED` | Enables public audit submissions only when set to `true`; default is `false`. |
 | `AUDIT_ALLOWED_ORIGINS` | Exact comma-separated origins allowed to submit public audit requests and make owner writes. |
@@ -82,6 +83,8 @@ Never commit credentials, database URLs, password hashes, or a populated `.env` 
 Billing routes remain unavailable until the four `RAZORPAY_*` variables above are configured on the server. Create a plan in the Razorpay dashboard with the intended monthly interval and price, then set its plan ID as `RAZORPAY_PLAN_ID_STARTER`. Keep API credentials and the webhook secret in the hosting provider's environment settings, not in frontend variables, repository files, or chat messages.
 
 Configure the Razorpay webhook URL as `https://YOUR-API-HOST/api/webhooks/razorpay` and use the exact same webhook secret as `RAZORPAY_WEBHOOK_SECRET`. Subscribe to the subscription lifecycle events (created, authenticated, activated, charged, pending, halted, paused, cancelled, completed, expired) and `invoice.payment_failed`. The handler verifies the signature against the raw request bytes and records event IDs transactionally to avoid applying duplicate deliveries twice.
+
+`AGENCYOS_BILLING_ENFORCED` defaults to `false` so existing internal workspaces are not accidentally locked out during rollout. When set to `true`, protected lead-search and website-audit APIs return HTTP 402 unless the organization's webhook-confirmed subscription status is `active`. Module-level enable/disable checks remain server-enforced either way. Enable this switch only after checkout and webhook events have been tested end-to-end.
 
 A signed-in organization owner can request a hosted checkout link through `POST /api/workspace/subscription/checkout` with the workspace CSRF token. This is a backend integration foundation, not confirmation that a live Razorpay account, plan, webhook, or production checkout has been configured. Test with Razorpay test credentials and test-mode plan IDs before switching to live mode.
 
