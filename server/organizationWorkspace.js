@@ -68,6 +68,14 @@ export async function requireOrganizationModule(userId, moduleKey) {
     throw Object.assign(new Error('Unknown workspace module.'), { statusCode: 500 });
   }
   const membership = await getMembership(userId);
+  const billingEnforced = String(process.env.AGENCYOS_BILLING_ENFORCED || '').trim().toLowerCase() === 'true';
+  if (billingEnforced && membership.subscription_status !== 'active') {
+    throw Object.assign(new Error('An active subscription is required to use this workspace feature.'), {
+      statusCode: 402,
+      code: 'SUBSCRIPTION_REQUIRED',
+      subscriptionStatus: membership.subscription_status || 'inactive',
+    });
+  }
   const result = await queryDatabase(
     `SELECT enabled FROM organization_modules
      WHERE organization_id = $1 AND module_key = $2
