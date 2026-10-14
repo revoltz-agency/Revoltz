@@ -115,6 +115,7 @@ test('webhook subscription updates carry provider event time to prevent stale st
     payload: { subscription: { entity: {
       id: 'sub_order_test',
       customer_id: 'cus_order_test',
+      notes: { organization_id: '3f0c1e2a-4b5d-4c6e-8f90-1a2b3c4d5e6f' },
       current_start: 1_780_000_000,
       current_end: 1_782_592_000,
     } } },
@@ -131,6 +132,8 @@ test('webhook subscription updates carry provider event time to prevent stale st
     assert.equal(update.values[0], 'sub_order_test');
     assert.equal(update.values[1], 'active');
     assert.equal(update.values[5], 1_780_000_000);
+    assert.equal(update.values[6], '3f0c1e2a-4b5d-4c6e-8f90-1a2b3c4d5e6f');
+    assert.match(update.text, /organization_id = \$7::uuid/);
     assert.ok(queries.some((query) => query.text === 'COMMIT'));
   } finally {
     __setPoolForTests(null);
