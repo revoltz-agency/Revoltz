@@ -17,5 +17,5 @@ test('business workspace records are included in account sync and backup', async
     assert.ok(WORKSPACE_STORAGE_KEYS.includes(key), `${key} must be synchronized to the account`);
     assert.ok(backup.includes(`'${key}'`), `${key} must be included in a backup`);
   }
-  assert.match(authGate, /new Set\\(WORKSPACE_STORAGE_KEYS\\)/, 'the account sync must use the central workspace key list');
+  assert.ok(authGate.includes('new Set(WORKSPACE_STORAGE_KEYS)'), 'the account sync must use the central workspace key list');
 });
