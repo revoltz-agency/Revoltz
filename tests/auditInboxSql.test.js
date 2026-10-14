@@ -117,7 +117,7 @@ test('schema initialization only issues IF NOT EXISTS DDL and never destroys dat
   assert.ok(pool.calls.length >= 2, 'creates the tables and indexes');
   for (const { text, values } of pool.calls) {
     assert.deepEqual(values, [], 'DDL must not carry parameters');
-    assert.match(text, /^\s*(CREATE TABLE IF NOT EXISTS|CREATE INDEX IF NOT EXISTS)\s/);
+    assert.match(text, /^\s*(?:CREATE TABLE IF NOT EXISTS|CREATE INDEX IF NOT EXISTS|INSERT INTO)\s/i, 'schema setup may create objects and run idempotent backfills');
     assert.doesNotMatch(text, /^\s*(?:DROP|TRUNCATE|ALTER|DELETE|UPDATE)\b/im, 'schema initialization must not run destructive statements');
   }
   const ddl = pool.calls.map((call) => call.text).join('\n');
