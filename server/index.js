@@ -338,7 +338,12 @@ const auditIntakeLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 5 }
 const placesLimiter = createPlacesRateLimiter();
 // Website audits perform outbound requests and parsing, so cap them per signed-in
 // workspace user as a cost/abuse backstop. This is independent of the Places quota.
-const websiteAuditLimiter = createRateLimiter({ windowMs: 60_000, limit: 10 });
+const rawWebsiteAuditLimit = String(process.env.WEBSITE_AUDIT_RATE_LIMIT_PER_MIN || '').trim();
+const parsedWebsiteAuditLimit = Number.parseInt(rawWebsiteAuditLimit, 10);
+const websiteAuditLimit = Number.isFinite(parsedWebsiteAuditLimit) && parsedWebsiteAuditLimit > 0
+  ? Math.min(parsedWebsiteAuditLimit, 1_000)
+  : 10;
+const websiteAuditLimiter = createRateLimiter({ windowMs: 60_000, limit: websiteAuditLimit });
 
 /**
  * Applies the Places rate limit. Returns true when the request may continue.
