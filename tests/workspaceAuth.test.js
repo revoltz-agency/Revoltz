@@ -40,7 +40,7 @@ function workspaceDatabase() {
       if (/^\s*INSERT INTO organizations\s*\(name, owner_user_id\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
       if (/^\s*INSERT INTO organization_memberships\s*\(organization_id, user_id, role\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
       if (/^\s*INSERT INTO organization_subscriptions\s*\(organization_id, plan_key, status\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
-      if (/^\s*INSERT INTO organization_workspace_data\s*\(organization_id, state, updated_at\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
+      if (text.includes('INSERT INTO organization_workspace_data') && text.includes('SELECT o.id, wd.state')) return { rows: [], rowCount: 0 };
       if (text.includes('INSERT INTO organizations (name, owner_user_id)')) {
         const [name, userId] = values;
         if (!organizations.has(userId)) organizations.set(userId, { id: 'org-' + userId, name, owner_user_id: userId });
