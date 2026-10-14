@@ -250,54 +250,8 @@ export default function WorkspaceAuthGate() {
   }, [cleanupStorage]);
 
   useEffect(() => {
-    window.addEventListener('agencyos:logout', signOut);
-    return () => window.removeEventListener('agencyos:logout', signOut);
-  }, [signOut]);
-
-  async function submit(event) {
-    event.preventDefault();
-    setSubmitting(true);
-    setError('');
-    try {
-      const endpoint = mode === 'register' ? '/api/workspace/register' : '/api/workspace/login';
-      const payload = mode === 'register' ? { name, email, password } : { email, password };
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || 'Could not sign in. Please try again.');
-      await loadWorkspace(body.user);
-      setPassword('');
-    } catch (submitError) {
-      setError(submitError.message || 'Could not sign in. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  if (busy) {
-    return <div className="workspace-auth-page"><div className="workspace-auth-card"><LoaderCircle className="spin" size={24} /><p>Checking your workspace session…</p></div></div>;
-  }
-  if (user && storageReady) return <App />;
-
-  return (
-    <div className="workspace-auth-page">
-      <form className="workspace-auth-card" onSubmit={submit}>
-        <div className="workspace-auth-mark">R</div>
-        <div className="workspace-auth-eyebrow">REVOLTZ AI · AGENCYOS</div>
-        <h1>{mode === 'register' ? 'Create your workspace' : 'Welcome back'}</h1>
-        <p className="workspace-auth-description">{mode === 'register' ? 'Create a private account for your own leads, clients, notes and agency workflow.' : 'Sign in to open your own saved workspace from any device.'}</p>
-        {mode === 'register' && <label className="workspace-auth-field"><span>Your name</span><div><UserRound size={16} /><input autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} required minLength={2} maxLength={100} placeholder="Your name" /></div></label>}
-        <label className="workspace-auth-field"><span>Email address</span><div><Mail size={16} /><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} placeholder="you@example.com" /></div></label>
-        <label className="workspace-auth-field"><span>Password</span><div><LockKeyhole size={16} /><input type="password" autoComplete={mode === 'register' ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={mode === 'register' ? 12 : 1} maxLength={128} placeholder={mode === 'register' ? 'At least 12 characters' : 'Your password'} /></div></label>
-        {error && <div className="workspace-auth-error" role="alert">{error}</div>}
-        <button className="workspace-auth-submit" type="submit" disabled={submitting}>{submitting ? <LoaderCircle className="spin" size={16} /> : <ArrowRight size={16} />}{submitting ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Sign in'}</button>
-        <button className="workspace-auth-switch" type="button" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}>{mode === 'register' ? 'Already have an account? Sign in' : 'New to AgencyOS? Create an account'}</button>
-        <div className="workspace-auth-security"><ShieldCheck size={14} /> Your workspace is private to your account and saved to the cloud.</div>
-      </form>
-    </div>
-  );
-}
+    window.addEventListener(MethodInvocationException: 
+Line |
+   2 |  … [START]]'); [Console]::Write($fileText.Substring(10000,3646)); [Conso …
+     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Exception calling "Substring" with "2" argument(s): "Index and length must refer to a location within the string. (Parameter 'length')"
