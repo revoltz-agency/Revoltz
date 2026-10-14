@@ -17,7 +17,7 @@ function useOrganizationDatabase(role = 'owner') {
     async end() {},
     async query(text, values = []) {
       calls.push({ text, values });
-      if (/^\s*(CREATE (TABLE|INDEX) IF NOT EXISTS|ALTER TABLE organization_subscriptions\s+ADD COLUMN IF NOT EXISTS last_provider_event_created)/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*(CREATE (TABLE|INDEX) IF NOT EXISTS|ALTER TABLE organization_subscriptions)/i.test(text)) return { rows: [], rowCount: 0 };
       if (/^\s*INSERT INTO (organizations|organization_memberships|organization_subscriptions|organization_workspace_data)\b/i.test(text) && /\bSELECT\b/i.test(text)) return { rows: [], rowCount: 0 };
       if (/^\s*INSERT INTO organization_modules\s*\(organization_id, module_key, enabled\)\s*SELECT o\.id/i.test(text)) {
         for (const key of WORKSPACE_MODULES.map((module) => module.key)) {
