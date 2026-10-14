@@ -93,7 +93,9 @@ export async function createRazorpaySubscription(userId) {
     : 'created';
   await queryDatabase(
     `UPDATE organization_subscriptions
-     SET razorpay_subscription_id = $2, razorpay_customer_id = $3, status = $4, updated_at = now()
+     SET razorpay_subscription_id = $2, razorpay_customer_id = $3, status = $4,
+         current_period_start = NULL, current_period_end = NULL,
+         cancel_at_period_end = false, updated_at = now()
      WHERE organization_id = $1`,
     [membership.organization_id, payload.id, payload.customer_id || null, initialStatus],
   );
