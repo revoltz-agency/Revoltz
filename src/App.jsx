@@ -1300,6 +1300,7 @@ function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onG
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Could not save module settings.');
       setOrganizationWorkspace(payload);
+      window.dispatchEvent(new Event('agencyos:modules-updated'));
       setModuleNotice('Module access saved.');
     } catch (error) {
       setModuleNotice(error.message || 'Could not save module settings.');
