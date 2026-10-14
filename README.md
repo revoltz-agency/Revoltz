@@ -60,6 +60,7 @@ The `npm start` script sets production mode in a cross-platform Node script and 
 | --- | --- |
 | `GOOGLE_MAPS_API_KEY` | Optional, server-only Google Places API (New) key. Never use a `VITE_` variable for this credential. |
 | `PLACES_RATE_LIMIT_PER_MIN` | Per-client limit for each Places route; defaults to 20 requests/minute. This is an instance-level backstop, not a global spend cap. Configure Google Cloud quotas and budget alerts as well. |
+| `WEBSITE_AUDIT_RATE_LIMIT_PER_MIN` | Per signed-in workspace user limit for website audits; defaults to 10 requests/minute. Invalid or non-positive values fall back to the default; maximum is 1,000/minute. This is an instance-level backstop. |
 | `PORT` | Express port; defaults to `5173`. |
 | `DATABASE_URL` | PostgreSQL connection for accounts, workspace snapshots, sessions, and the Audit Inbox. |
 | `DATABASE_SSL` | Optional database TLS override. Remote hosts require TLS by default. |
