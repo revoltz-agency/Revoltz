@@ -1,7 +1,7 @@
 // Multi-user workspace authentication and cloud workspace persistence.
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
-import { ensureSchema, queryDatabase } from './db.js';
+import { ensureSchema, ensureWorkspaceOrganization, queryDatabase } from './db.js';
 import { isSecureRequest, randomToken, readCookie, serializeCookie, sha256Hex, timingSafeEqualStrings } from './security.js';
 
 const scrypt = promisify(crypto.scrypt);
@@ -48,7 +48,9 @@ export async function registerWorkspaceUser({ name, email, password }) {
       'INSERT INTO workspace_users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email, created_at',
       [cleanName, cleanEmail, passwordHash],
     );
-    return safeUser(result.rows[0]);
+    const user = safeUser(result.rows[0]);
+    await ensureWorkspaceOrganization(user.id, user.name);
+    return user;
   } catch (error) {
     if (error?.code === '23505') throw Object.assign(new Error('An account with this email already exists. Sign in instead.'), { statusCode: 409 });
     throw error;
@@ -65,7 +67,10 @@ export async function authenticateWorkspaceUser({ email, password }) {
   const row = result.rows[0];
   // Perform a same-cost derivation for unknown addresses to reduce account enumeration timing differences.
   const valid = row ? await verifyPassword(password, row.password_hash) : await hashPassword(password).then(() => false);
-  return valid ? safeUser(row) : null;
+  if (!valid) return null;
+  // Repair any account created before organization initialization was added.
+  await ensureWorkspaceOrganization(row.id, row.name);
+  return safeUser(row);
 }
 export async function createWorkspaceSession(userId, now = new Date()) {
   await ensureSchema();
