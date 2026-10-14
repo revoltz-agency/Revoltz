@@ -13,6 +13,7 @@ function csrfFromCookie() {
 const LEGACY_WORKSPACE_KEYS = new Set([
   'agencyos:workflow:v1',
   'agencyos:saved-place-ids:v1',
+  'agencyos:saved-gemini-place-ids:v1',
   'agencyos:search-history:v1',
   'agencyos:manual-leads:v1',
   'agencyos:manual-lead-overrides:v1',
@@ -33,7 +34,7 @@ function mergeLegacyValue(key, cloudValue, legacyValue) {
       for (const item of cloud) if (item && typeof item.id === 'string') byId.set(item.id, item);
       return JSON.stringify([...byId.values()].slice(-1000));
     }
-    if ((key === 'agencyos:saved-place-ids:v1') && Array.isArray(cloud) && Array.isArray(legacy)) {
+    if ((key === 'agencyos:saved-place-ids:v1' || key === 'agencyos:saved-gemini-place-ids:v1') && Array.isArray(cloud) && Array.isArray(legacy)) {
       return JSON.stringify([...new Set([...legacy, ...cloud].filter((id) => typeof id === 'string'))].slice(-500));
     }
     if (key === 'agencyos:search-history:v1' && Array.isArray(cloud) && Array.isArray(legacy)) {

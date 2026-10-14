@@ -1,268 +1,106 @@
 # REVOLTZ AI + AgencyOS
 
-REVOLTZ AI is the public marketing website. AgencyOS is a separate multi-user lead research and CRM workspace. Users can create an account, sign in from another device, and keep their browser-local CRM workspace backed up to their own cloud record in PostgreSQL. GitHub Pages uses a dedicated marketing-only entry point; the internal app is not part of that build.
+REVOLTZ AI is the public marketing site. AgencyOS is the signed-in workspace for lead research and agency operations. The GitHub Pages build contains only the marketing site; the internal app is served by the Express deployment.
 
-AgencyOS is a responsive, dark-mode lead research and CRM MVP for an AI/web agency. It helps an operator search local businesses through the **OpenStreetMap lead finder** (no API key required; public services are shared and rate-limited) or the **official Google Places API (New)**, enrich public business details, qualify visible opportunities, review website signals, prepare evidence-based outreach drafts, and track follow-ups.
+## AgencyOS lead sources
 
-> **Safety by design:** AgencyOS does not scrape Google Maps webpages, bulk-send email, automatically message WhatsApp numbers, or send follow-ups in the background. Email and WhatsApp actions are explicit, per-lead user clicks. WhatsApp opening is gated on a user-confirmed opt-in.
+Find Leads offers three explicit choices:
 
-### Gemini AI
+- **Gemini AI + Google Maps grounding** is the default. The operator adds a Google AI Studio API key in Settings. The key stays in that browser's `sessionStorage` and is sent directly to Google's Gemini API when a search or AI action is run. Google controls model availability, quotas, and billing eligibility. No Gemini request runs automatically.
+- **Google Places** is available only when `GOOGLE_MAPS_API_KEY` is configured on the server. The credential is never returned to the browser. Select Google Places and submit a search to call the Places API. Requests are rate-limited; Google Maps Platform charges may apply.
+- **Demo sample** uses fictional records and makes no provider calls.
 
-AgencyOS AI features use the Gemini API key entered in **Settings**. The key is kept in the current browser session and sent directly to Google's Gemini API from the client. No alternate-provider account or server-side AI credential is required. Model access, quotas, and billing eligibility are controlled by the Google AI Studio project.
+Manual lead creation and CSV import are available independently of provider configuration and do not make Google Places or Gemini requests. Imports are parsed and previewed locally before the operator confirms changes.
 
-The API key is tested with a basic text-generation request without Google Maps grounding. Lead discovery uses Gemini with Google Maps grounding; other AI features use Gemini JSON generation.
+AgencyOS does not scrape Google Maps webpages or send messages. WhatsApp drafts and follow-up dates require explicit operator actions; the operator reviews and sends every message.
 
-## Routes
+## Routes and builds
 
-| Route | What it is |
+| Route | Purpose |
 | --- | --- |
-| `/` | Public **REVOLTZ AI** marketing website: services, interactive demonstrations, process, reviews/credibility, FAQs and contact. |
-| `/agencyos` | Internal **AgencyOS** workspace in local/self-hosted combined builds only. It is not a route in the GitHub Pages artifact. |
+| `/` | Public marketing site. |
+| `/agencyos` | Internal workspace in the Express deployment. Requires an AgencyOS account. |
 
-Local/self-hosted builds use `src/main.jsx` and can serve both views. The GitHub Pages workflow sets `VITE_PUBLIC_SITE_ONLY=true`; Vite swaps the HTML entry to `src/site-main.jsx`, which mounts only the public marketing site. The Pages artifact therefore contains no AgencyOS UI, route, app data or internal tools. It has no SPA fallback, so `/agencyos` is not served there. The repository itself still contains AgencyOS source code; this build separation is not a security boundary for a public repository. Keep credentials and private business data out of the repository, and use a private repo plus server-side authentication if the source or internal app must be private.
+The marketing GitHub Pages build uses `src/site-main.jsx` and does not include the AgencyOS app. Public-site audit submissions are sent to the configured AgencyOS API. Intake requires the database, owner password hash, enabled intake setting, and an exact allowed-origin configuration.
 
-- Public site components, example data and styles live in `src/site/` (`RevoltzSite.jsx`, `demoData.js`, `site.css`). `src/site-main.jsx` is the dedicated Pages entry point.
-- Workspace styles remain in `src/styles.css`; marketing styles are scoped under `.rv-root` so the two surfaces remain independent.
-- The three public demos use fictional, browser-local examples. The business auditor is deterministic sample logic, not a live AI service. The Free AI Audit form submits to the Express backend at `VITE_AUDIT_API_BASE_URL` (defaulting to the AgencyOS Render service) and stores accepted requests in the PostgreSQL Audit Inbox. Telegram alerts are optional and do not replace database storage. Public intake must be enabled and the exact website origin allowlisted in the deployed backend.
-- `src/components/leadPrimitives.jsx` holds the small lead badges shared by both surfaces.
+## Architecture and data
 
-## Architecture
-
-- **Frontend:** React 19 + Vite; a static marketing website and a separate internal single-page workspace. The public Pages build uses its own marketing-only entry point.
-- **Server:** Express 5 serves the Vite app in development and the static build in production. API keys and outbound API calls stay server-side.
-- **Places search:** `POST /api/places/search` calls `https://places.googleapis.com/v1/places:searchText` with an explicit field mask and paginates up to 50 results (20 per request, at most three pages). Results are deduplicated by place ID. No wildcard field masks or Maps-page scraping are used. When a radius is selected, the server optionally geocodes the location through Google's Geocoding API and applies a Text Search location bias. Text Search bias is approximate, not a strict geographic boundary. `POST /api/places/details` is only called when an operator manually refreshes a saved place ID; the frontend caches each successful or failed request for the active app session.
-- **OpenStreetMap search:** `POST /api/free/search` resolves the operator's location text through Nominatim, then runs one Overpass API query for businesses within the requested radius. No API key is required, but these public community services are shared and rate-limited. Operator category text is matched against a fixed allowlist of Overpass tag pairs; when nothing matches it falls back to a name search restricted to seven business tag keys. Category text can never reach the query directly, and fallback name tokens are reduced to `[a-z0-9]` so no regex metacharacter can be injected. Results are deduplicated by OSM object ID and sorted by distance from the resolved point.
-- **Website check:** `POST /api/website/analyze` performs a constrained request to a public website and inspects a small HTML response for observable source signals, including link-text/URL evidence of an ordering link for food businesses. It includes SSRF safeguards, redirect checks, timeouts, content-type checks, and a 350 KB response limit. It is not a visual, accessibility, security, or full conversion audit.
-- **OSM lead enrichment:** `POST /api/enrich` fetches an OSM lead's listed website first, extracts publicly listed business contact/profile details, and checks at most five pages total per enrichment run (the homepage plus up to four obvious same-site pages). It reuses DNS-pinned public HTTP(S) fetching with redirect, timeout, and response-size limits; Jina Reader is only a fallback. If no website is listed, Tavily is called only when the server has `TAVILY_API_KEY`; its exact-name + city/category candidates are fetched and verified against the business name before acceptance. Tavily is optional. Results are cached in server memory for 24 hours and saved as separate browser-local CRM enrichment fields, leaving existing user-entered/verified contact fields unchanged. Enrichment does not scrape Google Maps or collect named personal email addresses.
-- **Qualification and draft generation:** A local, explainable rule engine scores source-appropriate observable signals; manually entered rating/review/social details are clearly identified as user-provided, and missing manual fields are treated as unknown. Message drafts use the supplied business details and any explicitly completed HTML check; no external LLM is used in this V1 so the product does not invent business claims. There is no AI-provider credential to configure.
-- **CRM storage:** Each AgencyOS account has a separate PostgreSQL-backed JSON workspace snapshot. The browser loads that account's snapshot at sign-in and syncs its own namespaced `localStorage` changes to the account record, enabling the same workspace to be restored on another device. Passwords are scrypt-hashed; sessions use opaque HttpOnly cookies and a CSRF token. Google Places responses stay in browser memory for the active session and are not written to the server or browser storage. `localStorage` holds CRM workflow/enrichment fields, manually entered leads and explicit user-entered overrides, saved Google place IDs (which are exempt from Places caching restrictions), and recent user-entered search terms. Saved Google IDs are shown as placeholders after a reload; the operator explicitly refreshes a place to fetch current details. CSV export includes labeled manual/user-entered details, CRM workflow fields, and Google place IDs, but intentionally omits Google Places business listing content.
-
-## Accounts and workspace isolation
-
-- Open `/agencyos` to sign in or create an account. Registration is open; each account has its own workspace snapshot and separate browser storage namespace.
-- Account records, password hashes, server-side sessions and workspace snapshots use the existing `DATABASE_URL` PostgreSQL database. No new third-party auth service or extra environment variable is required.
-- Passwords must be at least 12 characters. Session cookies are HttpOnly, Secure on HTTPS, SameSite=Strict, revocable server-side, and expire after inactivity or the absolute session limit.
-- Workspace snapshots sync across devices after browser-local changes. This is best-effort sync: edits made offline stay in the current browser until a successful connection returns. Avoid making simultaneous edits to the same account from multiple devices.
-- The public Free AI Audit form and owner-only Audit Inbox remain a separate Revoltz enquiry pipeline; they are not shared across customer accounts. An account imports an enquiry into its own CRM by choosing **Add to Leads**.
-- This is a first version of multi-user accounts: email verification, password reset, MFA, organization/team sharing, billing, and account deletion UI are not included. Keep production backups for the database.
-
-## Requirements
-
-- Node.js 20 or later (tested with Node 22)
-- npm
-- No API key is required for OpenStreetMap search, manual lead entry, or CSV import. OpenStreetMap's public Nominatim/Overpass services are shared and rate-limited; these flows make no Google Places API call.
-- Google Maps Platform credentials only if you want Google Places lead search.
+- **Frontend:** React 19 and Vite. The internal app is a single-page workspace.
+- **Server:** Express 5 serves the workspace and its API routes. Workspace APIs require a signed-in user; state-changing workspace requests also check origin and CSRF tokens.
+- **Google Places:** `POST /api/places/search` uses the official Places API (New), explicit field masks, and up to 50 results. Search is made only when selected and submitted. Saved Google Place IDs can be refreshed after an explicit action. Google listing content remains session-only; only IDs and user-entered CRM workflow data are saved.
+- **Gemini:** Lead search uses Google Maps grounding. Other AI-assisted tools use Gemini JSON generation. The API key is user-provided and held in the current browser session.
+- **Website check:** `POST /api/website/analyze` inspects bounded public HTML for observable signals. It applies SSRF protections, redirect checks, timeouts, content-type checks, and response-size limits. It is not a visual, accessibility, security, or full conversion audit.
+- **Workspace persistence:** Each account has a separate PostgreSQL-backed workspace snapshot. The browser syncs its namespaced local storage to that account when online. Sync is best-effort; simultaneous edits to the same account from multiple devices can conflict.
+- **Audit Inbox:** Public audit requests are stored separately from prospect CRM data. Owner access uses server-side sessions and CSRF protection. Expired requests are purged opportunistically when the inbox is opened; no scheduled production cleanup is claimed here.
 
 ## Local setup
 
+Requirements: Node.js `^22.22.0` or `^24.0.0` (the repository pins 22.22.3), npm, and PostgreSQL if you want account/workspace persistence or the Audit Inbox.
+
 ```bash
-npm install
+npm ci
 cp .env.example .env
 npm run dev
 ```
 
-Open the URL printed by the server (default `http://localhost:5173`). When Google Places is not configured, the Lead Finder defaults to OpenStreetMap; its shared public Nominatim/Overpass services require no API key but are rate-limited. **Add Manual Lead** and **Import CSV** are also available without a Google Places key. The fictional sample dataset is an explicit source choice, uses reserved `.example` website placeholders, and is never fetched or contactable.
+Open the URL printed by the server (default `http://localhost:5173`). Set `DATABASE_URL` to enable accounts. Without it, workspace registration and sign-in return an unavailable response. Gemini search requires a user-entered key in Settings. Google Places is optional and stays unavailable until a server-side key is configured.
 
-Run the checks/build:
+To build and run the production server:
+
+```bash
+npm run build
+npm start
+```
+
+The `npm start` script sets production mode in a cross-platform Node script and works from Windows and POSIX shells.
+
+## Environment variables
+
+| Variable | Purpose |
+| --- | --- |
+| `GOOGLE_MAPS_API_KEY` | Optional, server-only Google Places API (New) key. Never use a `VITE_` variable for this credential. |
+| `PLACES_RATE_LIMIT_PER_MIN` | Per-client limit for each Places route; defaults to 20 requests/minute. This is an instance-level backstop, not a global spend cap. Configure Google Cloud quotas and budget alerts as well. |
+| `PORT` | Express port; defaults to `5173`. |
+| `DATABASE_URL` | PostgreSQL connection for accounts, workspace snapshots, sessions, and the Audit Inbox. |
+| `DATABASE_SSL` | Optional database TLS override. Remote hosts require TLS by default. |
+| `AUDIT_OWNER_PASSWORD_HASH` | Scrypt hash for the Audit Inbox owner login. Generate locally with `npm run audit:hash-password`; never commit a real hash. |
+| `AUDIT_PUBLIC_INTAKE_ENABLED` | Enables public audit submissions only when set to `true`; default is `false`. |
+| `AUDIT_ALLOWED_ORIGINS` | Exact comma-separated origins allowed to submit public audit requests and make owner writes. |
+| `AUDIT_RETENTION_DAYS` | Audit request retention interval; defaults to 89 days. |
+| `AUDIT_SESSION_IDLE_MINUTES` / `AUDIT_SESSION_ABSOLUTE_MINUTES` | Audit owner session limits; defaults are 480 and 1440 minutes. |
+| `TRUST_PROXY_HOPS` | Number of trusted reverse-proxy hops, for correct client IP rate limiting. |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Optional private Telegram notifications for accepted audit requests. Notifications do not replace database storage. |
+| `VITE_AUDIT_API_BASE_URL` | Optional marketing-site build-time override for the AgencyOS audit intake API. |
+
+Never commit credentials, database URLs, password hashes, or a populated `.env` file.
+
+## Audit Inbox setup
+
+The inbox returns unavailable until both `DATABASE_URL` and `AUDIT_OWNER_PASSWORD_HASH` are configured. Local `.env.example` keeps public intake disabled by default. The Render Blueprint sets public intake to `true`; it also configures an exact origin allowlist. Review those values in the hosting dashboard before deployment. Audit requests are never emailed or messaged automatically.
+
+Retention expiry is set on insert and enforced opportunistically when an owner opens the inbox. The repository includes suggested scheduled-cleanup mechanisms, but no scheduled job or production execution is verified here.
+
+## Checks
 
 ```bash
 npm test
 npm run build
-npm audit --omit=dev
+VITE_PUBLIC_SITE_ONLY=true npm run build -- --base=/Revoltz/
 ```
 
-## Environment variables
-
-Copy `.env.example` to `.env` for local development. `.env` is ignored by Git.
-
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `GOOGLE_MAPS_API_KEY` | No (Google search only) | Server-only Google Maps Platform key. Enable Places API (New). Geocoding API is optional for radius bias. |
-| `PLACES_RATE_LIMIT_PER_MIN` | No | Per-client cap on Google Places calls, counted separately for search and details. Omit or leave malformed for the default of `20`; set exactly `0` to disable. This is a per-instance backstop, not a global spending cap — also set a Google Cloud quota and budget alert. See `docs/API_ABUSE_AND_COST_REVIEW.md`. |
-| `PORT` | No | Express server port; defaults to `5173`. |
-| `FREE_LEAD_SEARCH` | No | Set to `off` to disable OpenStreetMap search. No API key is required, but public services are shared and rate-limited. Defaults to `on`. |
-| `OVERPASS_API_URL` | No | Override the Overpass endpoint (default `https://overpass-api.de/api/interpreter`). |
-| `NOMINATIM_API_URL` | No | Override the Nominatim geocoding endpoint (default `https://nominatim.openstreetmap.org/search`). |
-| `OSM_USER_AGENT` | No | User-Agent sent to OpenStreetMap services; set to your own app name and contact for production. |
-| `OVERPASS_TIMEOUT_MS` | No | Overpass request timeout in milliseconds. Defaults to `30000`. |
-| `TAVILY_API_KEY` | No | Optional server-only website discovery for OSM leads without a listed website. The basic enrichment workflow does not require it. |
-
-Never place the Google or Tavily key in a `VITE_*` variable, frontend code, browser storage, a checked-in file, or a public client bundle. These optional credentials are read by the server only; the Tavily key is used only to discover a missing OSM website. The Settings screen reports whether the Google Places variable is present; an actual search confirms its API permissions.
-
-## Google Places API setup
-
-1. Create/select a project in Google Cloud Console and enable billing according to Google's current requirements.
-2. Enable **Places API (New)**. For actual radius bias, also enable the **Geocoding API**; otherwise, search still uses the city in the Text Search query and tells you that radius could not be applied.
-3. Create a server-side API key, restrict it to the required APIs, and add suitable server-side application restrictions for your deployment environment.
-4. Set `GOOGLE_MAPS_API_KEY` in the local `.env` or deployment secret manager, then restart the server.
-5. Run a small search and review Google Cloud quotas/billing. The search asks for only the business fields used in AgencyOS through an explicit `X-Goog-FieldMask`.
-
-The UI shows the prescribed “Google Maps” text attribution alongside live listing content and includes context for search ranking and user-generated rating/review counts. See [Google's Places API policies and attribution guidance](https://developers.google.com/maps/documentation/places/web-service/policies). Google Maps Platform terms may impose attribution, display, use, and retention requirements that change over time; review current policies before production use. This MVP does not persist Places content, but your use of returned content, the UI, and exports must still follow the applicable provider terms.
-
-## Product flows
-
-- **Dashboard:** Pipeline counts, priority shortlist, and suggested follow-up queue.
-- **Find Leads:** Choose a data source — **OpenStreetMap** (no key; shared/rate-limited public services), **Google Places** (when a key is configured), or the explicitly selected **Demo sample** — then run an industry/city/radius/result limit search (up to 50) with recent-search shortcuts and deduplicated results. OpenStreetMap results come from one Overpass query around the resolved city; Places results use paginated Places Text Search (New). The same page includes **Add Manual Lead** (business name, industry, city, website, phone, email, Google Maps URL, address, rating, review count, Instagram, Facebook, and notes) and a local **Import CSV** preview/validation flow. CSV imports detect likely duplicates by Maps URL, website domain, phone, and normalized business name plus city, then let you cancel, add anyway, or update existing records. Manual entry/import never scrapes Google Maps or makes a Places API call. Search results show their source, evidence, and potential service recommendation.
-- **Leads:** Search/filter/sort, HOT/WARM/COLD priority bands, Manual / Google Places / OpenStreetMap / sample source labels, saved/removed leads, CRM checkboxes and bulk status/service/tag actions (never messaging), user-entered contact fields, score, notes, assigned service, estimate, and follow-up. OSM leads have an **Enrich Lead** action showing public contact/profile details with source, evidence, and confidence. Enrichment fields and workflow details persist in this browser; existing user-entered/verified contacts are preserved; Google Places business content does not.
-- **Enrich Lead:** For OSM records, inspect the listed public website first and optionally up to four obvious same-site pages (five pages total). If the listing has no website, only a configured `TAVILY_API_KEY` enables exact business-name + city/category discovery; the candidate is fetched and verified before being stored. Jina Reader is a fallback for normal website fetch failures. Results expire from the server cache after 24 hours; the basic workflow needs no Tavily key.
-- **Analyze Website:** Manual, per-lead source inspection. Dynamic content can be missed. Visual design freshness is deliberately reported as not assessed.
-- **Generate Pitch:** Editable email and WhatsApp drafts based only on returned facts. Email copy/open requires a valid business email entered by the user, verified by the user, plus a per-lead contact-basis confirmation. WhatsApp copy/open requires a valid international-format business phone and explicit per-lead opt-in. Demo and Do Not Contact records cannot use channel actions. No action sends automatically; the operator must review and send in their own app. A future compliant mail provider belongs behind a server-side, single-recipient adapter that re-checks consent at send time; V1 intentionally has no send endpoint.
-- **Campaigns:** Suggested Day 0 / Day 3 / Day 7 / Day 14 cadence, manually advanced and a dashboard overdue queue. Marking a lead contacted stores a timestamp and suggests the next date; there are no bulk-send or automated scheduling controls.
-- **CRM statuses:** `NEW`, `RESEARCHED`, `CONTACTED`, `REPLIED`, `INTERESTED`, `CALL BOOKED`, `PROPOSAL`, `WON`, `LOST`, `DO NOT CONTACT`.
-- **Export:** CSV uses spreadsheet-formula injection protection. It exports manually entered lead details and labeled CRM workflow fields; Google-sourced place IDs are identified separately while Google Places business names, categories, ratings, addresses, phone numbers, and URLs remain excluded.
-- **Privacy / Terms:** In-app MVP notices explain local storage, external actions, responsibilities, and product limitations. These are placeholders, not legal advice.
-
-## Manual lead import
-
-The Lead Finder's **Add Manual Lead** form requires Business Name, Industry, and City; all remaining fields are optional. **Import CSV** accepts UTF-8 comma-separated files with a recognizable business-name column (for example `Business Name`, `Company`, or `Name`). Industry and City are optional for imports. Other supported optional headers include `Website`, `Phone`, `Email`, `Google Maps URL`, `Address`, `Rating`, `Review Count`, `Instagram`, `Facebook`, and `Notes`. `Category` may be used instead of `Industry`.
-
-CSV import validates rows and previews errors and likely duplicates before the operator confirms **Add anyway** or **Update existing**. Duplicate checks compare normalized Maps URLs, website domains, phone digits, and business name plus city. Blank optional data is shown as **Not provided** and does not count as a confirmed website/contact weakness. Imports are parsed locally in the browser (maximum 5 MB and 1,000 rows); manual creation/import makes no Google Places API request and does not visit or scrape any Maps URL. Manual lead details, explicit overrides, and CRM workflow fields are stored in that browser's local storage.
-
-## OpenStreetMap lead search
-
-OpenStreetMap search requires no API key and makes no Google Places calls. Nominatim and Overpass are public community services shared by many users, so requests are rate-limited and availability is not guaranteed. Select **OpenStreetMap** as the data source on the Find Leads page.
-
-How it works:
-
-1. The city/location text is resolved to coordinates with one **Nominatim** place lookup.
-2. The industry/category is matched against a fixed allowlist of roughly 55 Overpass tag groups (`Dental clinics` → `amenity=dentist`, `Gyms` → `leisure=fitness_centre`, and so on).
-3. One **Overpass** query fetches matching businesses within the radius. Results are deduplicated by OSM object ID and sorted by distance from the resolved point.
-4. Each result is normalised into the same lead shape used everywhere else in AgencyOS, with `source: "osm"` and an `osm-node/12345`-style identifier that links to `openstreetmap.org`.
-
-Categories with no fixed tag fall back to a case-insensitive **name search** limited to seven business tag keys (`amenity`, `shop`, `office`, `craft`, `leisure`, `tourism`, `healthcare`). Results are then approximate and are labelled as such in the UI.
-
-**Security:** operator text never reaches the Overpass query. Tag keys and values come only from the allowlist and are re-validated against `^[a-z_]{2,32}$` / `^[a-z0-9_:]{1,40}$` before use; fallback name tokens are reduced to `[a-z0-9]{2,30}`, which removes every regex metacharacter.
-
-**Honest limitations.** OpenStreetMap is community-maintained:
-
-- **Coverage varies** by city and category. A short result list means thin map data, not a thin market.
-- **No ratings, review counts, or operational status exist** in the source. These are left empty in the lead record rather than estimated, and the evidence panel states that they are absent rather than poor. The 100+ reviews and operational-status scoring signals therefore cannot fire for OSM leads.
-- **A missing website is unknown, not proof of a gap.** It still counts as the strongest observable signal (no website listed), but it should be confirmed by a human before outreach.
-- Unnamed map objects are skipped instead of being given a placeholder name.
-- Both services are rate limited. `429` responses surface as an actionable "wait a moment" message, and a slow query returns a "try a smaller radius" timeout message.
-
-Attribution is required: results display **© OpenStreetMap contributors** and link the [Open Database License](https://www.openstreetmap.org/copyright). Review the [Overpass API](https://dev.overpass-api.de/overpass-doc/en/preface/commons.html) and [Nominatim](https://operations.osmfoundation.org/policies/nominatim/) usage policies before heavy or production use.
+GitHub Actions runs these three checks on pull requests and pushes to `main`.
 
 ## Deployment
 
-See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for verified compatibility notes
-and the deployment checklist. **Nothing has been deployed from this branch.**
+[`render.yaml`](render.yaml) is a Render Blueprint proposal; committing it does not create or change a cloud service. It expects secrets to be entered in the hosting dashboard. Verify the running deployment and provider status before treating any local change as live.
 
-A [`render.yaml`](render.yaml) Blueprint is included. Committing it does not
-create or change any cloud resource; it must be applied deliberately in the
-Render dashboard. All secrets are declared `sync: false` — no credential,
-database URL or `.env` file is committed.
+The GitHub Pages workflow builds the public marketing-only site at `/Revoltz/`. Its status is visible in the repository's Actions tab; a local build alone does not verify deployment.
 
-The Node version is pinned consistently at **22.22.3** across `NODE_VERSION`
-(Render), `.node-version`, CI (`node-version: 22`) and `engines.node`
-(`^22.22.0 || ^24.0.0`).
+## Important limitations
 
-Build and run the Express server in production mode:
-
-```bash
-npm ci
-npm run build
-PORT=3000 npm start
-```
-
-Provide `GOOGLE_MAPS_API_KEY` through your host's secret/environment manager, not a frontend build argument. Terminate TLS at your hosting platform or reverse proxy. The server binds to `0.0.0.0`; the Vite development host allowlist includes Arena's `*.e2b.app` preview host.
-
-### GitHub Pages (static build)
-
-`.github/workflows/deploy.yml` builds with `--base=/Revoltz/` and `VITE_PUBLIC_SITE_ONLY=true`, then publishes to <https://revoltz-agency.github.io/Revoltz/> on pushes to `main` (or a manual run). The repository setting **Settings → Pages → Source: GitHub Actions** must be selected. The public build uses `src/site-main.jsx`, includes no AgencyOS app or `/agencyos` route, and intentionally has no single-page-app fallback. The website's interactive demonstrations run from fictional data in the visitor's browser. Its contact form creates an email draft to the existing `revoltz.agency@gmail.com` address; there is no enquiry backend and nothing is sent automatically. A successful deployment still depends on the GitHub Pages workflow and repository Pages settings.
-
-**Important production limitation:** V1 has no accounts, authentication, authorization, shared database, server-side audit log, or multi-tenant boundary. Do not expose a public instance with prospect or CRM data without adding appropriate authentication/access controls and reviewing rate limits, privacy notices, retention/deletion, and deployment security. Local workflow fields are browser-specific and are lost if that browser's storage is cleared.
-
-## Audit Inbox
-
-An owner-only inbox for “Claim Your Free Audit” enquiries, stored in PostgreSQL
-and **completely separate from prospect CRM data** (which stays in the
-operator's browser). Full detail: [`docs/AUDIT_INBOX.md`](docs/AUDIT_INBOX.md).
-
-- **Not enabled by default.** It returns 503 unless both `DATABASE_URL` and
-  `AUDIT_OWNER_PASSWORD_HASH` are configured. It never falls back to weaker
-  authentication.
-- **Public intake is off.** `AUDIT_PUBLIC_INTAKE_ENABLED` defaults to `false`
-  and is set to `false` in `render.yaml`. The deployed marketing site keeps its
-  existing `mailto:` contact behaviour — **website form submissions do not reach
-  AgencyOS** until intake is enabled, deployed and tested end to end.
-- **Nothing is sent.** No email and no WhatsApp message is ever dispatched by
-  these routes. There is no mail or messaging provider in this feature.
-- The inbox UI lives in the AgencyOS workspace only, so it is excluded from the
-  public GitHub Pages marketing build.
-
-### Audit request retention — 89 days
-
-Audit requests are scheduled for hard deletion **89 days** after they are
-received (`AUDIT_RETENTION_DAYS`, default 89). Stated plainly, because these are
-different claims:
-
-| State | Status |
-|---|---|
-| Configured | ✅ Expiry is computed on every insert; a malformed setting falls back to 89 rather than disabling retention |
-| Unit-tested | ✅ `tests/auditInbox.test.js` covers the 88/89/90-day boundary, clamping, and that the purge statement is parameterized |
-| Deployed | ❌ **No.** No scheduled job exists in any Neon project |
-| Operational & verified | ❌ **No.** No scheduled invocation has ever been observed |
-
-Opening the inbox also purges expired rows opportunistically. That is
-**defence in depth, not proof of a scheduled policy** — it only runs when a
-human opens the page.
-
-Recommended mechanism: a **Neon scheduled Function Trigger**
-([`functions/audit-retention.ts`](functions/audit-retention.ts)), which per
-Neon's documentation fires even when the compute is scaled to zero. The
-`pg_cron` variant in
-[`db/audit_retention_pg_cron.sql`](db/audit_retention_pg_cron.sql) **only runs
-while the compute is active**, so it is unsuitable with scale-to-zero.
-
-## Prospect CRM email removal
-
-Email collection and email outreach have been removed from prospect CRM
-workflows; outreach is WhatsApp-draft only. Legacy email fields in existing
-browser storage are stripped on load (idempotent, selective, non-destructive),
-and the CRM CSV export no longer contains the three prospect email columns — a
-breaking schema change that remains backward compatible on import. Full detail:
-[`docs/CRM_EMAIL_REMOVAL.md`](docs/CRM_EMAIL_REMOVAL.md).
-
-## API abuse and provider cost
-
-[`docs/API_ABUSE_AND_COST_REVIEW.md`](docs/API_ABUSE_AND_COST_REVIEW.md) reviews
-every public route. Summary: Google Places and Tavily are both
-disabled unless a key is present, but **`/api/places/search` has no in-process
-rate limit** and in-process limiters are **not** global spending caps. Platform
-budget alerts and quota caps are required before any public deployment.
-
-## Compliance and limitations
-
-- There is no Google Maps webpage scraping, automatic bulk outreach, unofficial WhatsApp API, or background message sending.
-- AgencyOS no longer collects prospect email addresses and no longer prepares email outreach. The operator is responsible for getting WhatsApp opt-in before opening a WhatsApp conversation. The in-app contact check is an operator confirmation, not legal verification.
-- Audit-request contact email **is** stored (it is the reply address for an inbound enquiry) in PostgreSQL, separate from prospect CRM data, retained for 89 days and then deleted. Opening the Audit Inbox requires an authenticated server-side session; data is never served without it.
-- Enrichment reads only public business websites, applies SSRF protection and strict fetch limits, skips Google Maps pages, and does not collect named personal email addresses. Normal fetching is attempted first; optional Jina Reader and Tavily services may receive the requested public website URL or exact business name/city/category as needed.
-- Google Places does not return business email in this field set. OSM enrichment can surface only publicly listed shared/role-based business email addresses; named personal mailboxes are ignored. An enriched address is not user-verified and stays separate from the outreach email until the operator chooses to use and verify it.
-- Scores are deterministic and explainable, not predictive guarantees. Raw factor points are normalized to 0–100 because mutually exclusive website signals cap the raw sum at 70. The drawer shows raw and normalized values.
-- “Active” means Google returned `OPERATIONAL` on a Google-sourced lead; manual records default to business status **Not provided**. An operational status does not prove a business is currently open. Website checks are limited to public HTML signals and do not claim visual or design findings.
-- Demo values are fictional. Do not use them as real prospects.
-- Google Places results are session-only in this app. CRM workflow data, manually entered leads, and explicit manual overrides are local to the browser. CSV exports include manual/user-entered details but intentionally omit Google Places and OpenStreetMap listing content (only the source identifier is exported); verify current Google and ODbL policies before changing retention, display, or export behavior.
-- OSM listing results remain session-only and are covered by the ODbL: keep the “© OpenStreetMap contributors” attribution visible wherever listing data is displayed, and review the Overpass and Nominatim usage policies before heavy use. Enrichment and CRM workflow fields are stored separately in browser-local storage; CSV export does not include OSM/enrichment listing details.
-- Before a public launch, replace the policy placeholders with jurisdiction-specific legal text and a real agency contact address.
-
-## API routes
-
-- `GET /api/config` — reports whether a server-side Places key is present and whether OpenStreetMap search is enabled; never returns credentials.
-- `POST /api/free/search` — OpenStreetMap lead search. Validates input, geocodes the location via Nominatim, runs one allowlisted Overpass query, and returns normalised leads with attribution and coverage warnings. Makes no Google Places call and needs no API key; public services are shared and rate-limited.
-- `POST /api/places/search` — validates search input and proxies up to three official Places Text Search pages (maximum 50 results) with an explicit field mask.
-- `POST /api/places/details` — refreshes one saved place ID using a minimal explicit field mask; called only after an operator action.
-- `POST /api/enrich` — enriches an OSM lead from its public business website; optional Tavily discovery runs only when `TAVILY_API_KEY` is configured and verifies the candidate site before accepting it.
-- `POST /api/website/analyze` — performs a constrained public-website HTML check.
-- `GET /api/audit/config` — non-secret Audit Inbox configuration booleans (no credentials, tokens or connection strings).
-- `POST /api/audit/session` — owner sign-in. Rate limited and Origin checked; creates a server-side session returned as an HttpOnly, Secure-in-production, SameSite=Strict cookie.
-- `POST /api/audit/session/logout` — revokes the session server-side and clears both cookies. Requires the session, an allowed Origin and a CSRF token.
-- `GET /api/audit/retention` — owner-only. Reports the retention window, row counts and honest scheduled-cleanup status.
-- `GET /api/audit/requests` — owner-only. Lists audit requests.
-- `POST /api/audit/requests` — public audit intake. **Disabled by default** and returns 503 unless `AUDIT_PUBLIC_INTAKE_ENABLED=true`.
-- `PATCH /api/audit/requests/:id` — owner-only status change (validated id, validated status, validated transition).
-- `DELETE /api/audit/requests/:id` — owner-only hard delete.
-
-All Audit Inbox SQL uses bound parameters, ids are validated as UUIDs, and status values come from a closed set.
-
-Manual lead creation, validation, duplicate detection, and CSV parsing/import are client-side workflows; they have no server route and do not call Google Places. Website analysis and lead enrichment run only after an explicit per-lead click.
+- Workspace sync is best-effort and does not resolve concurrent edits across devices.
+- Account email verification, password reset, MFA, team sharing, billing, and account-deletion UI are not included.
+- Gemini and Google Places access, pricing, quotas, and terms are controlled by Google. Calls happen only after the operator chooses an action, but a configured key may incur charges.
+- Google Places use must follow current Maps Platform attribution, display, retention, and export requirements.
+- Scores are explainable decision support, not guarantees. Demo data is fictional. Website checks inspect limited HTML and do not establish a business's actual needs.
+- Review privacy, terms, and retention requirements for the jurisdictions where the service operates.

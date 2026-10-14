@@ -1,4 +1,4 @@
-import { isOsmLead, listingSourceNoun } from './freeLeadFinder.js';
+const listingSourceNoun = () => 'Google';
 
 export const MAX_OBSERVABLE_RAW_SCORE = 70;
 
@@ -22,6 +22,7 @@ export function scoreOpportunity(lead) {
     };
   }
   const manual = lead?.source === 'manual';
+  const identityOnly = lead?.source === 'gemini';
   const userProvidedRating = manual || lead?.manualUserFields?.includes('rating');
   const userProvidedReviews = manual || lead?.manualUserFields?.includes('reviews');
   const userProvidedSocial = manual || lead?.manualUserFields?.some((field) => ['instagram', 'facebook'].includes(field));
@@ -30,15 +31,15 @@ export function scoreOpportunity(lead) {
   const signals = [
     {
       key: 'no-website',
-      label: manual ? 'Website not provided (not assessed)' : lead.demo ? 'No website field in demo sample' : 'No website listed',
+      label: manual ? 'Website not provided (not assessed)' : identityOnly ? 'Website not returned by Gemini grounding' : lead.demo ? 'No website field in demo sample' : 'No website listed',
       points: 30,
       // A missing field in a manually entered record is unknown, not evidence of a website weakness.
-      active: !manual && !lead.website,
+      active: !manual && !identityOnly && !lead.website,
     },
     { key: 'weak-website', label: lead.demo ? 'Illustrative website check shows multiple gaps' : 'Website checks indicate multiple gaps', points: 20, active: Boolean(lead.website && audit?.weakWebsite) },
-    { key: 'reviews', label: manual && lead.reviews == null ? 'Review count not provided' : userProvidedReviews ? '100+ user-provided reviews' : lead.demo ? '100+ fictional sample reviews' : isOsmLead(lead) ? '100+ reviews (not provided by OpenStreetMap)' : '100+ Google reviews', points: 15, active: Number(lead.reviews) >= 100 },
-    { key: 'rating', label: manual && lead.rating == null ? 'Rating not provided' : userProvidedRating ? 'Strong user-provided rating (4.5+)' : 'Strong rating (4.5+)', points: 10, active: Number(lead.rating) >= 4.5 },
-    { key: 'active', label: manual ? 'Business status not provided' : lead.demo ? 'Demo sample marked operational' : 'Business status is operational', points: 10, active: lead.businessStatus === 'OPERATIONAL' },
+    { key: 'reviews', label: manual && lead.reviews == null ? 'Review count not provided' : identityOnly ? 'Review count not returned by Gemini grounding' : userProvidedReviews ? '100+ user-provided reviews' : lead.demo ? '100+ fictional sample reviews' : '100+ Google reviews', points: 15, active: !identityOnly && Number(lead.reviews) >= 100 },
+    { key: 'rating', label: manual && lead.rating == null ? 'Rating not provided' : identityOnly ? 'Rating not returned by Gemini grounding' : userProvidedRating ? 'Strong user-provided rating (4.5+)' : 'Strong rating (4.5+)', points: 10, active: !identityOnly && Number(lead.rating) >= 4.5 },
+    { key: 'active', label: manual ? 'Business status not provided' : identityOnly ? 'Business status not returned by Gemini grounding' : lead.demo ? 'Demo sample marked operational' : 'Business status is operational', points: 10, active: !identityOnly && lead.businessStatus === 'OPERATIONAL' },
     { key: 'contact-flow', label: manual && !audit ? 'Contact flow not assessed' : lead.demo ? 'Illustrative contact flow not detected' : 'No obvious contact flow detected', points: 10, active: Boolean(lead.website && audit?.contactFlowDetected === false) },
     { key: 'social', label: manual ? hasSocial ? 'User-provided social profile link' : 'Social profiles not provided' : lead.demo ? 'Illustrative sample social link' : 'Social profile link detected', points: 5, active: hasSocial },
   ];
@@ -50,6 +51,7 @@ export function scoreOpportunity(lead) {
 
 export function opportunityReason(lead) {
   if (lead?.needsRefresh) return 'Saved place ID only. Refresh current listing details before qualification or outreach.';
+  if (lead?.source === 'gemini') return 'Google Maps grounding matched this business name and listing link. Other listing details were not fetched, so review the listing manually or choose Google Places before qualifying or contacting it.';
   if (lead?.source === 'manual') {
     if (!lead.website) return 'Website was not provided. This is unknown, not a confirmed website weakness; review the business details manually.';
     const { score, tier } = scoreOpportunity(lead);

@@ -4,8 +4,6 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getGooglePlaceDetails, searchGooglePlaces } from './googlePlaces.js';
-import { searchOpenStreetMap } from './overpass.js';
-import { enrichOsmLead } from './enrich.js';
 import { auditWebsite } from './websiteAudit.js';
 import { isDatabaseConfigured } from './db.js';
 import {
@@ -219,7 +217,7 @@ app.put('/api/workspace/state', async (req, res) => {
 // The internal lead-research APIs are available only to signed-in workspace users.
 // Public marketing/audit-intake endpoints and the separate owner-only Audit Inbox
 // retain their existing access rules.
-app.use(['/api/free', '/api/places', '/api/enrich', '/api/website'], async (req, res, next) => {
+app.use(['/api/places', '/api/website'], async (req, res, next) => {
   const session = await requireWorkspaceUser(req, res);
   if (!session) return;
   req.workspaceUser = session.user;
@@ -227,9 +225,6 @@ app.use(['/api/free', '/api/places', '/api/enrich', '/api/website'], async (req,
 });
 
 const googleApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
-// The OpenStreetMap path needs no key. It can still be switched off for an
-// air-gapped or policy-restricted deployment.
-const freeSearchEnabled = (process.env.FREE_LEAD_SEARCH || 'on').trim().toLowerCase() !== 'off';
 
 // --- Audit Inbox configuration ---------------------------------------------
 // Public intake remains opt-in via AUDIT_PUBLIC_INTAKE_ENABLED. It is only
@@ -270,7 +265,6 @@ app.get('/api/config', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     googlePlacesConfigured: Boolean(googleApiKey),
-    freeSearchEnabled,
     // Booleans only: never a connection string, token, or password hash.
     auditInboxConfigured: auditInboxConfigured(),
     auditPublicIntakeEnabled,
@@ -279,38 +273,6 @@ app.get('/api/config', (_req, res) => {
     // Non-secret: lets an operator confirm the Places backstop is active.
     placesRateLimitPerMinute: placesLimiter.limit,
   });
-});
-
-app.post('/api/free/search', async (req, res) => {
-  if (!freeSearchEnabled) {
-    return res.status(503).json({ error: 'OpenStreetMap search is disabled on this server.' });
-  }
-
-  const category = typeof req.body?.category === 'string' ? req.body.category.trim() : '';
-  const location = typeof req.body?.location === 'string' ? req.body.location.trim() : '';
-  const radiusKm = Number(req.body?.radiusKm);
-  const maxResults = Number(req.body?.maxResults);
-
-  if (!category || category.length > 100 || !location || location.length > 160) {
-    return res.status(400).json({ error: 'Add an industry/category and a city or location to search.' });
-  }
-  if (!Number.isFinite(radiusKm) || radiusKm < 1 || radiusKm > 50) {
-    return res.status(400).json({ error: 'Search radius must be between 1 and 50 km.' });
-  }
-  if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 50) {
-    return res.status(400).json({ error: 'Maximum results must be between 1 and 50.' });
-  }
-
-  try {
-    const { results, warnings, requests, geocodingRequests, attribution, licenseUrl, matchedCategory, queriedTags, resolvedLocation } = await searchOpenStreetMap({ category, location, radiusKm, maxResults });
-    res.setHeader('Cache-Control', 'no-store');
-    return res.json({
-      results, warnings, requests, geocodingRequests, attribution, licenseUrl,
-      matchedCategory, queriedTags, resolvedLocation,
-    });
-  } catch (error) {
-    return res.status(error.statusCode || 502).json({ error: error.message || 'OpenStreetMap search failed. Please try again.' });
-  }
 });
 
 app.post('/api/places/search', async (req, res) => {
@@ -354,20 +316,6 @@ app.post('/api/places/details', async (req, res) => {
     return res.json({ result, attribution: 'Google Maps' });
   } catch (error) {
     return res.status(error.statusCode || 502).json({ error: error.message || 'Saved place refresh failed.' });
-  }
-});
-
-app.post('/api/enrich', async (req, res) => {
-  try {
-    const result = await enrichOsmLead({
-      lead: req.body?.lead,
-      // Website discovery is optional. The secret is read only by this server route.
-      tavilyApiKey: process.env.TAVILY_API_KEY?.trim() || '',
-    });
-    res.setHeader('Cache-Control', 'no-store');
-    return res.json(result);
-  } catch (error) {
-    return res.status(error.statusCode || 502).json({ error: error.message || 'Lead enrichment failed.' });
   }
 });
 

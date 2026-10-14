@@ -196,7 +196,6 @@
 }
 .mode-notice button + button { margin-left:0; }
 
-/* OpenStreetMap lead finder */
 .source-choice-row{display:flex;flex-direction:column;gap:7px;margin-top:16px;color:#9aa7b4;font-size:10px;font-weight:500}
 .source-choice-group{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
 .source-choice{display:flex;flex-direction:column;gap:3px;align-items:flex-start;padding:9px 11px;border:1px solid #283440;border-radius:9px;background:#111a24;color:#8d9aa8;text-align:left;cursor:pointer;transition:.16s ease}
@@ -208,11 +207,10 @@
 .source-choice-active strong{color:#e2f0e8}
 .source-choice-active span{color:#7fb99a}
 .free-hint{margin-top:10px}
-.osm-badge{display:inline-flex;align-items:center;gap:5px;width:max-content;padding:4px 6px;border:1px solid #2f5f52;border-radius:5px;background:#2f7a5f1c;color:#84c9a8;font-size:7px;font-weight:700;letter-spacing:.45px;line-height:1;white-space:nowrap}
-.osm-dot{width:6px;height:6px;display:inline-block;border-radius:50%;background:#6cc79b;box-shadow:0 0 0 3px #6cc79b1f}
-.business-cell .osm-badge{padding:3px 4px;font-size:6px}
-.osm-attribution{width:fit-content;display:flex;align-items:center;gap:8px;margin:0;padding:6px 9px;border:1px solid #35424e;border-radius:7px;background:#131c25;color:#f1f4f6;font:400 12px/1.25 Roboto,Arial,sans-serif;letter-spacing:normal;white-space:nowrap}
-.osm-text-attribution{color:#eaf3ee;font:400 12px/1.25 Roboto,Arial,sans-serif;letter-spacing:normal;white-space:nowrap}
+.grounding-source-list{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:12px;padding:10px 12px;border:1px solid #293642;border-radius:9px;background:#111922;color:#94a2af;font-size:10px}
+.grounding-source-list strong{color:#d4dee7;margin-right:3px}
+.grounding-source-list a{display:inline-flex;align-items:center;gap:4px;color:#96c6ff;text-decoration:none}
+.grounding-source-list a:hover{text-decoration:underline}
 
 /* Public business enrichment details */
 .enrichment-description,.enrichment-empty{margin:0 0 10px;color:#8190a0;font-size:8px;line-height:1.55}
