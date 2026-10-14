@@ -28,14 +28,22 @@ export function razorpayEventStatus(eventType) {
   })[eventType] || null;
 }
 
-function configuration() {
+function apiCredentials() {
   const keyId = String(process.env.RAZORPAY_KEY_ID || '').trim();
   const keySecret = String(process.env.RAZORPAY_KEY_SECRET || '').trim();
-  const planId = String(process.env.RAZORPAY_PLAN_ID_STARTER || '').trim();
-  if (!keyId || !keySecret || !planId) {
-    throw Object.assign(new Error('Razorpay billing is not configured on the server yet.'), { statusCode: 503 });
+  if (!keyId || !keySecret) {
+    throw Object.assign(new Error('Razorpay API credentials are not configured on the server yet.'), { statusCode: 503 });
   }
-  return { keyId, keySecret, planId };
+  return { keyId, keySecret };
+}
+
+function configuration() {
+  const credentials = apiCredentials();
+  const planId = String(process.env.RAZORPAY_PLAN_ID_STARTER || '').trim();
+  if (!planId) {
+    throw Object.assign(new Error('Razorpay billing plan is not configured on the server yet.'), { statusCode: 503 });
+  }
+  return { ...credentials, planId };
 }
 
 export async function createRazorpaySubscription(userId) {
@@ -94,7 +102,7 @@ export async function createRazorpaySubscription(userId) {
 
 export async function cancelRazorpaySubscriptionAtPeriodEnd(userId) {
   await ensureSchema();
-  const { keyId, keySecret } = configuration();
+  const { keyId, keySecret } = apiCredentials();
   const result = await queryDatabase(
     `SELECT o.id AS organization_id, m.role, s.status, s.razorpay_subscription_id, s.cancel_at_period_end
      FROM organization_memberships m
