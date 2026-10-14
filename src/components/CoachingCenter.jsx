@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { BookOpen, CalendarCheck2, Check, Download, Plus, ShieldCheck, Users, WalletCards } from 'lucide-react';
 
 const STORAGE_KEY = 'agencyos:coaching-center:v1';
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
 const monthNow = () => today().slice(0, 7);
 const id = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const emptyData = () => ({ students: [], batches: [], attendance: [], fees: [] });
@@ -26,12 +26,16 @@ export default function CoachingCenter({ profile }) {
   const [batchForm, setBatchForm] = useState(null);
   const [selectedBatch, setSelectedBatch] = useState('');
   const [attendanceDate, setAttendanceDate] = useState(today);
+  const [feeDueDate, setFeeDueDate] = useState(today);
   const [marks, setMarks] = useState({});
   const [notice, setNotice] = useState('');
   const currency = profile.currency || 'INR';
   const activeStudents = data.students.filter((student) => student.status === 'Active');
   const visibleStudents = useMemo(() => selectedBatch ? activeStudents.filter((student) => student.batchId === selectedBatch) : [], [activeStudents, selectedBatch]);
   const attendanceRecord = data.attendance.find((record) => record.batchId === selectedBatch && record.date === attendanceDate);
+  const feesDue = data.fees.filter((fee) => fee.status !== 'Received');
+  const overdueFees = feesDue.filter((fee) => fee.dueDate && fee.dueDate < today());
+  const receivedThisMonth = data.fees.filter((fee) => fee.status === 'Received' && (fee.paidAt || '').slice(0, 7) === monthNow());
 
   function save(next, message = 'Saved to this business workspace.') {
     setData(next);
@@ -70,8 +74,9 @@ export default function CoachingCenter({ profile }) {
   }
   function createMonthlyFees() {
     const period = monthNow();
+    if (!feeDueDate) { setNotice('Choose a due date before creating this month’s fees.'); return; }
     const known = new Set(data.fees.filter((fee) => fee.period === period).map((fee) => fee.studentId));
-    const newFees = activeStudents.filter((student) => !known.has(student.id)).map((student) => ({ id: id(), studentId: student.id, period, amount: Number(student.monthlyFee) || 0, status: 'Due', paidAt: '' }));
+    const newFees = activeStudents.filter((student) => !known.has(student.id)).map((student) => ({ id: id(), studentId: student.id, period, amount: Number(student.monthlyFee) || 0, dueDate: feeDueDate, status: 'Due', paidAt: '' }));
     if (!newFees.length) { setNotice(`Fee records already exist for all active learners in ${period}.`); return; }
     save({ ...data, fees: [...newFees, ...data.fees].slice(0, 10000) }, `${newFees.length} fee records created for ${period}.`);
   }
@@ -82,7 +87,7 @@ export default function CoachingCenter({ profile }) {
     const csvRows = [['Period', 'Learner', 'Student code', 'Batch', 'Amount', 'Status', 'Recorded date'], ...data.fees.map((fee) => {
       const student = data.students.find((item) => item.id === fee.studentId);
       const batch = data.batches.find((item) => item.id === student?.batchId);
-      return [fee.period, student?.name || 'Removed learner', student?.studentCode || '', batch?.name || '', fee.amount, fee.status, fee.paidAt || ''];
+      return [fee.period, student?.name || 'Removed learner', student?.studentCode || '', batch?.name || '', fee.amount, fee.dueDate || '', fee.status === 'Received' ? 'Received' : fee.dueDate && fee.dueDate < today() ? 'Overdue' : 'Due', fee.paidAt || ''];
     })];
     const content = csvRows.map((row) => row.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([`\uFEFF${content}`], { type: 'text/csv;charset=utf-8' }));
@@ -108,6 +113,7 @@ export default function CoachingCenter({ profile }) {
 
     {section === 'Attendance' && <section className="business-panel"><div className="business-section-heading"><div><span className="business-eyebrow">DAILY REGISTER</span><h2>Attendance</h2><p>Save one attendance register per batch and date.</p></div></div><div className="coaching-attendance-controls"><label className="business-field">Batch<select style={field} value={selectedBatch} onChange={(event) => { setSelectedBatch(event.target.value); setMarks({}); }}><option value="">Choose a batch</option>{data.batches.map((batch) => <option key={batch.id} value={batch.id}>{batch.name}</option>)}</select></label><label className="business-field">Date<input type="date" style={field} value={attendanceDate} onChange={(event) => { setAttendanceDate(event.target.value); setMarks({}); }} /></label></div>{visibleStudents.length ? <><div className="business-table-wrap"><table className="business-table"><thead><tr><th>Learner</th><th>Attendance</th></tr></thead><tbody>{visibleStudents.map((student) => { const value = marks[student.id] || attendanceRecord?.entries?.find((entry) => entry.studentId === student.id)?.status || 'Unmarked'; return <tr key={student.id}><td><strong>{student.name}</strong><small>{student.studentCode || ''}</small></td><td><select style={field} aria-label={`Attendance for ${student.name}`} value={value} onChange={(event) => setMarks((current) => ({ ...current, [student.id]: event.target.value }))}><option>Unmarked</option><option>Present</option><option>Absent</option><option>Late</option></select></td></tr>; })}</tbody></table></div><button type="button" className="button button-primary" onClick={saveAttendance}><Check size={15} /> Save attendance</button></> : <div className="business-empty"><CalendarCheck2 size={24} /><strong>Choose a batch with active learners.</strong><span>Create batches and learner records first.</span></div>}</section>}
 
-    {section === 'Fees' && <section className="business-panel"><div className="business-section-heading"><div><span className="business-eyebrow">FEE REGISTER</span><h2>Fees</h2><p>Track amounts due and manually record amounts received.</p></div><div className="coaching-fee-actions"><button type="button" style={button} onClick={exportFees}><Download size={15} /> Export CSV</button><button type="button" className="button button-primary" onClick={createMonthlyFees}><Plus size={15} /> Create this month's fees</button></div></div><div className="coaching-fee-note"><ShieldCheck size={15} /><span>This only records fee status. It does not collect payments, issue tax invoices, or send reminders.</span></div>{!data.fees.length ? <div className="business-empty"><WalletCards size={24} /><strong>No fee records yet.</strong><span>Add active learner records, then create this month's fees.</span></div> : <div className="business-table-wrap"><table className="business-table"><thead><tr><th>Period</th><th>Learner</th><th>Batch</th><th>Amount</th><th>Status</th><th /></tr></thead><tbody>{data.fees.map((fee) => { const student = data.students.find((item) => item.id === fee.studentId); const batch = data.batches.find((item) => item.id === student?.batchId); return <tr key={fee.id}><td>{fee.period}</td><td><strong>{student?.name || 'Removed learner'}</strong></td><td>{batch?.name || '—'}</td><td>{amount(fee.amount, currency)}</td><td>{fee.status}{fee.paidAt ? <small>{fee.paidAt}</small> : null}</td><td>{fee.status === 'Due' && <button style={button} type="button" onClick={() => markReceived(fee)}>Mark received</button>}</td></tr>; })}</tbody></table></div>}</section>}
+    {section === 'Fees' && <section className="business-panel"><div className="business-section-heading"><div><span className="business-eyebrow">FEE REGISTER</span><h2>Fees</h2><p>See what is due, what is overdue, and what you recorded as received.</p></div><div className="coaching-fee-actions"><button type="button" style={button} onClick={exportFees}><Download size={15} /> Export CSV</button></div></div><div className="coaching-fee-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, margin: '16px 0' }}><div className="business-stat-card"><span>Outstanding</span><strong>{amount(feesDue.reduce((sum, fee) => sum + (Number(fee.amount) || 0), 0), currency)}</strong><small>{feesDue.length} fee records</small></div><div className="business-stat-card"><span>Overdue</span><strong>{amount(overdueFees.reduce((sum, fee) => sum + (Number(fee.amount) || 0), 0), currency)}</strong><small>{overdueFees.length} past due date</small></div><div className="business-stat-card"><span>Received this month</span><strong>{amount(receivedThisMonth.reduce((sum, fee) => sum + (Number(fee.amount) || 0), 0), currency)}</strong><small>{receivedThisMonth.length} recorded payments</small></div></div><div className="coaching-fee-note"><ShieldCheck size={15} /><span>This only records fee status. It does not collect payments, issue tax invoices, or send reminders. Existing fee records without a due date are counted as outstanding, but not overdue.</span></div><div className="coaching-fee-actions" style={{ margin: '14px 0', alignItems: 'end' }}><label className="business-field">Due date for this month's fees<input type="date" style={{ ...field, marginTop: 5 }} value={feeDueDate} onChange={(event) => setFeeDueDate(event.target.value)} /></label><button type="button" className="button button-primary" onClick={createMonthlyFees}><Plus size={15} /> Create this month's fees</button></div>{!data.fees.length ? <div className="business-empty"><WalletCards size={24} /><strong>No fee records yet.</strong><span>Add active learner records, choose a due date, then create this month's fees.</span></div> : <div className="business-table-wrap"><table className="business-table"><thead><tr><th>Period</th><th>Learner</th><th>Batch</th><th>Amount</th><th>Due date</th><th>Status</th><th /></tr></thead><tbody>{data.fees.map((fee) => { const student = data.students.find((item) => item.id === fee.studentId); const batch = data.batches.find((item) => item.id === student?.batchId); const overdue = fee.status !== 'Received' && fee.dueDate && fee.dueDate < today(); return <tr key={fee.id}><td>{fee.period}</td><td><strong>{student?.name || 'Removed learner'}</strong></td><td>{batch?.name || '—'}</td><td>{amount(fee.amount, currency)}</td><td>{fee.dueDate || 'Not set'}</td><td>{overdue ? 'Overdue' : fee.status}{fee.paidAt ? <small>Received {fee.paidAt}</small> : null}</td><td>{fee.status !== 'Received' && <button style={button} type="button" onClick={() => markReceived(fee)}>Mark received</button>}</td></tr>; })}</tbody></table></div>}</section>}
   </section>;
 }
+
