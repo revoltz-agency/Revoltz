@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SCAN_DIRS = ['server', 'src', 'tests', 'scripts', 'functions', 'db'];
@@ -52,7 +52,7 @@ test('server/index.js imports every helper it calls', async () => {
 
   const missing = [];
   for (const mod of SERVER_MODULES) {
-    const exported = Object.keys(await import(path.join(rootDir, 'server', mod)));
+    const exported = Object.keys(await import(pathToFileURL(path.join(rootDir, 'server', mod)).href));
     const imported = importedFrom(mod);
     for (const name of exported) {
       if (imported.has(name)) continue;

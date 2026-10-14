@@ -70,10 +70,3 @@ services:
       # disable. Not a global spending cap: set a Google Cloud quota too.
       - key: PLACES_RATE_LIMIT_PER_MIN
         sync: false
-      # Tavily website discovery. No key -> enrichment skips discovery.
-      - key: TAVILY_API_KEY
-        sync: false
-
-      # OpenStreetMap search is on by default and needs no key.
-      - key: FREE_LEAD_SEARCH
-        value: "on"
