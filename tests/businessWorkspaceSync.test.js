@@ -19,3 +19,13 @@ test('business workspace records are included in account sync and backup', async
   }
   assert.ok(authGate.includes('new Set(WORKSPACE_STORAGE_KEYS)'), 'the account sync must use the central workspace key list');
 });
+
+test('workspace sync failures are visible and retry when the connection returns', async () => {
+  const authGate = await readFile(new URL('../src/components/WorkspaceAuthGate.jsx', import.meta.url), 'utf8');
+  assert.ok(authGate.includes("reportSyncStatus('saving')"), 'pending writes should be shown as saving');
+  assert.ok(authGate.includes("reportSyncStatus('offline')"), 'failed writes should not be presented as cloud-saved');
+  assert.ok(authGate.includes("window.addEventListener('online', retryWhenOnline)"), 'sync should retry after connectivity returns');
+  assert.match(authGate, /Not synced — changes are saved only in this browser/);
+  assert.match(authGate, /All changes saved to your account/);
+});
+

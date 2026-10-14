@@ -5,6 +5,11 @@ import { WORKSPACE_STORAGE_KEYS } from '../lib/workspaceStorageKeys.js';
 
 const SESSION_COOKIE = 'agencyos_workspace_csrf';
 const VERCEL_PREVIEW = import.meta.env.VERCEL_ENV === 'preview';
+const SYNC_EVENT = 'agencyos:workspace-sync';
+
+function reportSyncStatus(status) {
+  window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { status } }));
+}
 
 function csrfFromCookie() {
   if (!document.cookie) return '';
@@ -59,6 +64,7 @@ function installWorkspaceStorage(userId, remoteState) {
   let active = true;
   let syncTimer = null;
   let inFlight = Promise.resolve();
+  let syncVersion = 0;
 
   // Migrate the older, un-namespaced browser cache without discarding it.
   // The cloud wins conflicts, while distinct legacy leads/CRM entries are merged.
@@ -99,6 +105,8 @@ function installWorkspaceStorage(userId, remoteState) {
   }
   function scheduleSync() {
     if (!active) return;
+    const version = ++syncVersion;
+    reportSyncStatus('saving');
     window.clearTimeout(syncTimer);
     syncTimer = window.setTimeout(() => {
       const state = collectState();
@@ -111,15 +119,19 @@ function installWorkspaceStorage(userId, remoteState) {
           body: JSON.stringify({ state }),
         });
         if (!response.ok) throw new Error('Workspace cloud sync failed.');
+        if (version === syncVersion) reportSyncStatus('saved');
         if (migrationPending) {
           for (const key of Object.keys(legacyState)) native.removeItem.call(window.localStorage, key);
           migrationPending = false;
         }
       }).catch(() => {
         // Keep the local cache usable while offline; the next edit retries sync.
+        if (version === syncVersion) reportSyncStatus('offline');
       });
     }, 700);
   }
+  const retryWhenOnline = () => scheduleSync();
+  window.addEventListener('online', retryWhenOnline);
 
   proto.getItem = function (key) {
     return this === window.localStorage
@@ -171,6 +183,7 @@ function installWorkspaceStorage(userId, remoteState) {
   return () => {
     active = false;
     window.clearTimeout(syncTimer);
+    window.removeEventListener('online', retryWhenOnline);
     proto.getItem = native.getItem;
     proto.setItem = native.setItem;
     proto.removeItem = native.removeItem;
@@ -190,6 +203,7 @@ export default function WorkspaceAuthGate() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [storageReady, setStorageReady] = useState(false);
+  const [syncStatus, setSyncStatus] = useState(VERCEL_PREVIEW ? 'preview' : 'saved');
   const [cleanupStorage, setCleanupStorage] = useState(null);
 
   const loadWorkspace = useCallback(async (account) => {
@@ -197,6 +211,7 @@ export default function WorkspaceAuthGate() {
     if (!response.ok) throw new Error('Could not load your saved workspace. Please sign in again.');
     const result = await response.json();
     const cleanup = installWorkspaceStorage(account.id, result.state || {});
+    setSyncStatus('saved');
     window.__agencyOSUser = account;
     setCleanupStorage(() => cleanup);
     setUser(account);
@@ -230,6 +245,12 @@ export default function WorkspaceAuthGate() {
     return () => { alive = false; };
   }, [loadWorkspace]);
 
+  useEffect(() => {
+    const handleSyncStatus = (event) => setSyncStatus(event.detail?.status || 'saved');
+    window.addEventListener(SYNC_EVENT, handleSyncStatus);
+    return () => window.removeEventListener(SYNC_EVENT, handleSyncStatus);
+  }, []);
+
   useEffect(() => () => {
     cleanupStorage?.();
     window.__agencyOSUser = null;
@@ -247,6 +268,7 @@ export default function WorkspaceAuthGate() {
       setCleanupStorage(null);
       setUser(null);
       setStorageReady(false);
+      setSyncStatus('saved');
       window.__agencyOSUser = null;
       setPassword('');
       setError('');
@@ -285,7 +307,21 @@ export default function WorkspaceAuthGate() {
   if (busy) {
     return <div className="workspace-auth-page"><div className="workspace-auth-card"><LoaderCircle className="spin" size={24} /><p>Checking your workspace session…</p></div></div>;
   }
-  if (user && storageReady) return <App />;
+  if (user && storageReady) {
+    const syncLabels = {
+      saved: 'All changes saved to your account',
+      saving: 'Saving changes to your account…',
+      offline: 'Not synced — changes are saved only in this browser. Sync will retry when you are online.',
+      preview: 'Preview only — data stays in this browser',
+    };
+    const warning = syncStatus === 'offline' || syncStatus === 'preview';
+    return <>
+      <div role="status" aria-live="polite" style={{ position: 'fixed', zIndex: 1100, top: 10, right: 12, maxWidth: 'min(420px, calc(100vw - 24px))', padding: '8px 11px', border: `1px solid ${warning ? '#84683b' : '#375b48'}`, borderRadius: 9, background: warning ? '#282319' : '#14221c', color: warning ? '#e5d2a4' : '#a9d9b8', fontSize: 12, lineHeight: 1.4, boxShadow: '0 4px 18px #0005' }}>
+        {syncLabels[syncStatus] || syncLabels.saved}
+      </div>
+      <App />
+    </>;
+  }
 
   return (
     <div className="workspace-auth-page">
@@ -305,3 +341,4 @@ export default function WorkspaceAuthGate() {
     </div>
   );
 }
+
