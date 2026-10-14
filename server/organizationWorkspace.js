@@ -62,6 +62,28 @@ export async function readOrganizationWorkspace(userId) {
   };
 }
 
+export async function requireOrganizationModule(userId, moduleKey) {
+  await ensureSchema();
+  if (!MODULE_KEYS.includes(moduleKey)) {
+    throw Object.assign(new Error('Unknown workspace module.'), { statusCode: 500 });
+  }
+  const membership = await getMembership(userId);
+  const result = await queryDatabase(
+    `SELECT enabled FROM organization_modules
+     WHERE organization_id = $1 AND module_key = $2
+     LIMIT 1`,
+    [membership.organization_id, moduleKey],
+  );
+  if (!result.rows[0]?.enabled) {
+    throw Object.assign(new Error('This feature is disabled in your workspace settings.'), {
+      statusCode: 403,
+      code: 'WORKSPACE_MODULE_DISABLED',
+      moduleKey,
+    });
+  }
+  return true;
+}
+
 export async function updateOrganizationModules(userId, requestedKeys) {
   await ensureSchema();
   if (!Array.isArray(requestedKeys) || requestedKeys.length > MODULE_KEYS.length ||
