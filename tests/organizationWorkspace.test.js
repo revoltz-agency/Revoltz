@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { __setPoolForTests } from '../server/db.js';
-import { readOrganizationWorkspace, updateOrganizationModules, WORKSPACE_MODULES } from '../server/organizationWorkspace.js';
+import { readOrganizationWorkspace, requireOrganizationModule, updateOrganizationModules, WORKSPACE_MODULES } from '../server/organizationWorkspace.js';
 
 const ORIGINAL_DATABASE_URL = process.env.DATABASE_URL;
 const USER_ID = '3f0c1e2a-4b5d-4c6e-8f90-1a2b3c4d5e6f';
@@ -19,6 +19,12 @@ function useOrganizationDatabase(role = 'owner') {
       calls.push({ text, values });
       if (/^\s*CREATE (TABLE|INDEX) IF NOT EXISTS/i.test(text)) return { rows: [], rowCount: 0 };
       if (/^\s*INSERT INTO (organizations|organization_memberships|organization_subscriptions|organization_workspace_data)\b/i.test(text) && /\bSELECT\b/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*INSERT INTO organization_modules\s*\(organization_id, module_key, enabled\)\s*SELECT o\.id/i.test(text)) {
+        for (const key of WORKSPACE_MODULES.map((module) => module.key)) {
+          modules.set(key, { module_key: key, enabled: true, settings: {}, organization_id: ORGANIZATION_ID });
+        }
+        return { rows: [], rowCount: WORKSPACE_MODULES.length };
+      }
       if (text.includes('FROM organization_memberships m') && text.includes('JOIN organizations o')) {
         return { rows: [{
           organization_id: ORGANIZATION_ID,
@@ -30,6 +36,10 @@ function useOrganizationDatabase(role = 'owner') {
           current_period_end: null,
           cancel_at_period_end: false,
         }], rowCount: 1 };
+      }
+      if (text.includes('SELECT enabled FROM organization_modules')) {
+        const row = modules.get(values[1]);
+        return { rows: row ? [{ enabled: row.enabled }] : [], rowCount: row ? 1 : 0 };
       }
       if (text.includes('SELECT module_key, enabled, settings FROM organization_modules')) {
         return { rows: [...modules.values()], rowCount: modules.size };
@@ -70,7 +80,7 @@ test('organization overview returns membership, subscription and explicit module
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
   });
-  assert.deepEqual(result.modules.map(({ key, enabled }) => ({ key, enabled })), WORKSPACE_MODULES.map(({ key }) => ({ key, enabled: false })));
+  assert.deepEqual(result.modules.map(({ key, enabled }) => ({ key, enabled })), WORKSPACE_MODULES.map(({ key }) => ({ key, enabled: true })));
   assert.ok(db.calls.some((call) => call.text.includes('JOIN organization_subscriptions s')));
 });
 
@@ -81,6 +91,14 @@ test('owners can save a bounded allowlisted module selection', async () => {
   const upsert = db.calls.find((call) => call.text.includes('INSERT INTO organization_modules'));
   assert.deepEqual(upsert.values, [ORGANIZATION_ID, ['growth_sales', 'tools'], WORKSPACE_MODULES.map((module) => module.key)]);
   assert.match(upsert.text, /ON CONFLICT \(organization_id, module_key\)/);
+});
+
+test('server module entitlements permit enabled modules and deny disabled or missing modules', async () => {
+  const db = useOrganizationDatabase();
+  assert.equal(await requireOrganizationModule(USER_ID, 'growth_sales'), true);
+  db.modules.set('growth_sales', { module_key: 'growth_sales', enabled: false, settings: {} });
+  await assert.rejects(requireOrganizationModule(USER_ID, 'growth_sales'), { statusCode: 403, code: 'WORKSPACE_MODULE_DISABLED' });
+  await assert.rejects(requireOrganizationModule(USER_ID, 'not_a_module'), { statusCode: 500 });
 });
 
 test('module selection rejects unknown keys and non-owner members', async () => {
