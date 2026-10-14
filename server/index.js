@@ -425,7 +425,7 @@ app.post('/api/website/analyze', async (req, res) => {
     res.setHeader('Retry-After', String(rate.retryAfterSeconds));
     res.setHeader('Cache-Control', 'no-store');
     return res.status(429).json({
-      error: `Website audit limit reached (10/minute). Wait ${rate.retryAfterSeconds}s and try again.`,
+      error: `Website audit limit reached (${websiteAuditLimiter.limit}/minute). Wait ${rate.retryAfterSeconds}s and try again.`,
     });
   }
   const website = typeof req.body?.website === 'string' ? req.body.website.trim() : '';
