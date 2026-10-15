@@ -137,6 +137,7 @@ test('webhook subscription updates carry provider event time to prevent stale st
     assert.equal(update.values[7], true);
     assert.match(update.text, /cancel_at_period_end = COALESCE\(\$8::boolean, cancel_at_period_end\)/);
     assert.match(update.text, /organization_id = \$7::uuid/);
+    assert.match(update.text, /NOT EXISTS \(\s*SELECT 1 FROM organization_subscriptions known\s*WHERE known\.razorpay_subscription_id = \$1\s*\)/);
     assert.ok(queries.some((query) => query.text === 'COMMIT'));
   } finally {
     __setPoolForTests(null);
