@@ -29,7 +29,7 @@ function useOrganizationDatabase(role = 'owner', organizationId = ORGANIZATION_I
       if (text.includes('FROM organization_memberships m') && text.includes('JOIN organizations o')) {
         return { rows: [{
           organization_id: organizationId,
-          organization_name: `Workspace ${organizationId}`,
+          organization_name: organizationId === ORGANIZATION_ID ? 'Priya workspace' : `Workspace ${organizationId}`,
           role,
           plan_key: 'starter',
           subscription_status: 'inactive',
