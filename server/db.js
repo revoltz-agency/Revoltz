@@ -160,6 +160,15 @@ const SCHEMA_STATEMENTS = [
      updated_at         timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (organization_id, module_key)
    )`,
+  // Separate JSON state per organization/module, so enabled module permissions
+  // can be enforced without exposing the entire shared legacy workspace blob.
+  `CREATE TABLE IF NOT EXISTS organization_module_data (
+     organization_id    uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     module_key         text NOT NULL,
+     state              jsonb NOT NULL DEFAULT '{}'::jsonb,
+     updated_at         timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (organization_id, module_key)
+   )`,
   `CREATE TABLE IF NOT EXISTS organization_subscriptions (
      id                         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
      organization_id            uuid NOT NULL UNIQUE REFERENCES organizations(id) ON DELETE CASCADE,
