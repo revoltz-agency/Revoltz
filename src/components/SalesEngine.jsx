@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Check, ClipboardCheck, Copy, Download, FileText, LoaderCircle, PackageCheck, Save, ShieldCheck, Sparkles, Target, Trash2 } from 'lucide-react';
 import { generateAgencyJson } from '../lib/agencyAi.js';
+import { mergeSalesPackagesState } from '../lib/financeReportsSync.js';
 
 const STORAGE_KEY = 'agencyos:sales-packages:v1';
 const input = { width: '100%', border: '1px solid var(--viz-border, #333)', borderRadius: 10, background: 'var(--viz-card, #151515)', color: 'var(--viz-text, #f5f5f5)', padding: '11px 12px', font: 'inherit', boxSizing: 'border-box' };
@@ -41,6 +42,9 @@ export default function SalesEngine({ leads = [], getCrm, apiKey = '' }) {
   const [priceStyle, setPriceStyle] = useState('Budget-friendly, one-time starter offer');
   const [extraContext, setExtraContext] = useState('');
   const [packages, setPackages] = useState(readSaved);
+  const packagesRef = useRef(packages); packagesRef.current = packages;
+  const cloudReady = useRef(false); const saveQueue = useRef(Promise.resolve());
+  const [syncAttempt, setSyncAttempt] = useState(0); const [syncStatus, setSyncStatus] = useState('checking');
   const [activePackageId, setActivePackageId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -48,6 +52,38 @@ export default function SalesEngine({ leads = [], getCrm, apiKey = '' }) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(packages.slice(0, 100))); } catch {} }, [packages]);
+  useEffect(() => {
+    let active = true; cloudReady.current = false; setSyncStatus('checking');
+    (async () => {
+      try {
+        const response = await fetch('/api/workspace/modules/growth_sales/data', { credentials: 'include', cache: 'no-store' });
+        if (!response.ok) throw new Error('Cloud sync unavailable');
+        const payload = await response.json();
+        if (!active || !payload.state || typeof payload.state !== 'object' || Array.isArray(payload.state)) throw new Error('Invalid cloud state');
+        setPackages(mergeSalesPackagesState(packagesRef.current, payload.state.salesPackages));
+        cloudReady.current = true; setSyncStatus('connected');
+      } catch (error) {
+        if (active) { setSyncStatus('unavailable'); console.warn('[AgencyOS] Sales packages cloud sync unavailable:', error?.message || error); }
+      }
+    })();
+    return () => { active = false; cloudReady.current = false; };
+  }, [syncAttempt]);
+  useEffect(() => {
+    if (!cloudReady.current) return undefined;
+    const timer = window.setTimeout(() => {
+      const state = { salesPackages: packages.slice(0, 100) };
+      saveQueue.current = saveQueue.current.catch(() => {}).then(async () => {
+        if (!cloudReady.current) return;
+        const csrfEntry = document.cookie.split('; ').find(part => part.startsWith('agencyos_workspace_csrf='));
+        const csrfToken = csrfEntry ? decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)) : '';
+        setSyncStatus('saving');
+        const response = await fetch('/api/workspace/modules/growth_sales/data', { method: 'PUT', credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-Workspace-CSRF': csrfToken } : {}) }, body: JSON.stringify({ state }) });
+        if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.error || 'Cloud save failed'); }
+        setSyncStatus('synced');
+      }).catch(error => { setSyncStatus('failed'); console.warn('[AgencyOS] Sales packages cloud save failed:', error?.message || error); });
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [packages]);
   const qualified = useMemo(() => leads.filter((lead) => !lead.demo && getCrm?.(lead)?.status !== 'DO NOT CONTACT'), [leads, getCrm]);
   const selected = qualified.find((lead) => String(lead.placeId || lead.id) === selectedId) || qualified[0] || null;
   const activePackage = packages.find((item) => item.id === activePackageId) || packages[0] || null;
@@ -112,7 +148,7 @@ export default function SalesEngine({ leads = [], getCrm, apiKey = '' }) {
   return <div style={{ display: 'grid', gap: 22, maxWidth: 1080 }}>
     <header style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
       <div style={{ border: '1px solid var(--viz-border, #333)', borderRadius: 14, padding: 12 }}><Target size={23} /></div>
-      <div><div style={{ fontSize: 11, letterSpacing: '.14em', fontWeight: 700, color: 'var(--viz-muted, #a1a1aa)', marginBottom: 6 }}>REVOLTZ AI · SALES WORKFLOW</div><h1 style={{ fontSize: 32, lineHeight: 1.15, margin: '0 0 8px' }}>AI Sales Engine</h1><p style={{ ...muted, margin: 0 }}>Turn a qualified lead into a tailored offer, scope, price hypothesis and first-contact draft. Nothing is sent automatically.</p></div>
+      <div><div style={{ fontSize: 11, letterSpacing: '.14em', fontWeight: 700, color: 'var(--viz-muted, #a1a1aa)', marginBottom: 6 }}>REVOLTZ AI · SALES WORKFLOW</div><h1 style={{ fontSize: 32, lineHeight: 1.15, margin: '0 0 8px' }}>AI Sales Engine</h1><p style={{ ...muted, margin: 0 }}>Turn a qualified lead into a tailored offer, scope, price hypothesis and first-contact draft. Nothing is sent automatically.</p><button type="button" aria-live="polite" aria-label={['unavailable','failed'].includes(syncStatus)?'Retry cloud sync':'Sales workspace cloud sync status'} onClick={()=>{if(['unavailable','failed'].includes(syncStatus)){setSyncStatus('checking');setSyncAttempt(v=>v+1)}}} style={{marginTop:9,border:'1px solid var(--viz-border, #333)',borderRadius:999,padding:'5px 9px',background:'transparent',color:'var(--viz-muted, #a1a1aa)',fontSize:11,cursor:['unavailable','failed'].includes(syncStatus)?'pointer':'default'}}>{({checking:'CLOUD SYNC · CHECKING',connected:'CLOUD SYNC · CONNECTED',saving:'CLOUD SYNC · SAVING',synced:'CLOUD SYNC · SAVED',unavailable:'CLOUD SYNC · LOCAL ONLY · RETRY',failed:'CLOUD SYNC · SAVE FAILED · RETRY'})[syncStatus]}</button></div>
     </header>
     <form onSubmit={generate} style={card}>
       <div><div style={{ fontSize: 11, letterSpacing: '.12em', fontWeight: 700, color: 'var(--viz-muted, #a1a1aa)' }}>BUILD A SALES PACKAGE</div><h2 style={{ margin: '5px 0 0', fontSize: 20 }}>Start with one real lead</h2></div>
