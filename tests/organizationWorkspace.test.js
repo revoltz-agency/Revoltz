@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { __setPoolForTests } from '../server/db.js';
-import { readOrganizationWorkspace, requireOrganizationModule, updateOrganizationModules, WORKSPACE_MODULES } from '../server/organizationWorkspace.js';
+import { readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, updateOrganizationModules, WORKSPACE_MODULES } from '../server/organizationWorkspace.js';
 
 const ORIGINAL_DATABASE_URL = process.env.DATABASE_URL;
 const USER_ID = '3f0c1e2a-4b5d-4c6e-8f90-1a2b3c4d5e6f';
@@ -91,6 +91,25 @@ test('owners can save a bounded allowlisted module selection', async () => {
   const upsert = db.calls.find((call) => call.text.includes('INSERT INTO organization_modules') && call.text.includes('FROM unnest($3::text[])'));
   assert.deepEqual(upsert.values, [ORGANIZATION_ID, ['growth_sales', 'tools'], WORKSPACE_MODULES.map((module) => module.key)]);
   assert.match(upsert.text, /ON CONFLICT \(organization_id, module_key\)/);
+});
+
+test('workspace state subscription guard stays compatible by default and blocks inactive billing when enforced', async () => {
+  const db = useOrganizationDatabase();
+  const original = process.env.AGENCYOS_BILLING_ENFORCED;
+  try {
+    delete process.env.AGENCYOS_BILLING_ENFORCED;
+    assert.equal(await requireActiveOrganizationSubscription(USER_ID), true);
+    assert.equal(db.calls.some((call) => call.text.includes('FROM organization_memberships m')), false);
+
+    process.env.AGENCYOS_BILLING_ENFORCED = 'true';
+    await assert.rejects(requireActiveOrganizationSubscription(USER_ID), {
+      statusCode: 402,
+      code: 'SUBSCRIPTION_REQUIRED',
+    });
+  } finally {
+    if (original === undefined) delete process.env.AGENCYOS_BILLING_ENFORCED;
+    else process.env.AGENCYOS_BILLING_ENFORCED = original;
+  }
 });
 
 test('server module entitlements permit enabled modules and deny disabled or missing modules', async () => {
