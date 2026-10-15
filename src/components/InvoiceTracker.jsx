@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, CircleDollarSign, Copy, Download, Plus, ReceiptText, Trash2 } from 'lucide-react';
+import { mergeInvoiceTrackerState } from '../lib/financeReportsSync.js';
 const PACKAGES_KEY='agencyos:sales-packages:v1';
 const DEALS_KEY='agencyos:deal-tracker:v1';
 const INVOICES_KEY='agencyos:invoice-tracker:v1';
@@ -14,10 +15,41 @@ export default function InvoiceTracker(){
  const [packages,setPackages]=useState(()=>{const v=read(PACKAGES_KEY,[]);return Array.isArray(v)?v:[]});
  const [deals,setDeals]=useState(()=>{const v=read(DEALS_KEY,{});return v&&typeof v==='object'&&!Array.isArray(v)?v:{}});
  const [invoices,setInvoices]=useState(()=>{const v=read(INVOICES_KEY,[]);return Array.isArray(v)?v:[]});
+ const invoicesRef=useRef(invoices);invoicesRef.current=invoices;
+ const cloudReady=useRef(false);const saveQueue=useRef(Promise.resolve());
+ const [syncAttempt,setSyncAttempt]=useState(0);const [syncStatus,setSyncStatus]=useState('checking');
  const [form,setForm]=useState(blank);const [filter,setFilter]=useState('All');const [notice,setNotice]=useState('');
  const refresh=()=>{const p=read(PACKAGES_KEY,[]),d=read(DEALS_KEY,{});setPackages(Array.isArray(p)?p:[]);setDeals(d&&typeof d==='object'&&!Array.isArray(d)?d:{})};
  useEffect(()=>{const f=()=>refresh();window.addEventListener('focus',f);return()=>window.removeEventListener('focus',f)},[]);
  useEffect(()=>{try{localStorage.setItem(INVOICES_KEY,JSON.stringify(invoices))}catch{setNotice('Browser storage is full; invoice changes may not persist.')}},[invoices]);
+ useEffect(()=>{
+  let active=true;cloudReady.current=false;setSyncStatus('checking');
+  (async()=>{try{
+   const response=await fetch('/api/workspace/modules/finance_reports/data',{credentials:'include',cache:'no-store'});
+   if(!response.ok)throw new Error('Cloud sync unavailable');
+   const payload=await response.json();
+   if(!active||!payload.state||typeof payload.state!=='object'||Array.isArray(payload.state))throw new Error('Invalid cloud state');
+   const merged=mergeInvoiceTrackerState(invoicesRef.current,payload.state.invoiceTracker);
+   setInvoices(merged);cloudReady.current=true;setSyncStatus('connected');
+  }catch(error){if(active){setSyncStatus('unavailable');console.warn('[AgencyOS] Invoice Tracker cloud sync unavailable:',error?.message||error)}}})();
+  return()=>{active=false;cloudReady.current=false};
+ },[syncAttempt]);
+ useEffect(()=>{
+  if(!cloudReady.current)return undefined;
+  const timer=window.setTimeout(()=>{
+   const state={invoiceTracker:invoices.slice(0,1000)};
+   saveQueue.current=saveQueue.current.catch(()=>{}).then(async()=>{
+    if(!cloudReady.current)return;
+    const csrfEntry=document.cookie.split('; ').find(part=>part.startsWith('agencyos_workspace_csrf='));
+    const csrfToken=csrfEntry?decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)):'';
+    setSyncStatus('saving');
+    const response=await fetch('/api/workspace/modules/finance_reports/data',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...(csrfToken?{'X-Workspace-CSRF':csrfToken}:{})},body:JSON.stringify({state})});
+    if(!response.ok){const payload=await response.json().catch(()=>({}));throw new Error(payload.error||'Cloud save failed')}
+    setSyncStatus('synced');
+   }).catch(error=>{setSyncStatus('failed');console.warn('[AgencyOS] Invoice Tracker cloud save failed:',error?.message||error)});
+  },800);
+  return()=>window.clearTimeout(timer);
+ },[invoices]);
  const clients=useMemo(()=>packages.filter(p=>(deals[p.id]||{}).stage==='Won'),[packages,deals]);
  const rows=invoices.filter(i=>filter==='All'||i.status===filter);
  const total=invoices.reduce((s,i)=>s+amount(i.amount),0);
@@ -29,7 +61,7 @@ export default function InvoiceTracker(){
  async function copyReminder(inv){const due=inv.dueDate?' The due date was '+inv.dueDate+'.':'';const message='Hi '+(inv.clientName||'there')+', hope you are doing well. Just a friendly follow-up regarding invoice '+inv.invoiceNo+' for '+money(inv.amount)+'.'+due+' When convenient, could you please share an update on the payment? If you have already paid, please ignore this message. Thank you!';try{await navigator.clipboard.writeText(message);setNotice('Payment reminder copied. Review it before sending.')}catch{setNotice('Could not copy automatically. Check your browser clipboard permissions and try again.')}}
  function exportCsv(){const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const csv=[['Invoice','Client','Service','Amount INR','Issue date','Due date','Status','Notes'],...invoices.map(i=>[i.invoiceNo,i.clientName,i.service,i.amount,i.issueDate,i.dueDate,i.status,i.notes])].map(row=>row.map(esc).join(',')).join('\r\n');const url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='revoltz-invoice-tracker.csv';a.click();URL.revokeObjectURL(url)}
  return <div style={{display:'grid',gap:20,maxWidth:1100}}>
- <header style={{display:'flex',gap:13,alignItems:'flex-start'}}><div style={{border:'1px solid var(--viz-border, #333)',borderRadius:13,padding:12}}><ReceiptText size={23}/></div><div><div style={{...muted,letterSpacing:'.14em',fontWeight:700}}>REVOLTZ AI · BUSINESS ADMIN</div><h1 style={{fontSize:32,margin:'4px 0 7px'}}>Invoice & Payment Tracker</h1><p style={{...muted,margin:0}}>Track invoice records and payment status for confirmed clients. This is an internal tracker—not a tax invoice generator, payment gateway, or accounting system.</p></div></header>
+ <header style={{display:'flex',gap:13,alignItems:'flex-start'}}><div style={{border:'1px solid var(--viz-border, #333)',borderRadius:13,padding:12}}><ReceiptText size={23}/></div><div><div style={{...muted,letterSpacing:'.14em',fontWeight:700}}>REVOLTZ AI · BUSINESS ADMIN</div><h1 style={{fontSize:32,margin:'4px 0 7px'}}>Invoice & Payment Tracker</h1><p style={{...muted,margin:0}}>Track invoice records and payment status for confirmed clients. This is an internal tracker—not a tax invoice generator, payment gateway, or accounting system.</p><button type="button" aria-live="polite" aria-label={['unavailable','failed'].includes(syncStatus)?'Retry cloud sync':'Invoice Tracker cloud sync status'} onClick={()=>{if(['unavailable','failed'].includes(syncStatus)){setSyncStatus('checking');setSyncAttempt(v=>v+1)}}} style={{marginTop:9,border:'1px solid var(--viz-border, #333)',borderRadius:999,padding:'5px 9px',background:'transparent',color:'var(--viz-muted, #a1a1aa)',fontSize:11,cursor:['unavailable','failed'].includes(syncStatus)?'pointer':'default'}}>{({checking:'CLOUD SYNC · CHECKING',connected:'CLOUD SYNC · CONNECTED',saving:'CLOUD SYNC · SAVING',synced:'CLOUD SYNC · SAVED',unavailable:'CLOUD SYNC · LOCAL ONLY · RETRY',failed:'CLOUD SYNC · SAVE FAILED · RETRY'})[syncStatus]}</button></div></header>
  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{[['Invoice records',invoices.length],['Total recorded',money(total)],['Marked paid',money(paid)],['Outstanding',money(outstanding)]].map(([k,v])=><div key={k} style={{border:'1px solid var(--viz-border, #333)',borderRadius:12,padding:14}}><div style={muted}>{k}</div><div style={{fontSize:23,fontWeight:750,marginTop:6}}>{v}</div></div>)}</div>
  {notice&&<div role="status" style={{...muted,border:'1px solid var(--viz-border, #333)',borderRadius:9,padding:10}}>{notice}</div>}
  <form onSubmit={create} style={{border:'1px solid var(--viz-border, #333)',borderRadius:13,padding:16,display:'grid',gap:12}}><h2 style={{fontSize:19,margin:0}}>Add invoice record</h2>{!clients.length&&<p style={muted}>Mark a deal Won in Deal Pipeline before adding a client invoice record.</p>}<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,200px),1fr))',gap:10}}>
