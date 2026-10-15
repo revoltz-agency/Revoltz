@@ -23,7 +23,7 @@ test('PostgreSQL rate limiter atomically coordinates concurrent hits', { skip: !
     assert.equal(results.filter((result) => !result.allowed).length, 2);
     assert.deepEqual(
       results.map((result) => result.remaining).sort((a, b) => a - b),
-      [0, 0, 1, 2, 2],
+      [0, 0, 0, 1, 2],
     );
     assert.ok(results.filter((result) => !result.allowed).every((result) => result.retryAfterSeconds > 0));
   } finally {
