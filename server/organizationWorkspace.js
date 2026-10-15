@@ -76,8 +76,12 @@ export async function requireOrganizationRole(userId, allowedRoles) {
 }
 
 function enforceActiveSubscription(membership) {
-  if (String(process.env.AGENCYOS_BILLING_ENFORCED || '').trim().toLowerCase() === 'true' &&
-      membership.subscription_status !== 'active') {
+  const billingEnforced = String(process.env.AGENCYOS_BILLING_ENFORCED || '').trim().toLowerCase() === 'true';
+  const periodEnd = membership.current_period_end == null ? null : new Date(membership.current_period_end).getTime();
+  // Webhooks are the primary source of lifecycle updates, but a missed expiry
+  // event must not leave a known-expired subscription entitled indefinitely.
+  const periodExpired = periodEnd !== null && Number.isFinite(periodEnd) && periodEnd <= Date.now();
+  if (billingEnforced && (membership.subscription_status !== 'active' || periodExpired)) {
     throw Object.assign(new Error('An active subscription is required to use this workspace feature.'), {
       statusCode: 402,
       code: 'SUBSCRIPTION_REQUIRED',
