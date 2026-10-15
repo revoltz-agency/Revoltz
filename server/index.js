@@ -37,6 +37,7 @@ import {
   verifyOwnerPassword,
 } from './session.js';
 import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed, sha256Hex } from './security.js';
+import { checkSharedRateLimit, resetSharedRateLimit } from './sharedRateLimit.js';
 import { notifyTelegramAuditRequest } from './telegram.js';
 import { readOrganizationModuleData, readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, requireOrganizationRole, updateOrganizationModules, writeOrganizationModuleData } from './organizationWorkspace.js';
 import { cancelRazorpaySubscriptionAtPeriodEnd, createRazorpaySubscription, processRazorpayWebhook } from './razorpaySubscriptions.js';
@@ -113,10 +114,8 @@ app.use(['/api/workspace', '/api/places', '/api/website'], (_req, res, next) => 
 
 // --- Multi-user AgencyOS workspace accounts --------------------------------
 const workspaceLoginLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 10 });
-// Add an account-level backstop so distributed IPs cannot make unlimited password
-// guesses against one workspace account. Only a hash of the email is retained in
-// the in-memory limiter keys.
-const workspaceLoginAccountLimiter = createRateLimiter({ windowMs: 15 * 60_000, limit: 20 });
+// Account-level failures use PostgreSQL so limits are shared across server instances.
+// Only a hash of the email is retained as the database key.
 const workspaceRegisterLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 5 });
 
 function workspaceUnavailable(res) {
@@ -177,7 +176,7 @@ app.post('/api/workspace/login', async (req, res) => {
     const user = await authenticateWorkspaceUser(req.body || {});
     if (!user) {
       if (accountKey) {
-        const accountRate = workspaceLoginAccountLimiter.check(accountKey);
+        const accountRate = await checkSharedRateLimit(accountKey, { windowMs: 15 * 60_000, limit: 20 });
         if (!accountRate.allowed) {
           res.setHeader('Retry-After', String(accountRate.retryAfterSeconds));
           return res.status(429).json({ error: 'Too many failed sign-in attempts for this account. Please wait before trying again.' });
@@ -187,7 +186,7 @@ app.post('/api/workspace/login', async (req, res) => {
     }
     // Count failed attempts only: a correct password can still sign in, and
     // successful authentication clears any accumulated account-level failures.
-    if (accountKey) workspaceLoginAccountLimiter.reset(accountKey);
+    if (accountKey) await resetSharedRateLimit(accountKey);
     const session = await createWorkspaceSession(user.id);
     const maxAge = Math.floor((session.expiresAt.getTime() - Date.now()) / 1000);
     res.append('Set-Cookie', workspaceSessionCookie(session.token, req, maxAge));
