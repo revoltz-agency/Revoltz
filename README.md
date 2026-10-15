@@ -106,6 +106,10 @@ The inbox returns unavailable until both `DATABASE_URL` and `AUDIT_OWNER_PASSWOR
 
 Retention expiry is set on insert and enforced opportunistically when an owner opens the inbox. The repository includes suggested scheduled-cleanup mechanisms, but no scheduled job or production execution is verified here.
 
+## Workspace cloud sync coverage
+
+Growth & Sales has organization-scoped cloud persistence for its lead/CRM workspace state. Clients & Delivery cloud persistence is being introduced incrementally; the Project Tracker is the first delivery screen migrated to the `clients_delivery` module state. Its records are merged by ID with local edits taking priority, capped at 500 projects, and kept in browser storage if cloud access fails. Other Clients & Delivery screens remain browser-local until explicitly migrated. Live database and signed-in browser checks are still required for each migrated screen.
+
 ## Checks
 
 ```bash
