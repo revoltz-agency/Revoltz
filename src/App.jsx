@@ -417,7 +417,7 @@ function AgencyOSApp() {
           ...merged.savedGeminiPlaceIds.map((id) => savedGeminiLeadPlaceholder(id)),
         ].map((lead) => applyManualLeadOverride(lead, merged.manualOverrides))));
         growthSalesCloudReady.current = true;
-        setGrowthSalesSyncStatus('synced');
+        setGrowthSalesSyncStatus('connected');
       } catch (error) {
         // Local mode and unauthenticated installs should keep working without
         // cloud sync. Existing browser data is never cleared on sync failure.
@@ -876,7 +876,7 @@ function AgencyOSApp() {
         <header className="topbar">
           <button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Menu size={19} /></button>
           <div className="topbar-context"><span className="topbar-kicker">WORKSPACE</span><span className="topbar-separator">/</span><span className="topbar-page">{activePage}</span>{window.__agencyOSPreview && <span className="preview-mode-pill">PREVIEW · SAVED IN THIS BROWSER</span>}</div>
-          <div className="topbar-actions"><span className="preview-mode-pill" role="status" aria-live="polite" title="Growth & Sales cloud sync status">{({ checking: 'CLOUD SYNC · CHECKING', synced: 'CLOUD SYNC · SAVED', saving: 'CLOUD SYNC · SAVING', unavailable: 'CLOUD SYNC · LOCAL ONLY', failed: 'CLOUD SYNC · SAVE FAILED' })[growthSalesSyncStatus]}</span><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
+          <div className="topbar-actions"><span className="preview-mode-pill" role="status" aria-live="polite" title="Growth & Sales cloud sync status">{({ checking: 'CLOUD SYNC · CHECKING', connected: 'CLOUD SYNC · CONNECTED', synced: 'CLOUD SYNC · SAVED', saving: 'CLOUD SYNC · SAVING', unavailable: 'CLOUD SYNC · LOCAL ONLY', failed: 'CLOUD SYNC · SAVE FAILED' })[growthSalesSyncStatus]}</span><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
         </header>
         <main className="main-content">
 
