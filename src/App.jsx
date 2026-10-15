@@ -307,6 +307,7 @@ function AgencyOSApp() {
   const toastTimer = useRef(null);
   const detailsRequestsRef = useRef(new Map());
   const growthSalesCloudReady = useRef(false);
+  const growthSalesRevision = useRef(null);
   const growthSalesSaveQueue = useRef(Promise.resolve());
   const growthSalesLocalSnapshot = useRef(null);
   growthSalesLocalSnapshot.current = {
@@ -404,6 +405,7 @@ function AgencyOSApp() {
 
         // Merge against the latest browser state at response time. Local edits
         // win conflicts, while records that exist only in the cloud are kept.
+        growthSalesRevision.current = payload.updatedAt || null;
         const merged = mergeGrowthSalesState(growthSalesLocalSnapshot.current, payload.state);
         setWorkflow(merged.workflow);
         setManualLeads(merged.manualLeads);
@@ -458,12 +460,19 @@ function AgencyOSApp() {
               'Content-Type': 'application/json',
               ...(csrfToken ? { 'X-Workspace-CSRF': csrfToken } : {}),
             },
-            body: JSON.stringify({ state }),
+            body: JSON.stringify({ state, expectedUpdatedAt: growthSalesRevision.current }),
           });
           if (!response.ok) {
             const payload = await response.json().catch(() => ({}));
+            if (response.status === 409 || payload.code === 'WORKSPACE_REVISION_CONFLICT') {
+              growthSalesCloudReady.current = false;
+              setGrowthSalesSyncStatus('unavailable');
+              throw new Error('Workspace changed on another device. Refresh cloud sync before continuing to save.');
+            }
             throw new Error(payload.error || 'Cloud save failed.');
           }
+          const savedPayload = await response.json().catch(() => ({}));
+          growthSalesRevision.current = savedPayload.updatedAt || growthSalesRevision.current;
           setGrowthSalesSyncStatus('synced');
         })
         .catch((error) => {
