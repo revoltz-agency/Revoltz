@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, ClipboardCheck, Download, ExternalLink, Plus, Trash2, Globe2, RotateCcw } from 'lucide-react';
+import { mergeWebsiteDeliveryState } from '../lib/clientsDeliverySync.js';
 
 const KEY = 'agencyos:website-delivery:v1';
 const muted = { color: 'var(--viz-muted, #a1a1aa)', fontSize: 13, lineHeight: 1.55 };
@@ -9,12 +10,6 @@ const phases = ['Not started', 'In progress', 'Waiting for client', 'Ready to la
 const defaultTasks = ['Confirm scope and price', 'Collect logo, photos and brand details', 'Confirm page copy and contact details', 'Check mobile layout', 'Test navigation and buttons', 'Test contact form or contact links', 'Check page title and description', 'Confirm client approval', 'Connect domain and hosting', 'Send handover instructions'];
 const blank = { client: '', project: 'Business website', demoUrl: '', liveUrl: '', deadline: '', phase: 'Not started', approval: 'Not requested', revisionLimit: '2', revisionsUsed: '0', nextAction: '', handover: '', tasks: defaultTasks.map((title, i) => ({ id: String(i + 1), title, done: false })) };
 const read = () => { try { const v = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(v) ? v.filter(x => x && typeof x.id === 'string') : []; } catch { return []; } };
-function mergeItems(localItems, cloudItems) {
- const merged = new Map();
- for (const item of Array.isArray(cloudItems) ? cloudItems : []) if (item && typeof item.id === 'string') merged.set(item.id, item);
- for (const item of Array.isArray(localItems) ? localItems : []) if (item && typeof item.id === 'string') merged.set(item.id, item);
- return [...merged.values()].slice(-500);
-}
 const safeUrl = value => { try { const u = new URL(value); return ['http:', 'https:'].includes(u.protocol) ? u.href : ''; } catch { return ''; } };
 function exportCsv(items) { const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"'; const rows = [['Client','Project','Phase','Approval','Deadline','Demo URL','Live URL','Revisions used','Revision limit','Next action','Handover notes','Checklist done','Checklist total'], ...items.map(x => [x.client,x.project,x.phase,x.approval,x.deadline,x.demoUrl,x.liveUrl,x.revisionsUsed,x.revisionLimit,x.nextAction,x.handover,(x.tasks||[]).filter(t=>t.done).length,(x.tasks||[]).length])]; const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(esc).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'})); const a=document.createElement('a'); a.href=url; a.download='agencyos-website-delivery.csv'; a.click(); URL.revokeObjectURL(url); }
 export default function WebsiteDelivery() {
@@ -29,7 +24,7 @@ export default function WebsiteDelivery() {
    if(!response.ok)throw new Error('Cloud sync unavailable');
    const payload=await response.json();
    if(!active||!payload.state||typeof payload.state!=='object'||Array.isArray(payload.state))throw new Error('Invalid cloud state');
-   const merged=mergeItems(itemsRef.current,payload.state.websiteDelivery);
+   const merged=mergeWebsiteDeliveryState(itemsRef.current,payload.state.websiteDelivery);
    setItems(merged);cloudReady.current=true;setSyncStatus('connected');
   }catch(error){if(active){setSyncStatus('unavailable');console.warn('[AgencyOS] Website Delivery cloud sync unavailable:',error?.message||error)}}})();
   return()=>{active=false;cloudReady.current=false};
