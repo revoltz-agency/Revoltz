@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Plus, UsersRound, Trash2, CalendarClock } from 'lucide-react';
+import { mergeClientRetentionState } from '../lib/clientsDeliverySync.js';
 
 const KEY = 'agencyos:client-retention:v1';
 const muted = { color:'var(--viz-muted, #a1a1aa)', fontSize:13, lineHeight:1.55 };
@@ -14,19 +15,52 @@ function daysUntil(date){ if(!date)return null; const a=new Date(today()+'T00:00
 
 export default function ClientRetention(){
  const [clients,setClients]=useState(read);
+ const clientsRef=useRef(clients);clientsRef.current=clients;
+ const cloudReady=useRef(false);
+ const saveQueue=useRef(Promise.resolve());
+ const [syncAttempt,setSyncAttempt]=useState(0);
+ const [syncStatus,setSyncStatus]=useState('checking');
  const [form,setForm]=useState(blank);
  const [filter,setFilter]=useState('All');
  const [notice,setNotice]=useState('');
  useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(clients))}catch{setNotice('Browser storage is full; changes may not persist.')}},[clients]);
+ useEffect(()=>{
+  let active=true;cloudReady.current=false;setSyncStatus('checking');
+  (async()=>{try{
+   const response=await fetch('/api/workspace/modules/clients_delivery/data',{credentials:'include',cache:'no-store'});
+   if(!response.ok)throw new Error('Cloud sync unavailable');
+   const payload=await response.json();
+   if(!active||!payload.state||typeof payload.state!=='object'||Array.isArray(payload.state))throw new Error('Invalid cloud state');
+   setClients(mergeClientRetentionState(clientsRef.current,payload.state.clientRetention));
+   cloudReady.current=true;setSyncStatus('connected');
+  }catch(error){if(active){setSyncStatus('unavailable');console.warn('[AgencyOS] Client Retention cloud sync unavailable:',error?.message||error)}}})();
+  return()=>{active=false;cloudReady.current=false};
+ },[syncAttempt]);
+ useEffect(()=>{
+  if(!cloudReady.current)return undefined;
+  const timer=window.setTimeout(()=>{
+   const state={clientRetention:clients.slice(0,1000)};
+   saveQueue.current=saveQueue.current.catch(()=>{}).then(async()=>{
+    if(!cloudReady.current)return;
+    const csrfEntry=document.cookie.split('; ').find(part=>part.startsWith('agencyos_workspace_csrf='));
+    const csrfToken=csrfEntry?decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)):'';
+    setSyncStatus('saving');
+    const response=await fetch('/api/workspace/modules/clients_delivery/data',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...(csrfToken?{'X-Workspace-CSRF':csrfToken}:{})},body:JSON.stringify({state})});
+    if(!response.ok){const payload=await response.json().catch(()=>({}));throw new Error(payload.error||'Cloud save failed')}
+    setSyncStatus('synced');
+   }).catch(error=>{setSyncStatus('failed');console.warn('[AgencyOS] Client Retention cloud save failed:',error?.message||error)});
+  },800);
+  return()=>window.clearTimeout(timer);
+ },[clients]);
  const visible=useMemo(()=>clients.filter(x=>filter==='All'||x.status===filter).sort((a,b)=>(a.renewalDate||'9999').localeCompare(b.renewalDate||'9999')),[clients,filter]);
  const active=clients.filter(x=>['Active','Renewal due','At risk'].includes(x.status));
  const monthly=active.reduce((s,x)=>s+Number(x.value||0),0);
  const due=active.filter(x=>daysUntil(x.renewalDate)!==null&&daysUntil(x.renewalDate)<=30);
- function add(e){e.preventDefault();const value=Number(form.value||0);if(!form.client.trim()||!form.renewalDate||!Number.isFinite(value)||value<0){setNotice('Enter a client name, renewal date, and a valid monthly value.');return}setClients(prev=>[{...form,id:globalThis.crypto?.randomUUID?.()||String(Date.now()),client:form.client.trim(),value:Math.round(value*100)/100,createdAt:new Date().toISOString()},...prev]);setForm(blank);setNotice('Client saved in this browser.');}
+ function add(e){e.preventDefault();const value=Number(form.value||0);if(!form.client.trim()||!form.renewalDate||!Number.isFinite(value)||value<0){setNotice('Enter a client name, renewal date, and a valid monthly value.');return}setClients(prev=>[{...form,id:globalThis.crypto?.randomUUID?.()||String(Date.now()),client:form.client.trim(),value:Math.round(value*100)/100,createdAt:new Date().toISOString()},...prev]);setForm(blank);setNotice('Client saved.');}
  function update(id,patch){setClients(prev=>prev.map(x=>x.id===id?{...x,...patch}:x))}
  function exportCsv(){const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const rows=[['Client','Service','Monthly value INR','Renewal date','Status','Contact','Notes'],...clients.map(x=>[x.client,x.service,x.value,x.renewalDate,x.status,x.contact,x.notes])];const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(esc).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='agencyos-client-retention.csv';a.click();URL.revokeObjectURL(url);}
  return <section style={{display:'grid',gap:16,maxWidth:1100,color:'var(--viz-text, #f5f5f5)'}}>
-  <header style={{display:'flex',gap:12,alignItems:'flex-start'}}><div style={{...card,padding:12}}><UsersRound size={23}/></div><div><div style={{...muted,letterSpacing:'.13em',fontWeight:700}}>REVOLTZ AI · CLIENT SUCCESS</div><h1 style={{fontSize:30,margin:'4px 0 6px'}}>Client Retention</h1><p style={{...muted,margin:0}}>Track active clients, renewal dates, recurring value, and accounts that need attention.</p></div></header>
+  <header style={{display:'flex',gap:12,alignItems:'flex-start'}}><div style={{...card,padding:12}}><UsersRound size={23}/></div><div><div style={{...muted,letterSpacing:'.13em',fontWeight:700}}>REVOLTZ AI · CLIENT SUCCESS</div><h1 style={{fontSize:30,margin:'4px 0 6px'}}>Client Retention</h1><p style={{...muted,margin:0}}>Track active clients, renewal dates, recurring value, and accounts that need attention.</p><button type="button" aria-live="polite" aria-label={['unavailable','failed'].includes(syncStatus)?'Retry cloud sync':'Client Retention cloud sync status'} onClick={()=>{if(['unavailable','failed'].includes(syncStatus)){setSyncStatus('checking');setSyncAttempt(v=>v+1)}}} style={{marginTop:9,border:'1px solid var(--viz-border, #333)',borderRadius:999,padding:'5px 9px',background:'transparent',color:'var(--viz-muted, #a1a1aa)',fontSize:11,cursor:['unavailable','failed'].includes(syncStatus)?'pointer':'default'}}>{({checking:'CLOUD SYNC · CHECKING',connected:'CLOUD SYNC · CONNECTED',saving:'CLOUD SYNC · SAVING',synced:'CLOUD SYNC · SAVED',unavailable:'CLOUD SYNC · LOCAL ONLY · RETRY',failed:'CLOUD SYNC · SAVE FAILED · RETRY'})[syncStatus]}</button></div></header>
   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{[['Clients tracked',clients.length],['Active monthly value',money(monthly)],['Renewals in next 30 days',due.length],['At-risk clients',clients.filter(x=>x.status==='At risk').length]].map(([label,value])=><div key={label} style={card}><div style={muted}>{label}</div><div style={{fontSize:22,fontWeight:750,marginTop:6}}>{value}</div></div>)}</div>
   {notice&&<p role="status" style={{...muted,...card,margin:0}}>{notice}</p>}
   <form onSubmit={add} style={{...card,display:'grid',gap:12}}><h2 style={{fontSize:19,margin:0}}>Add client</h2><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,190px),1fr))',gap:10}}>
