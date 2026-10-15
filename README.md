@@ -73,7 +73,8 @@ The `npm start` script sets production mode in a cross-platform Node script and 
 | `PLACES_RATE_LIMIT_PER_MIN` | Per-client limit for each Places route; defaults to 20 requests/minute. This is an instance-level backstop, not a global spend cap. Configure Google Cloud quotas and budget alerts as well. |
 | `WEBSITE_AUDIT_RATE_LIMIT_PER_MIN` | Per signed-in workspace user limit for website audits; defaults to 10 requests/minute. Invalid or non-positive values fall back to the default; maximum is 1,000/minute. This is an instance-level backstop. |
 | `PORT` | Express port; defaults to `5173`. |
-| `DATABASE_URL` | PostgreSQL connection for accounts, workspace snapshots, sessions, and the Audit Inbox. |
+| `DATABASE_URL` | PostgreSQL connection for accounts, workspace snapshots, sessions, shared account-login rate limits, and the Audit Inbox. |
+| Account sign-in protection | Failed sign-in attempts are tracked per hashed account key in PostgreSQL (20 failures per 15-minute window), shared across server instances. Expired buckets are pruned during checks; IP-based login and registration limits remain in-process and should be backed by hosting/platform controls for multi-instance deployments. |
 | `DATABASE_SSL` | Optional database TLS override. Remote hosts require TLS by default. |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Server-only Razorpay API credentials used to create subscription checkout links. Never expose the secret to the browser. |
 | `RAZORPAY_PLAN_ID_STARTER` | Razorpay dashboard plan ID for the Starter subscription. Configure the plan's billing interval and amount in Razorpay before enabling checkout. |
