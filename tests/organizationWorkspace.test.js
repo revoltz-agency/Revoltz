@@ -7,7 +7,7 @@ const ORIGINAL_DATABASE_URL = process.env.DATABASE_URL;
 const USER_ID = '3f0c1e2a-4b5d-4c6e-8f90-1a2b3c4d5e6f';
 const ORGANIZATION_ID = 'org-test-id';
 
-function useOrganizationDatabase(role = 'owner', organizationId = ORGANIZATION_ID, sharedModuleData = new Map()) {
+function useOrganizationDatabase(role = 'owner', organizationId = ORGANIZATION_ID, sharedModuleData = new Map(), subscriptionStatus = 'inactive', currentPeriodEnd = null) {
   process.env.DATABASE_URL = 'postgres://example.invalid/agencyos-test';
   const calls = [];
   const modules = new Map();
@@ -32,9 +32,9 @@ function useOrganizationDatabase(role = 'owner', organizationId = ORGANIZATION_I
           organization_name: organizationId === ORGANIZATION_ID ? 'Priya workspace' : `Workspace ${organizationId}`,
           role,
           plan_key: 'starter',
-          subscription_status: 'inactive',
+          subscription_status: subscriptionStatus,
           current_period_start: null,
-          current_period_end: null,
+          current_period_end: currentPeriodEnd,
           cancel_at_period_end: false,
         }], rowCount: 1 };
       }
@@ -123,6 +123,30 @@ test('workspace state subscription guard stays compatible by default and blocks 
       statusCode: 402,
       code: 'SUBSCRIPTION_REQUIRED',
     });
+  } finally {
+    if (original === undefined) delete process.env.AGENCYOS_BILLING_ENFORCED;
+    else process.env.AGENCYOS_BILLING_ENFORCED = original;
+  }
+});
+
+test('billing enforcement denies a known-expired active subscription but allows an unexpired one', async () => {
+  const original = process.env.AGENCYOS_BILLING_ENFORCED;
+  process.env.AGENCYOS_BILLING_ENFORCED = 'true';
+  try {
+    useOrganizationDatabase('owner', ORGANIZATION_ID, new Map(), 'active', '2026-01-01T00:00:00.000Z');
+    await assert.rejects(requireActiveOrganizationSubscription(USER_ID), {
+      statusCode: 402,
+      code: 'SUBSCRIPTION_REQUIRED',
+      subscriptionStatus: 'active',
+    });
+
+    useOrganizationDatabase('owner', ORGANIZATION_ID, new Map(), 'active', '2027-01-01T00:00:00.000Z');
+    assert.equal(await requireActiveOrganizationSubscription(USER_ID), true);
+
+    // Some provider events omit the period end. Keep status-based behavior for
+    // those records rather than blocking a valid subscription due to missing data.
+    useOrganizationDatabase('owner', ORGANIZATION_ID, new Map(), 'active', null);
+    assert.equal(await requireActiveOrganizationSubscription(USER_ID), true);
   } finally {
     if (original === undefined) delete process.env.AGENCYOS_BILLING_ENFORCED;
     else process.env.AGENCYOS_BILLING_ENFORCED = original;
