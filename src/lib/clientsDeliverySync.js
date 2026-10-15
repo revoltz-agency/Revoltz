@@ -43,3 +43,15 @@ export function mergeClientOnboardingState(localChecks, cloudChecks) {
     record && typeof record === 'object' && !Array.isArray(record)
   ).slice(-1000));
 }
+
+export function mergeClientActivityState(localItems, cloudItems) {
+  const valid = (item) => item && typeof item === 'object' && !Array.isArray(item) &&
+    typeof item.id === 'string' && item.id.length > 0 &&
+    typeof item.client === 'string' && item.client.trim().length > 0;
+  const local = Array.isArray(localItems) ? localItems.filter(valid) : [];
+  const cloud = Array.isArray(cloudItems) ? cloudItems.filter(valid) : [];
+  const merged = new Map();
+  for (const item of cloud) merged.set(item.id, item);
+  for (const item of local) merged.set(item.id, item);
+  return [...merged.values()].slice(-2000);
+}
