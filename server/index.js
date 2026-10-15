@@ -36,7 +36,7 @@ import {
   sessionAbsoluteMs,
   verifyOwnerPassword,
 } from './session.js';
-import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed } from './security.js';
+import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed, sha256Hex } from './security.js';
 import { notifyTelegramAuditRequest } from './telegram.js';
 import { readOrganizationModuleData, readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, requireOrganizationRole, updateOrganizationModules, writeOrganizationModuleData } from './organizationWorkspace.js';
 import { cancelRazorpaySubscriptionAtPeriodEnd, createRazorpaySubscription, processRazorpayWebhook } from './razorpaySubscriptions.js';
@@ -113,6 +113,10 @@ app.use(['/api/workspace', '/api/places', '/api/website'], (_req, res, next) => 
 
 // --- Multi-user AgencyOS workspace accounts --------------------------------
 const workspaceLoginLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 10 });
+// Add an account-level backstop so distributed IPs cannot make unlimited password
+// guesses against one workspace account. Only a hash of the email is retained in
+// the in-memory limiter keys.
+const workspaceLoginAccountLimiter = createRateLimiter({ windowMs: 15 * 60_000, limit: 20 });
 const workspaceRegisterLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 5 });
 
 function workspaceUnavailable(res) {
