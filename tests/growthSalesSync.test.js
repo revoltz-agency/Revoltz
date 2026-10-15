@@ -117,7 +117,8 @@ test('Growth & Sales merge applies record and list bounds without dropping local
   assert.equal(merged.manualLeads.some((lead) => lead.id === 'cloud-only'), false,
     'the documented newest/local tail bound is applied after merging');
   assert.equal(merged.savedPlaceIds.length, 500);
-  assert.equal(merged.savedPlaceIds.includes('cloud-place'), true);
+  assert.equal(merged.savedPlaceIds.includes('cloud-place'), false,
+    'local saved IDs take precedence when the merged list exceeds its 500-item cap');
   assert.equal(merged.savedPlaceIds.some((id) => id.length > 300), false);
   assert.equal(merged.searchHistory.length, 8);
   assert.equal(merged.searchHistory[0].category, 'Category 0');
