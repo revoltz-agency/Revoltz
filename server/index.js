@@ -273,6 +273,9 @@ app.get('/api/workspace/state', async (req, res) => {
   if (!session) return;
   try {
     await requireActiveOrganizationSubscription(session.user.id);
+    // The workspace is still one shared JSON document, so limit full-document reads
+    // to owners/admins until data is isolated by module.
+    await requireOrganizationRole(session.user.id, ['owner', 'admin']);
     return res.json(await readWorkspaceState(session.user.id));
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
