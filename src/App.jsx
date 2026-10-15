@@ -308,6 +308,7 @@ function AgencyOSApp() {
   const detailsRequestsRef = useRef(new Map());
   const growthSalesCloudReady = useRef(false);
   const growthSalesRevision = useRef(null);
+  const growthSalesConflict = useRef(false);
   const growthSalesSaveQueue = useRef(Promise.resolve());
   const growthSalesLocalSnapshot = useRef(null);
   growthSalesLocalSnapshot.current = {
@@ -406,7 +407,10 @@ function AgencyOSApp() {
         // Merge against the latest browser state at response time. Local edits
         // win conflicts, while records that exist only in the cloud are kept.
         growthSalesRevision.current = payload.updatedAt || null;
-        const merged = mergeGrowthSalesState(growthSalesLocalSnapshot.current, payload.state);
+        const merged = growthSalesConflict.current
+          ? mergeGrowthSalesState({}, payload.state)
+          : mergeGrowthSalesState(growthSalesLocalSnapshot.current, payload.state);
+        growthSalesConflict.current = false;
         setWorkflow(merged.workflow);
         setManualLeads(merged.manualLeads);
         setManualOverrides(merged.manualOverrides);
@@ -466,8 +470,9 @@ function AgencyOSApp() {
             const payload = await response.json().catch(() => ({}));
             if (response.status === 409 || payload.code === 'WORKSPACE_REVISION_CONFLICT') {
               growthSalesCloudReady.current = false;
-              setGrowthSalesSyncStatus('unavailable');
-              throw new Error('Workspace changed on another device. Refresh cloud sync before continuing to save.');
+              growthSalesConflict.current = true;
+              setGrowthSalesSyncStatus('conflict');
+              throw new Error('Workspace changed on another device. Retry to load the latest cloud snapshot; unsaved local changes on this device will be replaced.');
             }
             throw new Error(payload.error || 'Cloud save failed.');
           }
@@ -886,7 +891,7 @@ function AgencyOSApp() {
         <header className="topbar">
           <button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Menu size={19} /></button>
           <div className="topbar-context"><span className="topbar-kicker">WORKSPACE</span><span className="topbar-separator">/</span><span className="topbar-page">{activePage}</span>{window.__agencyOSPreview && <span className="preview-mode-pill">PREVIEW · SAVED IN THIS BROWSER</span>}</div>
-          <div className="topbar-actions"><button type="button" className="preview-mode-pill" aria-live="polite" title={growthSalesSyncStatus === 'failed' || growthSalesSyncStatus === 'unavailable' ? 'Retry Growth & Sales cloud sync' : 'Growth & Sales cloud sync status'} aria-label={growthSalesSyncStatus === 'failed' || growthSalesSyncStatus === 'unavailable' ? 'Retry cloud sync' : 'Growth & Sales cloud sync status'} onClick={() => { if (growthSalesSyncStatus === 'failed' || growthSalesSyncStatus === 'unavailable') { setGrowthSalesSyncStatus('checking'); setGrowthSalesSyncAttempt((attempt) => attempt + 1); } }}>{({ checking: 'CLOUD SYNC · CHECKING', connected: 'CLOUD SYNC · CONNECTED', synced: 'CLOUD SYNC · SAVED', saving: 'CLOUD SYNC · SAVING', unavailable: 'CLOUD SYNC · LOCAL ONLY · RETRY', failed: 'CLOUD SYNC · SAVE FAILED · RETRY' })[growthSalesSyncStatus]}</button><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
+          <div className="topbar-actions"><button type="button" className="preview-mode-pill" aria-live="polite" title={growthSalesSyncStatus === 'failed' || growthSalesSyncStatus === 'unavailable' || growthSalesSyncStatus === 'conflict' ? 'Retry Growth & Sales cloud sync' : 'Growth & Sales cloud sync status'} aria-label={growthSalesSyncStatus === 'failed' || growthSalesSyncStatus === 'unavailable' || growthSalesSyncStatus === 'conflict' ? 'Retry cloud sync' : 'Growth & Sales cloud sync status'} onClick={() => { if (growthSalesSyncStatus === 'failed' || growthSalesSyncStatus === 'unavailable' || growthSalesSyncStatus === 'conflict') { setGrowthSalesSyncStatus('checking'); setGrowthSalesSyncAttempt((attempt) => attempt + 1); } }}>{({ checking: 'CLOUD SYNC · CHECKING', connected: 'CLOUD SYNC · CONNECTED', synced: 'CLOUD SYNC · SAVED', saving: 'CLOUD SYNC · SAVING', unavailable: 'CLOUD SYNC · LOCAL ONLY · RETRY', failed: 'CLOUD SYNC · SAVE FAILED · RETRY', conflict: 'CLOUD SYNC · CONFLICT · LOAD CLOUD' })[growthSalesSyncStatus]}</button><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
         </header>
         <main className="main-content">
 
