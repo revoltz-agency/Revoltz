@@ -472,7 +472,8 @@ function AgencyOSApp() {
               growthSalesCloudReady.current = false;
               growthSalesConflict.current = true;
               setGrowthSalesSyncStatus('conflict');
-              throw new Error('Workspace changed on another device. Retry to load the latest cloud snapshot; unsaved local changes on this device will be replaced.');
+              showToast('Cloud data changed elsewhere. Retry cloud sync to load the latest version; unsaved local changes on this device will be replaced.');
+              throw new Error('Workspace changed on another device.');
             }
             throw new Error(payload.error || 'Cloud save failed.');
           }
@@ -481,7 +482,7 @@ function AgencyOSApp() {
           setGrowthSalesSyncStatus('synced');
         })
         .catch((error) => {
-          setGrowthSalesSyncStatus('failed');
+          setGrowthSalesSyncStatus(growthSalesConflict.current ? 'conflict' : 'failed');
           console.warn('[AgencyOS] Growth & Sales cloud save failed:', error?.message || error);
         });
     }, 800);
