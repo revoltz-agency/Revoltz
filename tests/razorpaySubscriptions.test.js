@@ -45,6 +45,7 @@ test('subscription cancellation is owner-only, scheduled at period end, and pers
     async end() {},
     async query(text, values = []) {
       calls.push({ text, values });
+      if (/^\s*(BEGIN|COMMIT|ROLLBACK)$/i.test(text)) return { rows: [], rowCount: 0 };
       if (/^\s*(CREATE TABLE|CREATE INDEX) IF NOT EXISTS/i.test(text) || /^\s*ALTER TABLE organization_subscriptions/i.test(text)) return { rows: [], rowCount: 0 };
       if (text.includes('INSERT INTO organizations (name, owner_user_id)') || text.includes('INSERT INTO organization_memberships (organization_id, user_id, role)') || text.includes('INSERT INTO organization_subscriptions (organization_id, plan_key, status)') || text.includes('INSERT INTO organization_modules (organization_id, module_key, enabled)') || text.includes('INSERT INTO organization_workspace_data (organization_id, state, updated_at)')) return { rows: [], rowCount: 0 };
       if (/^\s*INSERT INTO /i.test(text) && /\bSELECT\b/i.test(text)) return { rows: [], rowCount: 0 };
@@ -59,6 +60,9 @@ test('subscription cancellation is owner-only, scheduled at period end, and pers
       }
       if (text.includes('UPDATE organization_subscriptions') && text.includes('cancel_at_period_end = true')) return { rows: [], rowCount: 1 };
       throw new Error(`Unexpected billing SQL: ${text}`);
+    },
+    async connect() {
+      return { query: (text, values = []) => pool.query(text, values), release() {} };
     },
   };
   __setPoolForTests(pool);
