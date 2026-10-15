@@ -133,7 +133,7 @@ test('billing enforcement denies a known-expired active subscription but allows 
   const original = process.env.AGENCYOS_BILLING_ENFORCED;
   process.env.AGENCYOS_BILLING_ENFORCED = 'true';
   try {
-    useOrganizationDatabase('owner', ORGANIZATION_ID, new Map(), 'active', '2026-01-01T00:00:00.000Z');
+    const db = useOrganizationDatabase('owner', ORGANIZATION_ID, new Map(), 'active', '2026-01-01T00:00:00.000Z');
     await assert.rejects(requireActiveOrganizationSubscription(USER_ID), {
       statusCode: 402,
       code: 'SUBSCRIPTION_REQUIRED',
