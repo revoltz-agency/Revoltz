@@ -103,6 +103,14 @@ app.use(express.json({
   },
 }));
 
+// Workspace account, billing, prospect, and audit responses can contain private
+// customer/workspace data. Prevent browsers and intermediary caches from storing
+// either successful responses or authorization/error responses for these APIs.
+app.use(['/api/workspace', '/api/places', '/api/website'], (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+
 // --- Multi-user AgencyOS workspace accounts --------------------------------
 const workspaceLoginLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 10 });
 const workspaceRegisterLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 5 });
