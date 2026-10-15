@@ -30,8 +30,19 @@ The marketing GitHub Pages build uses `src/site-main.jsx` and does not include t
 - **Google Places:** `POST /api/places/search` uses the official Places API (New), explicit field masks, and up to 50 results. Search is made only when selected and submitted. Saved Google Place IDs can be refreshed after an explicit action. Google listing content remains session-only; only IDs and user-entered CRM workflow data are saved.
 - **Gemini:** Lead search uses Google Maps grounding. Other AI-assisted tools use Gemini JSON generation. The API key is user-provided and held in the current browser session.
 - **Website check:** `POST /api/website/analyze` inspects bounded public HTML for observable signals. It applies SSRF protections, redirect checks, timeouts, content-type checks, and response-size limits. It is not a visual, accessibility, security, or full conversion audit.
-- **Workspace persistence:** Each account has a separate PostgreSQL-backed workspace snapshot. The browser syncs its namespaced local storage to that account when online. Sync is best-effort; simultaneous edits to the same account from multiple devices can conflict.
+- **Workspace persistence:** The legacy workspace snapshot is PostgreSQL-backed per account. The Growth & Sales module also has a separate organization-scoped cloud state endpoint (`/api/workspace/modules/growth_sales/data`); the AgencyOS UI merges cloud and local Growth & Sales data and reports sync status. Cloud sync is best-effort; simultaneous edits to the same account from multiple devices can conflict. Other modules have not yet been migrated to the module-scoped storage endpoint.
 - **Audit Inbox:** Public audit requests are stored separately from prospect CRM data. Owner access uses server-side sessions and CSRF protection. Expired requests are purged opportunistically when the inbox is opened; no scheduled production cleanup is claimed here.
+
+## Growth & Sales cloud-sync verification
+
+After deploying the branch with a configured PostgreSQL database, test cloud persistence with two separate workspace accounts/organizations:
+
+1. Sign in to the first workspace and wait for the cloud status to show **CLOUD SYNC · SAVED**.
+2. Create or update a test lead, wait for the save status, then refresh the page and confirm the lead and its CRM fields remain.
+3. Sign in to a second workspace and confirm the first workspace’s test lead is not present. Create a different test lead in the second workspace and verify it remains separate after refresh.
+4. Temporarily make the API unavailable or sign out and confirm the UI reports local-only/unavailable status without clearing browser data; restore access and use **Retry** to reconnect.
+
+Automated organization-isolation tests use a shared in-memory backing store and verify organization-scoped keys, but they are not a substitute for this live PostgreSQL and signed-in browser check. Do not enable enforced billing until subscription checkout and webhook behavior have also been verified.
 
 ## Local setup
 
