@@ -108,7 +108,7 @@ Retention expiry is set on insert and enforced opportunistically when an owner o
 
 ## Workspace cloud sync coverage
 
-Growth & Sales has organization-scoped cloud persistence for its lead/CRM workspace state. Clients & Delivery cloud persistence is being introduced incrementally; the Project Tracker is the first delivery screen migrated to the `clients_delivery` module state. Its records are merged by ID with local edits taking priority, capped at 500 projects, and kept in browser storage if cloud access fails. Other Clients & Delivery screens remain browser-local until explicitly migrated. Live database and signed-in browser checks are still required for each migrated screen.
+Growth & Sales has organization-scoped cloud persistence for its lead/CRM workspace state. Clients & Delivery cloud persistence is being introduced incrementally. Project Tracker and Website Delivery Hub now sync separate keys in the organization-scoped `clients_delivery` module state. Records merge by ID with local edits taking priority, each list is capped at 500 records, and browser storage remains available if cloud access fails. Other Clients & Delivery screens remain browser-local until explicitly migrated. Live database and signed-in browser checks are still required for each migrated screen.
 
 ## Checks
 
