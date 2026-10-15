@@ -7,11 +7,11 @@ const ORIGINAL_DATABASE_URL = process.env.DATABASE_URL;
 const USER_ID = '3f0c1e2a-4b5d-4c6e-8f90-1a2b3c4d5e6f';
 const ORGANIZATION_ID = 'org-test-id';
 
-function useOrganizationDatabase(role = 'owner', organizationId = ORGANIZATION_ID) {
+function useOrganizationDatabase(role = 'owner', organizationId = ORGANIZATION_ID, sharedModuleData = new Map()) {
   process.env.DATABASE_URL = 'postgres://example.invalid/agencyos-test';
   const calls = [];
   const modules = new Map();
-  const moduleData = new Map();
+  const moduleData = sharedModuleData;
   const pool = {
     calls,
     on() {},
@@ -193,13 +193,15 @@ test('module selection rejects unknown keys and non-owner members', async () => 
 });
 
 
-test('module data remains isolated between organizations', async () => {
-  const first = useOrganizationDatabase('owner', 'org-first');
+test('module data remains isolated between organizations in shared storage', async () => {
+  // Both simulated organizations use the same backing store, as they would in PostgreSQL.
+  const sharedModuleData = new Map();
+  const first = useOrganizationDatabase('owner', 'org-first', sharedModuleData);
   await writeOrganizationModuleData(USER_ID, 'growth_sales', {
     leads: [{ id: 'first-org-lead', name: 'First organization lead' }],
   });
 
-  const second = useOrganizationDatabase('owner', 'org-second');
+  const second = useOrganizationDatabase('owner', 'org-second', sharedModuleData);
   const emptySecondWorkspace = await readOrganizationModuleData(USER_ID, 'growth_sales');
   assert.deepEqual(emptySecondWorkspace.state, {});
 
@@ -207,10 +209,11 @@ test('module data remains isolated between organizations', async () => {
     leads: [{ id: 'second-org-lead', name: 'Second organization lead' }],
   });
 
-  const firstState = first.moduleData.get('org-first:growth_sales');
-  const secondState = second.moduleData.get('org-second:growth_sales');
+  const firstState = sharedModuleData.get('org-first:growth_sales');
+  const secondState = sharedModuleData.get('org-second:growth_sales');
   assert.deepEqual(firstState.state.leads.map((lead) => lead.id), ['first-org-lead']);
   assert.deepEqual(secondState.state.leads.map((lead) => lead.id), ['second-org-lead']);
+  assert.equal(sharedModuleData.size, 2, 'each organization must have a separate row for the same module');
   assert.notEqual(firstState, secondState);
 });
 
