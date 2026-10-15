@@ -131,7 +131,11 @@ export async function readOrganizationModuleData(userId, moduleKey) {
   };
 }
 
-export async function writeOrganizationModuleData(userId, moduleKey, state) {
+export async function writeOrganizationModuleData(userId, moduleKey, state, expectedUpdatedAt) {
+  if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== null &&
+      (typeof expectedUpdatedAt !== 'string' || !Number.isFinite(Date.parse(expectedUpdatedAt)))) {
+    throw Object.assign(new Error('Workspace revision is invalid. Refresh before saving.'), { statusCode: 400, code: 'INVALID_WORKSPACE_REVISION' });
+  }
   if (!state || typeof state !== 'object' || Array.isArray(state)) {
     throw Object.assign(new Error('Module data must be an object.'), { statusCode: 400, code: 'INVALID_MODULE_DATA' });
   }
@@ -144,15 +148,31 @@ export async function writeOrganizationModuleData(userId, moduleKey, state) {
   }
   await requireOrganizationModule(userId, moduleKey);
   const membership = await getMembership(userId);
+  const guardedWrite = expectedUpdatedAt !== undefined;
   const result = await queryDatabase(
-    `INSERT INTO organization_module_data (organization_id, module_key, state, updated_at)
-     VALUES ($1, $2, $3::jsonb, now())
-     ON CONFLICT (organization_id, module_key)
-     DO UPDATE SET state = EXCLUDED.state, updated_at = now()
-     RETURNING updated_at`,
-    [membership.organization_id, moduleKey, serialized],
+    guardedWrite
+      ? `INSERT INTO organization_module_data (organization_id, module_key, state, updated_at)
+         VALUES ($1, $2, $3::jsonb, now())
+         ON CONFLICT (organization_id, module_key)
+         DO UPDATE SET state = EXCLUDED.state, updated_at = now()
+         WHERE organization_module_data.updated_at IS NOT DISTINCT FROM $4::timestamptz
+         RETURNING updated_at`
+      : `INSERT INTO organization_module_data (organization_id, module_key, state, updated_at)
+         VALUES ($1, $2, $3::jsonb, now())
+         ON CONFLICT (organization_id, module_key)
+         DO UPDATE SET state = EXCLUDED.state, updated_at = now()
+         RETURNING updated_at`,
+    guardedWrite
+      ? [membership.organization_id, moduleKey, serialized, expectedUpdatedAt]
+      : [membership.organization_id, moduleKey, serialized],
   );
-  return { saved: true, updatedAt: result.rows[0]?.updated_at || null };
+  if (!result.rows[0]) {
+    throw Object.assign(new Error('This workspace changed on another device. Refresh the latest data before saving again.'), {
+      statusCode: 409,
+      code: 'WORKSPACE_REVISION_CONFLICT',
+    });
+  }
+  return { saved: true, updatedAt: result.rows[0].updated_at || null };
 }
 
 export async function updateOrganizationModules(userId, requestedKeys) {
