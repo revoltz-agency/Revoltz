@@ -162,7 +162,7 @@ test('module data is stored separately and only accessible when that module is e
     db.modules.set('growth_sales', { module_key: 'growth_sales', enabled: false, settings: {} });
     await assert.rejects(readOrganizationModuleData(USER_ID, 'growth_sales'), { statusCode: 403, code: 'WORKSPACE_MODULE_DISABLED' });
     await assert.rejects(writeOrganizationModuleData(USER_ID, 'growth_sales', { leads: [] }), { statusCode: 403, code: 'WORKSPACE_MODULE_DISABLED' });
-    await assert.rejects(writeOrganizationModuleData(USER_ID, 'not_a_module', {}), { statusCode: 500 });
+    await assert.rejects(writeOrganizationModuleData(USER_ID, 'not_a_module', {}), { statusCode: 400, code: 'INVALID_WORKSPACE_MODULE' });
     await assert.rejects(writeOrganizationModuleData(USER_ID, 'tools', []), { statusCode: 400, code: 'INVALID_MODULE_DATA' });
   } finally {
     if (originalBilling === undefined) delete process.env.AGENCYOS_BILLING_ENFORCED;
