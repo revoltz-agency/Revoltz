@@ -161,6 +161,8 @@ test('module data is stored separately and only accessible when that module is e
     assert.ok(moduleInsert, 'module state must be persisted through the organization-scoped table');
     assert.ok(moduleRead, 'module state must be read from the organization-scoped table');
     assert.match(moduleInsert.text, /ON CONFLICT \(organization_id, module_key\)/);
+    assert.match(moduleInsert.text, /DO UPDATE SET state = EXCLUDED\.state/);
+    assert.doesNotMatch(moduleInsert.text, /organization_module_data\.state \|\| EXCLUDED\.state/, 'full snapshots must remove stale keys');
     assert.match(moduleRead.text, /WHERE organization_id = \$1 AND module_key = \$2/);
     assert.deepEqual(moduleInsert.values.slice(0, 2), [ORGANIZATION_ID, 'growth_sales']);
     assert.deepEqual(moduleRead.values, [ORGANIZATION_ID, 'growth_sales']);
