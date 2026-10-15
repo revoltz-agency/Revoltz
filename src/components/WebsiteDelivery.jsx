@@ -13,7 +13,12 @@ const read = () => { try { const v = JSON.parse(localStorage.getItem(KEY) || '[]
 const safeUrl = value => { try { const u = new URL(value); return ['http:', 'https:'].includes(u.protocol) ? u.href : ''; } catch { return ''; } };
 function exportCsv(items) { const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"'; const rows = [['Client','Project','Phase','Approval','Deadline','Demo URL','Live URL','Revisions used','Revision limit','Next action','Handover notes','Checklist done','Checklist total'], ...items.map(x => [x.client,x.project,x.phase,x.approval,x.deadline,x.demoUrl,x.liveUrl,x.revisionsUsed,x.revisionLimit,x.nextAction,x.handover,(x.tasks||[]).filter(t=>t.done).length,(x.tasks||[]).length])]; const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(esc).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'})); const a=document.createElement('a'); a.href=url; a.download='agencyos-website-delivery.csv'; a.click(); URL.revokeObjectURL(url); }
 export default function WebsiteDelivery() {
- const [items,setItems]=useState(read);\n const itemsRef=useRef(items);itemsRef.current=items;\n const cloudReady=useRef(false);\n const saveQueue=useRef(Promise.resolve());\n const [syncAttempt,setSyncAttempt]=useState(0);\n const [syncStatus,setSyncStatus]=useState('checking');
+ const [items,setItems]=useState(read);
+ const itemsRef=useRef(items);itemsRef.current=items;
+ const cloudReady=useRef(false);
+ const saveQueue=useRef(Promise.resolve());
+ const [syncAttempt,setSyncAttempt]=useState(0);
+ const [syncStatus,setSyncStatus]=useState('checking');
  const [form,setForm]=useState({...blank,tasks:defaultTasks.map((title,i)=>({id:String(i+1),title,done:false}))});
  const [notice,setNotice]=useState('');
  useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(items));}catch{setNotice('Browser storage is full; changes may not persist.')}},[items]);
