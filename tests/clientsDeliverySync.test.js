@@ -106,3 +106,25 @@ test('Client Retention merge ignores malformed records and caps accounts at 1,00
   assert.equal(merged.at(-1).id, 'client-1004');
   assert.deepEqual(mergeClientRetentionState(null, { id: 'bad', client: 'Invalid' }), []);
 });
+
+
+test('Invoice Tracker merge preserves cloud-only records and local edits by ID', async () => {
+  const { mergeInvoiceTrackerState } = await import('../src/lib/financeReportsSync.js');
+  assert.deepEqual(mergeInvoiceTrackerState(
+    [{ id: 'shared', invoiceNo: 'INV-1', status: 'Paid' }, { id: 'local', invoiceNo: 'INV-2' }],
+    [{ id: 'shared', invoiceNo: 'INV-1', status: 'Sent' }, { id: 'cloud', invoiceNo: 'INV-3' }],
+  ), [
+    { id: 'shared', invoiceNo: 'INV-1', status: 'Paid' },
+    { id: 'cloud', invoiceNo: 'INV-3' },
+    { id: 'local', invoiceNo: 'INV-2' },
+  ]);
+});
+
+test('Invoice Tracker merge ignores malformed entries and caps records at 1,000', async () => {
+  const { mergeInvoiceTrackerState } = await import('../src/lib/financeReportsSync.js');
+  const many = Array.from({ length: 1005 }, (_, index) => ({ id: `invoice-${index}`, invoiceNo: `INV-${index}` }));
+  const merged = mergeInvoiceTrackerState([...many, null, { id: 'bad-no', invoiceNo: ' ' }], []);
+  assert.equal(merged.length, 1000);
+  assert.equal(merged.at(-1).id, 'invoice-1004');
+  assert.deepEqual(mergeInvoiceTrackerState(null, { id: 'bad', invoiceNo: ' ' }), []);
+});
