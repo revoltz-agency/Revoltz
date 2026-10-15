@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { workspaceFailureMode } from '../lib/workspaceAccess.js';
 
 function readCookie(name) {
   const prefix = `${name}=`;
@@ -34,10 +35,17 @@ export default function WorkspaceAccess({ children }) {
       })
       .catch((reason) => {
         if (!alive) return;
-        // Keep the existing private/local installation usable if its database
-        // is not configured. A real unauthenticated response must show sign-in.
-        if (reason.status === 401) setStatus('anonymous');
-        else setStatus('local');
+        const failureMode = workspaceFailureMode(
+          reason.status,
+          import.meta.env.VITE_AGENCYOS_ALLOW_LOCAL_WORKSPACE === 'true',
+        );
+        if (failureMode === 'local') setStatus('local');
+        else {
+          setStatus('anonymous');
+          if (failureMode === 'unavailable') {
+            setError('Workspace authentication is temporarily unavailable. Please try again.');
+          }
+        }
       });
     return () => { alive = false; };
   }, []);
