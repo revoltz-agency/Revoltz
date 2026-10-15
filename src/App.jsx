@@ -302,6 +302,7 @@ function AgencyOSApp() {
   const [toast, setToast] = useState('');
   const [settingsNotice, setSettingsNotice] = useState('');
   const [growthSalesSyncStatus, setGrowthSalesSyncStatus] = useState('checking');
+  const [growthSalesSyncAttempt, setGrowthSalesSyncAttempt] = useState(0);
   const initialConfigLoaded = useRef(false);
   const toastTimer = useRef(null);
   const detailsRequestsRef = useRef(new Map());
@@ -429,7 +430,7 @@ function AgencyOSApp() {
       active = false;
       growthSalesCloudReady.current = false;
     };
-  }, []);
+  }, [growthSalesSyncAttempt]);
 
   useEffect(() => {
     if (!growthSalesCloudReady.current) return undefined;
@@ -876,7 +877,7 @@ function AgencyOSApp() {
         <header className="topbar">
           <button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Menu size={19} /></button>
           <div className="topbar-context"><span className="topbar-kicker">WORKSPACE</span><span className="topbar-separator">/</span><span className="topbar-page">{activePage}</span>{window.__agencyOSPreview && <span className="preview-mode-pill">PREVIEW · SAVED IN THIS BROWSER</span>}</div>
-          <div className="topbar-actions"><span className="preview-mode-pill" role="status" aria-live="polite" title="Growth & Sales cloud sync status">{({ checking: 'CLOUD SYNC · CHECKING', connected: 'CLOUD SYNC · CONNECTED', synced: 'CLOUD SYNC · SAVED', saving: 'CLOUD SYNC · SAVING', unavailable: 'CLOUD SYNC · LOCAL ONLY', failed: 'CLOUD SYNC · SAVE FAILED' })[growthSalesSyncStatus]}</span><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
+          <div className="topbar-actions"><button type="button" className="preview-mode-pill" role="status" aria-live="polite" title={growthSalesSyncStatus === 'failed' || growthSalesSyncStatus === 'unavailable' ? 'Retry Growth & Sales cloud sync' : 'Growth & Sales cloud sync status'} aria-label={growthSalesSyncStatus === 'failed' || growthSalesSyncStatus === 'unavailable' ? 'Retry cloud sync' : 'Growth & Sales cloud sync status'} onClick={() => { if (growthSalesSyncStatus === 'failed' || growthSalesSyncStatus === 'unavailable') { setGrowthSalesSyncStatus('checking'); setGrowthSalesSyncAttempt((attempt) => attempt + 1); } }}>{({ checking: 'CLOUD SYNC · CHECKING', connected: 'CLOUD SYNC · CONNECTED', synced: 'CLOUD SYNC · SAVED', saving: 'CLOUD SYNC · SAVING', unavailable: 'CLOUD SYNC · LOCAL ONLY · RETRY', failed: 'CLOUD SYNC · SAVE FAILED · RETRY' })[growthSalesSyncStatus]}</button><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
         </header>
         <main className="main-content">
 
