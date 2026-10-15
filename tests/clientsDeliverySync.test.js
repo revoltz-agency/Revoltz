@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeClientsDeliveryState, mergeWebsiteDeliveryState } from '../src/lib/clientsDeliverySync.js';
+import { mergeClientsDeliveryState, mergeWebsiteDeliveryState, mergeClientOnboardingState } from '../src/lib/clientsDeliverySync.js';
 
 test('Clients & Delivery project merge keeps cloud-only projects and local edits', () => {
   const merged = mergeClientsDeliveryState(
@@ -47,4 +47,24 @@ test('Website Delivery merge ignores malformed records and caps projects at 500'
   assert.equal(merged.at(-1).id, 'local-509');
   assert.equal(merged.some((item) => item.id === 'cloud'), false);
   assert.deepEqual(mergeWebsiteDeliveryState(null, { id: 'not-an-array', client: 'Invalid' }), []);
+});
+
+test('Client Onboarding merge keeps cloud-only clients and prefers local checklist edits', () => {
+  assert.deepEqual(mergeClientOnboardingState(
+    { shared: { done: { 0: true }, notes: 'Local notes' }, local: { done: {}, notes: '' } },
+    { shared: { done: {}, notes: 'Old cloud notes' }, cloud: { done: { 1: true }, notes: 'Cloud only' } },
+  ), {
+    shared: { done: { 0: true }, notes: 'Local notes' },
+    cloud: { done: { 1: true }, notes: 'Cloud only' },
+    local: { done: {}, notes: '' },
+  });
+});
+
+test('Client Onboarding merge tolerates malformed values and caps stored client records', () => {
+  const many = Object.fromEntries(Array.from({ length: 1005 }, (_, index) => [`client-${index}`, { notes: '' }]));
+  const merged = mergeClientOnboardingState({ invalid: null }, many);
+  assert.equal(Object.keys(merged).length, 1000);
+  assert.equal(Object.hasOwn(merged, 'client-1004'), true);
+  assert.equal(Object.hasOwn(merged, 'invalid'), false);
+  assert.deepEqual(mergeClientOnboardingState([], null), {});
 });
