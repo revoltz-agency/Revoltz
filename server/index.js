@@ -311,7 +311,7 @@ app.put('/api/workspace/modules/:moduleKey/data', async (req, res) => {
   if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
   if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
   try {
-    return res.json(await writeOrganizationModuleData(session.user.id, req.params.moduleKey, req.body?.state));
+    return res.json(await writeOrganizationModuleData(session.user.id, req.params.moduleKey, req.body?.state, req.body?.expectedUpdatedAt));
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
     return workspaceUnavailable(res);
