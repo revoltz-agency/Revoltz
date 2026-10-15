@@ -121,6 +121,8 @@ VITE_PUBLIC_SITE_ONLY=true npm run build -- --base=/Revoltz/
 
 GitHub Actions runs these three checks on pull requests and pushes to `main`.
 
+For the opt-in PostgreSQL rate-limit integration test, set `AGENCYOS_TEST_DATABASE_URL` to a **disposable test database** before running `npm test`. The test creates the app schema and removes only its own rate-limit bucket; it does not drop tables.
+
 ## Deployment
 
 [`render.yaml`](render.yaml) is a Render Blueprint proposal; committing it does not create or change a cloud service. It expects secrets to be entered in the hosting dashboard. Verify the running deployment and provider status before treating any local change as live.
