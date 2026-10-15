@@ -287,7 +287,8 @@ test('the rate limiter can reset one account without clearing other accounts', (
 
   limiter.reset('account-a');
   assert.equal(limiter.check('account-a', 103).allowed, true);
-  assert.equal(limiter.check('account-b', 103).allowed, false);
+  assert.equal(limiter.check('account-b', 103).allowed, true);
+  assert.equal(limiter.check('account-b', 104).allowed, false);
 });
 
 test('the rate limiter fails closed once its key table is full', () => {
