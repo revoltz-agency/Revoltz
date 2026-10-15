@@ -128,3 +128,42 @@ test('Invoice Tracker merge ignores malformed entries and caps records at 1,000'
   assert.equal(merged.at(-1).id, 'invoice-1004');
   assert.deepEqual(mergeInvoiceTrackerState(null, { id: 'bad', invoiceNo: ' ' }), []);
 });
+
+
+test('Sales packages merge retains cloud-only drafts and gives local edits priority', async () => {
+  const { mergeSalesPackagesState } = await import('../src/lib/financeReportsSync.js');
+  assert.deepEqual(mergeSalesPackagesState(
+    [{ id: 'shared', businessName: 'Local business', proposal: 'Local edit' }, { id: 'local', businessName: 'Local only' }],
+    [{ id: 'shared', businessName: 'Cloud business', proposal: 'Old value' }, { id: 'cloud', businessName: 'Cloud only' }],
+  ), [
+    { id: 'shared', businessName: 'Local business', proposal: 'Local edit' },
+    { id: 'cloud', businessName: 'Cloud only' },
+    { id: 'local', businessName: 'Local only' },
+  ]);
+});
+
+test('Sales packages merge filters invalid records and caps at 100 drafts', async () => {
+  const { mergeSalesPackagesState } = await import('../src/lib/financeReportsSync.js');
+  const many = Array.from({ length: 105 }, (_, index) => ({ id: `package-${index}`, businessName: `Business ${index}` }));
+  const merged = mergeSalesPackagesState([...many, null, { id: 'bad', businessName: ' ' }], []);
+  assert.equal(merged.length, 100);
+  assert.equal(merged.at(-1).id, 'package-104');
+  assert.deepEqual(mergeSalesPackagesState(null, [{ id: 'bad', businessName: ' ' }]), []);
+});
+
+test('Deal Pipeline merge keeps cloud-only tracking and prioritizes local edits', async () => {
+  const { mergeDealTrackerState } = await import('../src/lib/financeReportsSync.js');
+  assert.deepEqual(mergeDealTrackerState(
+    { shared: { stage: 'Won', notes: 'Local' }, local: { stage: 'Draft' } },
+    { shared: { stage: 'Negotiation', notes: 'Cloud' }, cloud: { stage: 'Contacted' } },
+  ), { shared: { stage: 'Won', notes: 'Local' }, cloud: { stage: 'Contacted' }, local: { stage: 'Draft' } });
+});
+
+test('Deal Pipeline merge rejects malformed entries and caps tracking records', async () => {
+  const { mergeDealTrackerState } = await import('../src/lib/financeReportsSync.js');
+  const many = Object.fromEntries(Array.from({ length: 1005 }, (_, index) => [`deal-${index}`, { stage: 'Draft' }]));
+  const merged = mergeDealTrackerState({ invalid: null }, many);
+  assert.equal(Object.keys(merged).length, 1000);
+  assert.equal(Object.hasOwn(merged, 'deal-1004'), true);
+  assert.deepEqual(mergeDealTrackerState([], null), {});
+});
