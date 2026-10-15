@@ -43,9 +43,15 @@ function useOrganizationDatabase(role = 'owner', organizationId = ORGANIZATION_I
         return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
       }
       if (text.includes('INSERT INTO organization_module_data')) {
-        const [organizationId, moduleKey, serialized] = values;
+        const [organizationId, moduleKey, serialized, expectedUpdatedAt] = values;
+        const key = organizationId + ':' + moduleKey;
+        const existing = moduleData.get(key);
+        if (values.length === 4 && existing &&
+            (expectedUpdatedAt == null || Date.parse(expectedUpdatedAt) !== Date.parse(existing.updated_at))) {
+          return { rows: [], rowCount: 0 };
+        }
         const row = { state: JSON.parse(serialized), updated_at: new Date('2026-01-03T00:00:00.000Z') };
-        moduleData.set(organizationId + ':' + moduleKey, row);
+        moduleData.set(key, row);
         return { rows: [{ updated_at: row.updated_at }], rowCount: 1 };
       }
       if (text.includes('SELECT enabled FROM organization_modules')) {
@@ -252,4 +258,18 @@ test('module data rejects circular payloads with a validation error', async () =
     code: 'INVALID_MODULE_DATA',
   });
   assert.equal(db.calls.some((call) => call.text.includes('INSERT INTO organization_module_data')), false);
+});
+
+test('module data snapshot writes reject stale revisions instead of overwriting newer cloud state', async () => {
+  const db = useOrganizationDatabase('owner');
+  const first = await writeOrganizationModuleData(USER_ID, 'growth_sales', { leads: [{ id: 'lead-new' }] }, null);
+  assert.equal(first.saved, true);
+  await assert.rejects(
+    writeOrganizationModuleData(USER_ID, 'growth_sales', { leads: [] }, null),
+    { statusCode: 409, code: 'WORKSPACE_REVISION_CONFLICT' },
+  );
+  const stored = await readOrganizationModuleData(USER_ID, 'growth_sales');
+  assert.deepEqual(stored.state, { leads: [{ id: 'lead-new' }] });
+  const guardedWrite = db.calls.find((call) => call.text.includes('INSERT INTO organization_module_data') && call.values.length === 4);
+  assert.match(guardedWrite.text, /WHERE organization_module_data\.updated_at IS NOT DISTINCT FROM \$4::timestamptz/);
 });
