@@ -22,10 +22,9 @@ function useDatabase() {
       if (text.includes('INSERT INTO shared_rate_limit_buckets')) {
         const [key, now, windowMs] = values;
         const previous = buckets.get(key);
-        const start = previous && new Date(previous.startedAt).getTime() > new Date(now).getTime() - windowMs
-          ? previous.startedAt
-          : now;
-        const count = start === now ? 1 : previous.count + 1;
+        const active = previous && new Date(previous.startedAt).getTime() > new Date(now).getTime() - windowMs;
+        const start = active ? previous.startedAt : now;
+        const count = active ? previous.count + 1 : 1;
         buckets.set(key, { startedAt: start, count });
         return { rows: [{ hit_count: count, window_started_at: start }], rowCount: 1 };
       }
