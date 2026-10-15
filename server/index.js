@@ -38,7 +38,7 @@ import {
 } from './session.js';
 import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed } from './security.js';
 import { notifyTelegramAuditRequest } from './telegram.js';
-import { readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, requireOrganizationRole, updateOrganizationModules } from './organizationWorkspace.js';
+import { readOrganizationModuleData, readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, requireOrganizationRole, updateOrganizationModules, writeOrganizationModuleData } from './organizationWorkspace.js';
 import { cancelRazorpaySubscriptionAtPeriodEnd, createRazorpaySubscription, processRazorpayWebhook } from './razorpaySubscriptions.js';
 import {
   authenticateWorkspaceUser,
@@ -263,6 +263,32 @@ app.put('/api/workspace/modules', async (req, res) => {
     return res.json(await updateOrganizationModules(session.user.id, req.body?.modules));
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return workspaceUnavailable(res);
+  }
+});
+
+app.get('/api/workspace/modules/:moduleKey/data', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  try {
+    return res.json(await readOrganizationModuleData(session.user.id, req.params.moduleKey));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
+    return workspaceUnavailable(res);
+  }
+});
+
+app.put('/api/workspace/modules/:moduleKey/data', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  try {
+    return res.json(await writeOrganizationModuleData(session.user.id, req.params.moduleKey, req.body?.state));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
     return workspaceUnavailable(res);
   }
 });
