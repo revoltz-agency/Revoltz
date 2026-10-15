@@ -47,3 +47,44 @@ test('Growth & Sales merge unions saved IDs and deduplicates recent search histo
   assert.equal(merged.searchHistory.length, 3);
   assert.equal(merged.searchHistory[0].category, 'Dentists');
 });
+
+
+test('Growth & Sales merge safely ignores malformed or missing saved state', () => {
+  const merged = mergeGrowthSalesState(null, {
+    workflow: [],
+    manualLeads: [{ name: 'Missing id is not a stable record' }, null, { id: 'cloud-1', name: 'Cloud record' }],
+    manualOverrides: ['not', 'an', 'object'],
+    savedPlaceIds: [null, 42, 'valid-place'],
+    savedGeminiPlaceIds: 'not-an-array',
+    searchHistory: [{ category: 'Dentists' }, null, { category: 'Cafes', city: 'Pune' }],
+  });
+
+  assert.deepEqual(merged.workflow, {});
+  assert.deepEqual(merged.manualLeads, [{ id: 'cloud-1', name: 'Cloud record' }]);
+  assert.deepEqual(merged.manualOverrides, {});
+  assert.deepEqual(merged.savedPlaceIds, ['valid-place']);
+  assert.deepEqual(merged.savedGeminiPlaceIds, []);
+  assert.deepEqual(merged.searchHistory, [{ category: 'Cafes', city: 'Pune' }]);
+});
+
+test('Growth & Sales merge ignores invalid local state without losing valid cloud records', () => {
+  const merged = mergeGrowthSalesState({
+    workflow: null,
+    manualLeads: 'corrupt',
+    manualOverrides: false,
+    savedPlaceIds: {},
+    searchHistory: [{ category: 4, city: 'Pune' }],
+  }, {
+    workflow: { cloudLead: { status: 'NEW' } },
+    manualLeads: [{ id: 'cloud-1', name: 'Cloud record' }],
+    manualOverrides: { cloudLead: { name: 'Cloud name' } },
+    savedPlaceIds: ['cloud-place'],
+    searchHistory: [{ category: 'Clinics', city: 'Pune' }],
+  });
+
+  assert.deepEqual(merged.workflow, { cloudLead: { status: 'NEW' } });
+  assert.deepEqual(merged.manualLeads, [{ id: 'cloud-1', name: 'Cloud record' }]);
+  assert.deepEqual(merged.manualOverrides, { cloudLead: { name: 'Cloud name' } });
+  assert.deepEqual(merged.savedPlaceIds, ['cloud-place']);
+  assert.deepEqual(merged.searchHistory, [{ category: 'Clinics', city: 'Pune' }]);
+});
