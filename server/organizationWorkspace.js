@@ -96,7 +96,7 @@ export async function requireActiveOrganizationSubscription(userId) {
 export async function requireOrganizationModule(userId, moduleKey) {
   await ensureSchema();
   if (!MODULE_KEYS.includes(moduleKey)) {
-    throw Object.assign(new Error('Unknown workspace module.'), { statusCode: 500 });
+    throw Object.assign(new Error('Unknown workspace module.'), { statusCode: 400, code: 'INVALID_WORKSPACE_MODULE' });
   }
   const membership = await getMembership(userId);
   enforceActiveSubscription(membership);
