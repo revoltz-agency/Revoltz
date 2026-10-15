@@ -128,7 +128,7 @@ test('server module entitlements permit enabled modules and deny disabled or mis
   assert.equal(await requireOrganizationModule(USER_ID, 'growth_sales'), true);
   db.modules.set('growth_sales', { module_key: 'growth_sales', enabled: false, settings: {} });
   await assert.rejects(requireOrganizationModule(USER_ID, 'growth_sales'), { statusCode: 403, code: 'WORKSPACE_MODULE_DISABLED' });
-  await assert.rejects(requireOrganizationModule(USER_ID, 'not_a_module'), { statusCode: 500 });
+  await assert.rejects(requireOrganizationModule(USER_ID, 'not_a_module'), { statusCode: 400, code: 'INVALID_WORKSPACE_MODULE' });
 });
 
 test('billing enforcement requires an active subscription when the rollout switch is enabled', async () => {
