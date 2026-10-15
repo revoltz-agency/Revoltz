@@ -38,7 +38,7 @@ import {
 } from './session.js';
 import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed } from './security.js';
 import { notifyTelegramAuditRequest } from './telegram.js';
-import { readOrganizationWorkspace, requireOrganizationModule, updateOrganizationModules } from './organizationWorkspace.js';
+import { readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, updateOrganizationModules } from './organizationWorkspace.js';
 import { cancelRazorpaySubscriptionAtPeriodEnd, createRazorpaySubscription, processRazorpayWebhook } from './razorpaySubscriptions.js';
 import {
   authenticateWorkspaceUser,
@@ -264,8 +264,10 @@ app.get('/api/workspace/state', async (req, res) => {
   const session = await requireWorkspaceUser(req, res);
   if (!session) return;
   try {
+    await requireActiveOrganizationSubscription(session.user.id);
     return res.json(await readWorkspaceState(session.user.id));
-  } catch {
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
     return workspaceUnavailable(res);
   }
 });
@@ -286,9 +288,11 @@ app.put('/api/workspace/state', async (req, res) => {
     return res.status(413).json({ error: 'Workspace data is too large. Export a backup and remove old data before syncing.' });
   }
   try {
+    await requireActiveOrganizationSubscription(session.user.id);
     await writeWorkspaceState(session.user.id, state);
     return res.json({ saved: true, updatedAt: new Date().toISOString() });
-  } catch {
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
     return workspaceUnavailable(res);
   }
 });
