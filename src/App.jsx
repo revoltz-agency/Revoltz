@@ -41,6 +41,7 @@ import { dedupeLeads, isFoodBusiness, recommendService, savedGeminiLeadPlacehold
 import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
 import { markLeadContacted, stripLegacyCrmEmail, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
 import { getOrCreateCachedRequest } from './lib/placeDetailsCache.js';
+import { mergeGrowthSalesState } from './lib/growthSalesSync.js';
 import {
   applyManualLeadOverride, applyManualLeadUpdate, createManualLead, findManualLeadDuplicate,
   manualLeadOverrideFields, manualLeadSourceLabel, parseManualLeadCsv, validateManualLead,
@@ -303,6 +304,11 @@ function AgencyOSApp() {
   const initialConfigLoaded = useRef(false);
   const toastTimer = useRef(null);
   const detailsRequestsRef = useRef(new Map());
+  const growthSalesCloudReady = useRef(false);
+  const growthSalesSaveQueue = useRef(Promise.resolve());
+  const growthSalesLocalSnapshot = {
+    workflow, manualLeads, manualOverrides, savedPlaceIds, savedGeminiPlaceIds, searchHistory,
+  };
 
   useEffect(() => {
     if (!businessProfile) return;
@@ -374,6 +380,84 @@ function AgencyOSApp() {
     try { window.localStorage.setItem(MANUAL_OVERRIDES_STORAGE_KEY, JSON.stringify(manualOverrides)); }
     catch { /* Only explicitly user-entered overrides are stored; the active session remains usable. */ }
   }, [manualOverrides]);
+  useEffect(() => {
+    let active = true;
+    growthSalesCloudReady.current = false;
+    (async () => {
+      try {
+        const response = await fetch('/api/workspace/modules/growth_sales/data', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (!response.ok) return;
+        const payload = await response.json().catch(() => ({}));
+        if (!active || !payload.state || typeof payload.state !== 'object' || Array.isArray(payload.state)) return;
+
+        // Merge against the latest browser state at response time. Local edits
+        // win conflicts, while records that exist only in the cloud are kept.
+        const merged = mergeGrowthSalesState(growthSalesLocalSnapshot, payload.state);
+        setWorkflow(merged.workflow);
+        setManualLeads(merged.manualLeads);
+        setManualOverrides(merged.manualOverrides);
+        setSavedPlaceIds(merged.savedPlaceIds);
+        setSavedGeminiPlaceIds(merged.savedGeminiPlaceIds);
+        setSearchHistory(merged.searchHistory);
+        setLeads((current) => dedupeLeads([
+          ...current,
+          ...merged.manualLeads,
+          ...merged.savedPlaceIds.map((id) => savedLeadPlaceholder(id)),
+          ...merged.savedGeminiPlaceIds.map((id) => savedGeminiLeadPlaceholder(id)),
+        ].map((lead) => applyManualLeadOverride(lead, merged.manualOverrides))));
+        growthSalesCloudReady.current = true;
+      } catch (error) {
+        // Local mode and unauthenticated installs should keep working without
+        // cloud sync. Existing browser data is never cleared on sync failure.
+        console.warn('[AgencyOS] Growth & Sales cloud sync unavailable:', error?.message || error);
+      }
+    })();
+    return () => {
+      active = false;
+      growthSalesCloudReady.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!growthSalesCloudReady.current) return undefined;
+    const timer = window.setTimeout(() => {
+      const state = {
+        workflow: Object.fromEntries(Object.entries(workflow).map(([key, value]) => [key, cleanCrmRecord(value)])),
+        manualLeads: manualLeads.slice(0, 1000),
+        manualOverrides,
+        savedPlaceIds: savedPlaceIds.slice(0, 500),
+        savedGeminiPlaceIds: savedGeminiPlaceIds.slice(0, 500),
+        searchHistory: searchHistory.slice(0, 8),
+      };
+      growthSalesSaveQueue.current = growthSalesSaveQueue.current
+        .catch(() => {})
+        .then(async () => {
+          if (!growthSalesCloudReady.current) return;
+          const csrfEntry = document.cookie.split('; ').find((part) => part.startsWith('agencyos_workspace_csrf='));
+          const csrfToken = csrfEntry ? decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)) : '';
+          const response = await fetch('/api/workspace/modules/growth_sales/data', {
+            method: 'PUT',
+            credentials: 'include',
+            cache: 'no-store',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(csrfToken ? { 'X-Workspace-CSRF': csrfToken } : {}),
+            },
+            body: JSON.stringify({ state }),
+          });
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error || 'Cloud save failed.');
+          }
+        })
+        .catch((error) => console.warn('[AgencyOS] Growth & Sales cloud save failed:', error?.message || error));
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [workflow, manualLeads, manualOverrides, savedPlaceIds, savedGeminiPlaceIds, searchHistory]);
+
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
   function showToast(message) {
