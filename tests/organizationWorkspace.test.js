@@ -7,7 +7,7 @@ const ORIGINAL_DATABASE_URL = process.env.DATABASE_URL;
 const USER_ID = '3f0c1e2a-4b5d-4c6e-8f90-1a2b3c4d5e6f';
 const ORGANIZATION_ID = 'org-test-id';
 
-function useOrganizationDatabase(role = 'owner') {
+function useOrganizationDatabase(role = 'owner', organizationId = ORGANIZATION_ID) {
   process.env.DATABASE_URL = 'postgres://example.invalid/agencyos-test';
   const calls = [];
   const modules = new Map();
@@ -22,14 +22,14 @@ function useOrganizationDatabase(role = 'owner') {
       if (/^\s*INSERT INTO (organizations|organization_memberships|organization_subscriptions|organization_workspace_data)\b/i.test(text) && /\bSELECT\b/i.test(text)) return { rows: [], rowCount: 0 };
       if (/^\s*INSERT INTO organization_modules\s*\(organization_id, module_key, enabled\)\s*SELECT o\.id/i.test(text)) {
         for (const key of WORKSPACE_MODULES.map((module) => module.key)) {
-          modules.set(key, { module_key: key, enabled: true, settings: {}, organization_id: ORGANIZATION_ID });
+          modules.set(key, { module_key: key, enabled: true, settings: {}, organization_id: organizationId });
         }
         return { rows: [], rowCount: WORKSPACE_MODULES.length };
       }
       if (text.includes('FROM organization_memberships m') && text.includes('JOIN organizations o')) {
         return { rows: [{
-          organization_id: ORGANIZATION_ID,
-          organization_name: 'Priya workspace',
+          organization_id: organizationId,
+          organization_name: `Workspace ${organizationId}`,
           role,
           plan_key: 'starter',
           subscription_status: 'inactive',
@@ -188,4 +188,26 @@ test('module selection rejects unknown keys and non-owner members', async () => 
 
   useOrganizationDatabase('member');
   await assert.rejects(updateOrganizationModules(USER_ID, ['growth_sales']), { statusCode: 403 });
+});
+
+
+test('module data remains isolated between organizations', async () => {
+  const first = useOrganizationDatabase('owner', 'org-first');
+  await writeOrganizationModuleData(USER_ID, 'growth_sales', {
+    leads: [{ id: 'first-org-lead', name: 'First organization lead' }],
+  });
+
+  const second = useOrganizationDatabase('owner', 'org-second');
+  const emptySecondWorkspace = await readOrganizationModuleData(USER_ID, 'growth_sales');
+  assert.deepEqual(emptySecondWorkspace.state, {});
+
+  await writeOrganizationModuleData(USER_ID, 'growth_sales', {
+    leads: [{ id: 'second-org-lead', name: 'Second organization lead' }],
+  });
+
+  const firstState = first.moduleData.get('org-first:growth_sales');
+  const secondState = second.moduleData.get('org-second:growth_sales');
+  assert.deepEqual(firstState.state.leads.map((lead) => lead.id), ['first-org-lead']);
+  assert.deepEqual(secondState.state.leads.map((lead) => lead.id), ['second-org-lead']);
+  assert.notEqual(firstState, secondState);
 });
