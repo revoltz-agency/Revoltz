@@ -211,3 +211,32 @@ test('module data remains isolated between organizations', async () => {
   assert.deepEqual(secondState.state.leads.map((lead) => lead.id), ['second-org-lead']);
   assert.notEqual(firstState, secondState);
 });
+
+
+test('module data rejects oversized payloads before touching organization storage', async () => {
+  const db = useOrganizationDatabase();
+  const tooManyKeys = Object.fromEntries(Array.from({ length: 251 }, (_, index) => [`key-${index}`, index]));
+  await assert.rejects(writeOrganizationModuleData(USER_ID, 'growth_sales', tooManyKeys), {
+    statusCode: 413,
+    code: 'MODULE_DATA_TOO_LARGE',
+  });
+
+  await assert.rejects(writeOrganizationModuleData(USER_ID, 'growth_sales', {
+    largeValue: 'x'.repeat(1_000_001),
+  }), {
+    statusCode: 413,
+    code: 'MODULE_DATA_TOO_LARGE',
+  });
+  assert.equal(db.calls.some((call) => call.text.includes('INSERT INTO organization_module_data')), false);
+});
+
+test('module data rejects circular payloads with a validation error', async () => {
+  const db = useOrganizationDatabase();
+  const circular = {};
+  circular.self = circular;
+  await assert.rejects(writeOrganizationModuleData(USER_ID, 'growth_sales', circular), {
+    statusCode: 400,
+    code: 'INVALID_MODULE_DATA',
+  });
+  assert.equal(db.calls.some((call) => call.text.includes('INSERT INTO organization_module_data')), false);
+});
