@@ -62,20 +62,27 @@ export async function readOrganizationWorkspace(userId) {
   };
 }
 
-export async function requireOrganizationModule(userId, moduleKey) {
+export async function requireActiveOrganizationSubscription(userId) {
   await ensureSchema();
-  if (!MODULE_KEYS.includes(moduleKey)) {
-    throw Object.assign(new Error('Unknown workspace module.'), { statusCode: 500 });
-  }
+  if (String(process.env.AGENCYOS_BILLING_ENFORCED || '').trim().toLowerCase() !== 'true') return true;
   const membership = await getMembership(userId);
-  const billingEnforced = String(process.env.AGENCYOS_BILLING_ENFORCED || '').trim().toLowerCase() === 'true';
-  if (billingEnforced && membership.subscription_status !== 'active') {
+  if (membership.subscription_status !== 'active') {
     throw Object.assign(new Error('An active subscription is required to use this workspace feature.'), {
       statusCode: 402,
       code: 'SUBSCRIPTION_REQUIRED',
       subscriptionStatus: membership.subscription_status || 'inactive',
     });
   }
+  return true;
+}
+
+export async function requireOrganizationModule(userId, moduleKey) {
+  await ensureSchema();
+  if (!MODULE_KEYS.includes(moduleKey)) {
+    throw Object.assign(new Error('Unknown workspace module.'), { statusCode: 500 });
+  }
+  await requireActiveOrganizationSubscription(userId);
+  const membership = await getMembership(userId);
   const result = await queryDatabase(
     `SELECT enabled FROM organization_modules
      WHERE organization_id = $1 AND module_key = $2
