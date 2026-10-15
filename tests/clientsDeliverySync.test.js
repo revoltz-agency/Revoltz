@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeClientsDeliveryState, mergeWebsiteDeliveryState, mergeClientOnboardingState, mergeClientActivityState } from '../src/lib/clientsDeliverySync.js';
+import { mergeClientsDeliveryState, mergeWebsiteDeliveryState, mergeClientOnboardingState, mergeClientActivityState, mergeClientRetentionState } from '../src/lib/clientsDeliverySync.js';
 
 test('Clients & Delivery project merge keeps cloud-only projects and local edits', () => {
   const merged = mergeClientsDeliveryState(
@@ -86,4 +86,23 @@ test('Client Activity Log merge ignores malformed records and caps the history',
   assert.equal(merged.length, 2000);
   assert.equal(merged.at(-1).id, 'activity-2004');
   assert.deepEqual(mergeClientActivityState(null, { id: 'not-an-array', client: 'Invalid' }), []);
+});
+
+test('Client Retention merge preserves cloud-only accounts and prefers local edits', () => {
+  assert.deepEqual(mergeClientRetentionState(
+    [{ id: 'shared', client: 'Local name', status: 'Active' }, { id: 'local', client: 'Local only' }],
+    [{ id: 'shared', client: 'Cloud name', status: 'At risk' }, { id: 'cloud', client: 'Cloud only' }],
+  ), [
+    { id: 'shared', client: 'Local name', status: 'Active' },
+    { id: 'cloud', client: 'Cloud only' },
+    { id: 'local', client: 'Local only' },
+  ]);
+});
+
+test('Client Retention merge ignores malformed records and caps accounts at 1,000', () => {
+  const records = Array.from({ length: 1005 }, (_, index) => ({ id: `client-${index}`, client: `Client ${index}` }));
+  const merged = mergeClientRetentionState([...records, null, { id: 'bad', client: ' ' }], []);
+  assert.equal(merged.length, 1000);
+  assert.equal(merged.at(-1).id, 'client-1004');
+  assert.deepEqual(mergeClientRetentionState(null, { id: 'bad', client: 'Invalid' }), []);
 });
