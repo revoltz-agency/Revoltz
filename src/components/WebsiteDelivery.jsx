@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, ClipboardCheck, Download, ExternalLink, Plus, Trash2, Globe2, RotateCcw } from 'lucide-react';
 
 const KEY = 'agencyos:website-delivery:v1';
@@ -9,19 +9,53 @@ const phases = ['Not started', 'In progress', 'Waiting for client', 'Ready to la
 const defaultTasks = ['Confirm scope and price', 'Collect logo, photos and brand details', 'Confirm page copy and contact details', 'Check mobile layout', 'Test navigation and buttons', 'Test contact form or contact links', 'Check page title and description', 'Confirm client approval', 'Connect domain and hosting', 'Send handover instructions'];
 const blank = { client: '', project: 'Business website', demoUrl: '', liveUrl: '', deadline: '', phase: 'Not started', approval: 'Not requested', revisionLimit: '2', revisionsUsed: '0', nextAction: '', handover: '', tasks: defaultTasks.map((title, i) => ({ id: String(i + 1), title, done: false })) };
 const read = () => { try { const v = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(v) ? v.filter(x => x && typeof x.id === 'string') : []; } catch { return []; } };
+function mergeItems(localItems, cloudItems) {
+ const merged = new Map();
+ for (const item of Array.isArray(cloudItems) ? cloudItems : []) if (item && typeof item.id === 'string') merged.set(item.id, item);
+ for (const item of Array.isArray(localItems) ? localItems : []) if (item && typeof item.id === 'string') merged.set(item.id, item);
+ return [...merged.values()].slice(-500);
+}
 const safeUrl = value => { try { const u = new URL(value); return ['http:', 'https:'].includes(u.protocol) ? u.href : ''; } catch { return ''; } };
 function exportCsv(items) { const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"'; const rows = [['Client','Project','Phase','Approval','Deadline','Demo URL','Live URL','Revisions used','Revision limit','Next action','Handover notes','Checklist done','Checklist total'], ...items.map(x => [x.client,x.project,x.phase,x.approval,x.deadline,x.demoUrl,x.liveUrl,x.revisionsUsed,x.revisionLimit,x.nextAction,x.handover,(x.tasks||[]).filter(t=>t.done).length,(x.tasks||[]).length])]; const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(esc).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'})); const a=document.createElement('a'); a.href=url; a.download='agencyos-website-delivery.csv'; a.click(); URL.revokeObjectURL(url); }
 export default function WebsiteDelivery() {
- const [items,setItems]=useState(read);
+ const [items,setItems]=useState(read);\n const itemsRef=useRef(items);itemsRef.current=items;\n const cloudReady=useRef(false);\n const saveQueue=useRef(Promise.resolve());\n const [syncAttempt,setSyncAttempt]=useState(0);\n const [syncStatus,setSyncStatus]=useState('checking');
  const [form,setForm]=useState({...blank,tasks:defaultTasks.map((title,i)=>({id:String(i+1),title,done:false}))});
  const [notice,setNotice]=useState('');
  useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(items));}catch{setNotice('Browser storage is full; changes may not persist.')}},[items]);
+ useEffect(()=>{
+  let active=true;cloudReady.current=false;setSyncStatus('checking');
+  (async()=>{try{
+   const response=await fetch('/api/workspace/modules/clients_delivery/data',{credentials:'include',cache:'no-store'});
+   if(!response.ok)throw new Error('Cloud sync unavailable');
+   const payload=await response.json();
+   if(!active||!payload.state||typeof payload.state!=='object'||Array.isArray(payload.state))throw new Error('Invalid cloud state');
+   const merged=mergeItems(itemsRef.current,payload.state.websiteDelivery);
+   setItems(merged);cloudReady.current=true;setSyncStatus('connected');
+  }catch(error){if(active){setSyncStatus('unavailable');console.warn('[AgencyOS] Website Delivery cloud sync unavailable:',error?.message||error)}}})();
+  return()=>{active=false;cloudReady.current=false};
+ },[syncAttempt]);
+ useEffect(()=>{
+  if(!cloudReady.current)return undefined;
+  const timer=window.setTimeout(()=>{
+   const state={websiteDelivery:items.slice(0,500)};
+   saveQueue.current=saveQueue.current.catch(()=>{}).then(async()=>{
+    if(!cloudReady.current)return;
+    const csrfEntry=document.cookie.split('; ').find(part=>part.startsWith('agencyos_workspace_csrf='));
+    const csrfToken=csrfEntry?decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)):'';
+    setSyncStatus('saving');
+    const response=await fetch('/api/workspace/modules/clients_delivery/data',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...(csrfToken?{'X-Workspace-CSRF':csrfToken}:{})},body:JSON.stringify({state})});
+    if(!response.ok){const payload=await response.json().catch(()=>({}));throw new Error(payload.error||'Cloud save failed')}
+    setSyncStatus('synced');
+   }).catch(error=>{setSyncStatus('failed');console.warn('[AgencyOS] Website Delivery cloud save failed:',error?.message||error)});
+  },800);
+  return()=>window.clearTimeout(timer);
+ },[items]);
  const stats=useMemo(()=>({total:items.length,launch:items.filter(x=>x.phase==='Ready to launch').length,live:items.filter(x=>x.phase==='Launched').length,waiting:items.filter(x=>x.phase==='Waiting for client').length}),[items]);
- function add(e){e.preventDefault();if(!form.client.trim()){setNotice('Enter a client or business name first.');return;}const entry={...form,id:globalThis.crypto?.randomUUID?.()||String(Date.now()),client:form.client.trim(),createdAt:new Date().toISOString()};setItems(p=>[entry,...p]);setForm({...blank,tasks:defaultTasks.map((title,i)=>({id:String(i+1),title,done:false}))});setNotice('Delivery project created and saved in this browser.');}
+ function add(e){e.preventDefault();if(!form.client.trim()){setNotice('Enter a client or business name first.');return;}const entry={...form,id:globalThis.crypto?.randomUUID?.()||String(Date.now()),client:form.client.trim(),createdAt:new Date().toISOString()};setItems(p=>[entry,...p]);setForm({...blank,tasks:defaultTasks.map((title,i)=>({id:String(i+1),title,done:false}))});setNotice('Delivery project created.');}
  function update(id,patch){setItems(p=>p.map(x=>x.id===id?{...x,...patch}:x));}
  function toggleTask(projectId,taskId){setItems(p=>p.map(x=>x.id!==projectId?x:{...x,tasks:(x.tasks||[]).map(t=>t.id===taskId?{...t,done:!t.done}:t)}));}
  return <section style={{display:'grid',gap:16,maxWidth:1100,color:'var(--viz-text, #f5f5f5)'}}>
-  <header style={{display:'flex',gap:12,alignItems:'flex-start'}}><div style={{...card,padding:12}}><ClipboardCheck size={23}/></div><div><div style={{...muted,letterSpacing:'.13em',fontWeight:700}}>REVOLTZ AI · CLIENT DELIVERY</div><h1 style={{fontSize:30,margin:'4px 0 6px'}}>Website Delivery Hub</h1><p style={{...muted,margin:0}}>Manage each website from client approval through launch and handover—with a practical checklist and revision tracking.</p></div></header>
+  <header style={{display:'flex',gap:12,alignItems:'flex-start'}}><div style={{...card,padding:12}}><ClipboardCheck size={23}/></div><div><div style={{...muted,letterSpacing:'.13em',fontWeight:700}}>REVOLTZ AI · CLIENT DELIVERY</div><h1 style={{fontSize:30,margin:'4px 0 6px'}}>Website Delivery Hub</h1><p style={{...muted,margin:0}}>Manage each website from client approval through launch and handover—with a practical checklist and revision tracking.</p><button type="button" aria-live="polite" aria-label={['unavailable','failed'].includes(syncStatus)?'Retry cloud sync':'Website Delivery cloud sync status'} onClick={()=>{if(['unavailable','failed'].includes(syncStatus)){setSyncStatus('checking');setSyncAttempt(v=>v+1)}}} style={{marginTop:9,border:'1px solid var(--viz-border, #333)',borderRadius:999,padding:'5px 9px',background:'transparent',color:'var(--viz-muted, #a1a1aa)',fontSize:11,cursor:['unavailable','failed'].includes(syncStatus)?'pointer':'default'}}>{({checking:'CLOUD SYNC · CHECKING',connected:'CLOUD SYNC · CONNECTED',saving:'CLOUD SYNC · SAVING',synced:'CLOUD SYNC · SAVED',unavailable:'CLOUD SYNC · LOCAL ONLY · RETRY',failed:'CLOUD SYNC · SAVE FAILED · RETRY'})[syncStatus]}</button></div></header>
   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}>{[['Projects',stats.total],['Ready to launch',stats.launch],['Launched',stats.live],['Waiting on client',stats.waiting]].map(([label,value])=><div key={label} style={card}><div style={muted}>{label}</div><div style={{fontSize:23,fontWeight:750,marginTop:6}}>{value}</div></div>)}</div>
   {notice&&<div role="status" style={{...card,...muted}}>{notice}</div>}
   <form onSubmit={add} style={{...card,display:'grid',gap:12}}><h2 style={{fontSize:19,margin:0}}>Create delivery project</h2><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,190px),1fr))',gap:10}}>
@@ -39,6 +73,6 @@ export default function WebsiteDelivery() {
    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>{safeUrl(x.demoUrl)&&<a href={safeUrl(x.demoUrl)} target="_blank" rel="noreferrer" style={{...field,width:'auto',display:'inline-flex',alignItems:'center',gap:6,textDecoration:'none'}}><ExternalLink size={14}/> Open demo</a>}{safeUrl(x.liveUrl)&&<a href={safeUrl(x.liveUrl)} target="_blank" rel="noreferrer" style={{...field,width:'auto',display:'inline-flex',alignItems:'center',gap:6,textDecoration:'none'}}><Globe2 size={14}/> Open live site</a>}<span style={{...muted,alignSelf:'center'}}>Revisions: {used} used / {limit} allowed</span><button type="button" onClick={()=>update(x.id,{revisionsUsed:String(Math.min(1000,used+1))})} style={{...field,width:'auto',display:'inline-flex',gap:6,alignItems:'center',cursor:'pointer'}}><RotateCcw size={14}/> Log revision</button><button type="button" onClick={()=>update(x.id,{revisionsUsed:String(Math.max(0,used-1))})} disabled={used===0} style={{...field,width:'auto',cursor:'pointer'}}>Undo</button><button type="button" onClick={()=>{if(confirm('Delete this delivery project?'))setItems(p=>p.filter(y=>y.id!==x.id))}} style={{...field,width:'auto',display:'inline-flex',gap:6,alignItems:'center',marginLeft:'auto',cursor:'pointer'}}><Trash2 size={14}/> Delete</button></div>
    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,250px),1fr))',gap:12}}><div style={{...card,display:'grid',gap:8}}><strong>Launch checklist</strong>{tasks.map(t=><label key={t.id} style={{display:'flex',gap:8,alignItems:'flex-start',fontSize:13,cursor:'pointer'}}><input type="checkbox" checked={Boolean(t.done)} onChange={()=>toggleTask(x.id,t.id)} style={{marginTop:3}}/><span style={{textDecoration:t.done?'line-through':'none',opacity:t.done?.65:1}}>{t.title}</span></label>)}</div><div style={{...card,display:'grid',gap:9,alignContent:'start'}}><strong>Client handover & next step</strong><label style={{display:'grid',gap:5,fontSize:12}}>Next action<input maxLength={300} style={field} value={x.nextAction||''} onChange={e=>update(x.id,{nextAction:e.target.value})} placeholder="What happens next?"/></label><label style={{display:'grid',gap:5,fontSize:12}}>Handover notes<textarea rows={4} maxLength={2000} style={{...field,resize:'vertical'}} value={x.handover||''} onChange={e=>update(x.id,{handover:e.target.value})} placeholder="Record domain, hosting, maintenance and training details. Never store passwords."/></label>{x.phase==='Launched'&&x.approval!=='Approved'&&<div style={{...muted,display:'flex',gap:6}}><CheckCircle2 size={15}/> Mark client approval once confirmed; keep a record of any outstanding items.</div>}</div></div>
   </article>})}
-  <p style={muted}>Data saves in this browser only and does not publish, host or modify a website. Share demo/live links with clients separately. Do not store passwords, API keys or private access credentials here.</p>
+  <p style={muted}>Projects save in this browser and, when signed in with cloud sync available, to your workspace. Export CSV for a backup. If cloud sync is unavailable, your browser copy is preserved and you can retry from the status above. This tool does not publish, host or modify websites. Never store passwords or API keys here.</p>
  </section>;
 }
