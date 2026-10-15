@@ -107,6 +107,15 @@ const SCHEMA_STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS audit_sessions_expires_idx
      ON audit_sessions (expires_at)`,
+  // Shared fixed-window rate-limit buckets for coordination across server instances.
+  `CREATE TABLE IF NOT EXISTS shared_rate_limit_buckets (
+     bucket_key          text PRIMARY KEY,
+     window_started_at   timestamptz NOT NULL,
+     hit_count           integer NOT NULL CHECK (hit_count > 0),
+     expires_at          timestamptz NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS shared_rate_limit_buckets_expiry_idx
+     ON shared_rate_limit_buckets (expires_at)`,
   `CREATE TABLE IF NOT EXISTS workspace_users (
      id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
      name          text        NOT NULL,
