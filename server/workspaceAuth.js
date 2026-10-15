@@ -43,16 +43,36 @@ export async function registerWorkspaceUser({ name, email, password }) {
     throw Object.assign(new Error('Use a password between 12 and 128 characters.'), { statusCode: 400 });
   }
   const passwordHash = await hashPassword(password);
+  let createdUserId = null;
   try {
     const result = await queryDatabase(
       'INSERT INTO workspace_users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email, created_at',
       [cleanName, cleanEmail, passwordHash],
     );
     const user = safeUser(result.rows[0]);
+    createdUserId = user.id;
     await ensureWorkspaceOrganization(user.id, user.name);
     return user;
   } catch (error) {
-    if (error?.code === '23505') throw Object.assign(new Error('An account with this email already exists. Sign in instead.'), { statusCode: 409 });
+    // Organization provisioning spans several queries. If it fails after the
+    // user row was inserted, remove any partially-created organization first
+    // (its dependent rows cascade), then remove the account so the email can
+    // be used for a clean retry instead of leaving an unusable orphan.
+    if (createdUserId) {
+      try {
+        await queryDatabase('DELETE FROM organizations WHERE owner_user_id = $1', [createdUserId]);
+      } catch (cleanupError) {
+        console.error('[workspace-auth] organization cleanup after registration failure:', cleanupError?.message || cleanupError);
+      }
+      try {
+        await queryDatabase('DELETE FROM workspace_users WHERE id = $1', [createdUserId]);
+      } catch (cleanupError) {
+        console.error('[workspace-auth] account cleanup after registration failure:', cleanupError?.message || cleanupError);
+      }
+    }
+    if (!createdUserId && error?.code === '23505') {
+      throw Object.assign(new Error('An account with this email already exists. Sign in instead.'), { statusCode: 409 });
+    }
     throw error;
   }
 }
