@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { __setPoolForTests } from '../server/db.js';
-import { readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, requireOrganizationRole, updateOrganizationModules, WORKSPACE_MODULES } from '../server/organizationWorkspace.js';
+import { readOrganizationModuleData, readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, requireOrganizationRole, updateOrganizationModules, WORKSPACE_MODULES, writeOrganizationModuleData } from '../server/organizationWorkspace.js';
 
 const ORIGINAL_DATABASE_URL = process.env.DATABASE_URL;
 const USER_ID = '3f0c1e2a-4b5d-4c6e-8f90-1a2b3c4d5e6f';
@@ -11,6 +11,7 @@ function useOrganizationDatabase(role = 'owner') {
   process.env.DATABASE_URL = 'postgres://example.invalid/agencyos-test';
   const calls = [];
   const modules = new Map();
+  const moduleData = new Map();
   const pool = {
     calls,
     on() {},
@@ -37,6 +38,16 @@ function useOrganizationDatabase(role = 'owner') {
           cancel_at_period_end: false,
         }], rowCount: 1 };
       }
+      if (text.includes('SELECT state, updated_at FROM organization_module_data')) {
+        const row = moduleData.get(values[0] + ':' + values[1]);
+        return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+      }
+      if (text.includes('INSERT INTO organization_module_data')) {
+        const [organizationId, moduleKey, serialized] = values;
+        const row = { state: JSON.parse(serialized), updated_at: new Date('2026-01-03T00:00:00.000Z') };
+        moduleData.set(organizationId + ':' + moduleKey, row);
+        return { rows: [{ updated_at: row.updated_at }], rowCount: 1 };
+      }
       if (text.includes('SELECT enabled FROM organization_modules')) {
         const row = modules.get(values[1]);
         return { rows: row ? [{ enabled: row.enabled }] : [], rowCount: row ? 1 : 0 };
@@ -60,7 +71,7 @@ function useOrganizationDatabase(role = 'owner') {
     },
   };
   __setPoolForTests(pool);
-  return { calls, modules, pool };
+  return { calls, modules, moduleData, pool };
 }
 
 test.after(() => {
@@ -133,6 +144,29 @@ test('billing enforcement requires an active subscription when the rollout switc
   } finally {
     if (original === undefined) delete process.env.AGENCYOS_BILLING_ENFORCED;
     else process.env.AGENCYOS_BILLING_ENFORCED = original;
+  }
+});
+
+test('module data is stored separately and only accessible when that module is enabled', async () => {
+  const db = useOrganizationDatabase('member');
+  const originalBilling = process.env.AGENCYOS_BILLING_ENFORCED;
+  delete process.env.AGENCYOS_BILLING_ENFORCED;
+  try {
+    const saved = await writeOrganizationModuleData(USER_ID, 'growth_sales', { leads: [{ id: 'lead-1' }] });
+    assert.equal(saved.saved, true);
+    const read = await readOrganizationModuleData(USER_ID, 'growth_sales');
+    assert.deepEqual(read.state, { leads: [{ id: 'lead-1' }] });
+    assert.ok(db.calls.some((call) => call.text.includes('INSERT INTO organization_module_data')));
+    assert.ok(db.calls.some((call) => call.text.includes('SELECT state, updated_at FROM organization_module_data')));
+
+    db.modules.set('growth_sales', { module_key: 'growth_sales', enabled: false, settings: {} });
+    await assert.rejects(readOrganizationModuleData(USER_ID, 'growth_sales'), { statusCode: 403, code: 'WORKSPACE_MODULE_DISABLED' });
+    await assert.rejects(writeOrganizationModuleData(USER_ID, 'growth_sales', { leads: [] }), { statusCode: 403, code: 'WORKSPACE_MODULE_DISABLED' });
+    await assert.rejects(writeOrganizationModuleData(USER_ID, 'not_a_module', {}), { statusCode: 500 });
+    await assert.rejects(writeOrganizationModuleData(USER_ID, 'tools', []), { statusCode: 400, code: 'INVALID_MODULE_DATA' });
+  } finally {
+    if (originalBilling === undefined) delete process.env.AGENCYOS_BILLING_ENFORCED;
+    else process.env.AGENCYOS_BILLING_ENFORCED = originalBilling;
   }
 });
 
