@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { __setPoolForTests } from '../server/db.js';
-import { readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, updateOrganizationModules, WORKSPACE_MODULES } from '../server/organizationWorkspace.js';
+import { readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, requireOrganizationRole, updateOrganizationModules, WORKSPACE_MODULES } from '../server/organizationWorkspace.js';
 
 const ORIGINAL_DATABASE_URL = process.env.DATABASE_URL;
 const USER_ID = '3f0c1e2a-4b5d-4c6e-8f90-1a2b3c4d5e6f';
@@ -134,6 +134,17 @@ test('billing enforcement requires an active subscription when the rollout switc
     if (original === undefined) delete process.env.AGENCYOS_BILLING_ENFORCED;
     else process.env.AGENCYOS_BILLING_ENFORCED = original;
   }
+});
+
+test('shared workspace writes are restricted to owners and admins until module data is isolated', async () => {
+  useOrganizationDatabase('owner');
+  assert.equal(await requireOrganizationRole(USER_ID, ['owner', 'admin']), true);
+
+  useOrganizationDatabase('member');
+  await assert.rejects(requireOrganizationRole(USER_ID, ['owner', 'admin']), {
+    statusCode: 403,
+    code: 'ORGANIZATION_ROLE_REQUIRED',
+  });
 });
 
 test('module selection rejects unknown keys and non-owner members', async () => {
