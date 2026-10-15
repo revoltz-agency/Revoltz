@@ -227,7 +227,11 @@ export async function processRazorpayWebhook({ rawBody, signature, eventId }) {
          WHERE (
            razorpay_subscription_id = $1
            OR ($7::uuid IS NOT NULL AND organization_id = $7::uuid
-               AND (razorpay_subscription_id IS NULL OR razorpay_subscription_id = $1))
+               AND (razorpay_subscription_id IS NULL OR razorpay_subscription_id = $1)
+               AND NOT EXISTS (
+                 SELECT 1 FROM organization_subscriptions known
+                 WHERE known.razorpay_subscription_id = $1
+               ))
          )
            AND (
              ($6::bigint IS NOT NULL AND (last_provider_event_created IS NULL OR last_provider_event_created <= $6::bigint))
