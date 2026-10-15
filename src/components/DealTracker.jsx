@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, CalendarDays, CheckCircle2, CircleDollarSign, Download, Filter, Handshake, MessageSquare, Save, TrendingUp } from 'lucide-react';
+import { mergeDealTrackerState, mergeSalesPackagesState } from '../lib/financeReportsSync.js';
 
 const PACKAGES_KEY = 'agencyos:sales-packages:v1';
 const DEALS_KEY = 'agencyos:deal-tracker:v1';
@@ -12,10 +13,47 @@ function money(value) { const raw = String(value ?? '').trim(); if (!raw || !/^[
 export default function DealTracker() {
   const [packages, setPackages] = useState(() => { const p = read(PACKAGES_KEY, []); return Array.isArray(p) ? p : []; });
   const [deals, setDeals] = useState(() => { const d = read(DEALS_KEY, {}); return d && typeof d === 'object' && !Array.isArray(d) ? d : {}; });
+  const packagesRef = useRef(packages); packagesRef.current = packages;
+  const dealsRef = useRef(deals); dealsRef.current = deals;
+  const cloudReady = useRef(false); const saveQueue = useRef(Promise.resolve());
+  const [syncAttempt, setSyncAttempt] = useState(0); const [syncStatus, setSyncStatus] = useState('checking');
   const [filter, setFilter] = useState('All');
   const [notice, setNotice] = useState('');
   useEffect(() => { const refresh = () => { const p = read(PACKAGES_KEY, []); setPackages(Array.isArray(p) ? p : []); }; window.addEventListener('focus', refresh); return () => window.removeEventListener('focus', refresh); }, []);
   useEffect(() => { try { localStorage.setItem(DEALS_KEY, JSON.stringify(deals)); } catch {} }, [deals]);
+  useEffect(() => {
+    let active = true; cloudReady.current = false; setSyncStatus('checking');
+    (async () => {
+      try {
+        const response = await fetch('/api/workspace/modules/growth_sales/data', { credentials: 'include', cache: 'no-store' });
+        if (!response.ok) throw new Error('Cloud sync unavailable');
+        const payload = await response.json();
+        if (!active || !payload.state || typeof payload.state !== 'object' || Array.isArray(payload.state)) throw new Error('Invalid cloud state');
+        setPackages(mergeSalesPackagesState(packagesRef.current, payload.state.salesPackages));
+        setDeals(mergeDealTrackerState(dealsRef.current, payload.state.dealTracker));
+        cloudReady.current = true; setSyncStatus('connected');
+      } catch (error) {
+        if (active) { setSyncStatus('unavailable'); console.warn('[AgencyOS] Deal Pipeline cloud sync unavailable:', error?.message || error); }
+      }
+    })();
+    return () => { active = false; cloudReady.current = false; };
+  }, [syncAttempt]);
+  useEffect(() => {
+    if (!cloudReady.current) return undefined;
+    const timer = window.setTimeout(() => {
+      const state = { dealTracker: deals };
+      saveQueue.current = saveQueue.current.catch(() => {}).then(async () => {
+        if (!cloudReady.current) return;
+        const csrfEntry = document.cookie.split('; ').find(part => part.startsWith('agencyos_workspace_csrf='));
+        const csrfToken = csrfEntry ? decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)) : '';
+        setSyncStatus('saving');
+        const response = await fetch('/api/workspace/modules/growth_sales/data', { method: 'PUT', credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-Workspace-CSRF': csrfToken } : {}) }, body: JSON.stringify({ state }) });
+        if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.error || 'Cloud save failed'); }
+        setSyncStatus('synced');
+      }).catch(error => { setSyncStatus('failed'); console.warn('[AgencyOS] Deal Pipeline cloud save failed:', error?.message || error); });
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [deals]);
   const rows = useMemo(() => packages.map((pkg) => ({ ...pkg, tracking: deals[pkg.id] || { stage: pkg.status === 'Approved for review' ? 'Ready to contact' : 'Draft', expectedValue: '', nextFollowUp: '', notes: '' } })).filter((p) => filter === 'All' || p.tracking.stage === filter), [packages, deals, filter]);
   const update = (id, patch) => setDeals((current) => ({ ...current, [id]: { ...(current[id] || {}), ...patch } }));
   const stats = useMemo(() => {
@@ -29,7 +67,7 @@ export default function DealTracker() {
     const a = document.createElement('a'); a.href = url; a.download = 'revoltz-deal-pipeline.csv'; a.click(); URL.revokeObjectURL(url);
   }
   return <div style={{ display: 'grid', gap: 20, maxWidth: 1100 }}>
-    <header style={{ display: 'flex', gap: 13, alignItems: 'flex-start' }}><div style={{ border: '1px solid var(--viz-border, #333)', borderRadius: 13, padding: 12 }}><Handshake size={23} /></div><div><div style={{ ...muted, letterSpacing: '.14em', fontWeight: 700 }}>REVOLTZ AI · CLIENT CONVERSION</div><h1 style={{ fontSize: 32, margin: '4px 0 7px' }}>Deal Pipeline</h1><p style={{ ...muted, margin: 0 }}>Track each AI sales package from first draft to won or lost. Follow-ups and notes stay in this browser; nothing is sent automatically.</p></div></header>
+    <header style={{ display: 'flex', gap: 13, alignItems: 'flex-start' }}><div style={{ border: '1px solid var(--viz-border, #333)', borderRadius: 13, padding: 12 }}><Handshake size={23} /></div><div><div style={{ ...muted, letterSpacing: '.14em', fontWeight: 700 }}>REVOLTZ AI · CLIENT CONVERSION</div><h1 style={{ fontSize: 32, margin: '4px 0 7px' }}>Deal Pipeline</h1><p style={{ ...muted, margin: 0 }}>Track each AI sales package from first draft to won or lost. Nothing is sent automatically.</p><button type="button" aria-live="polite" aria-label={['unavailable','failed'].includes(syncStatus)?'Retry cloud sync':'Sales workspace cloud sync status'} onClick={()=>{if(['unavailable','failed'].includes(syncStatus)){setSyncStatus('checking');setSyncAttempt(v=>v+1)}}} style={{marginTop:9,border:'1px solid var(--viz-border, #333)',borderRadius:999,padding:'5px 9px',background:'transparent',color:'var(--viz-muted, #a1a1aa)',fontSize:11,cursor:['unavailable','failed'].includes(syncStatus)?'pointer':'default'}}>{({checking:'CLOUD SYNC · CHECKING',connected:'CLOUD SYNC · CONNECTED',saving:'CLOUD SYNC · SAVING',synced:'CLOUD SYNC · SAVED',unavailable:'CLOUD SYNC · LOCAL ONLY · RETRY',failed:'CLOUD SYNC · SAVE FAILED · RETRY'})[syncStatus]}</button></div></header>
     <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(155px,1fr))', gap: 10 }}>
       {[['Sales packages', stats.total, 'Saved proposal drafts'], ['Active deals', stats.active, 'Not won or lost'], ['Potential pipeline', '₹' + stats.pipeline.toLocaleString('en-IN'), 'Based on values you enter'], ['Deals won', stats.won, 'Marked won manually'], ['Won value', '₹' + stats.wonValue.toLocaleString('en-IN'), 'Based on values you enter']].map(([title, value, sub]) => <div key={title} style={{ border: '1px solid var(--viz-border, #333)', borderRadius: 12, padding: 14 }}><div style={muted}>{title}</div><div style={{ fontSize: 24, fontWeight: 750, margin: '7px 0' }}>{value}</div><div style={muted}>{sub}</div></div>)}
     </section>
