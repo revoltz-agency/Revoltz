@@ -62,6 +62,19 @@ export async function readOrganizationWorkspace(userId) {
   };
 }
 
+export async function requireOrganizationRole(userId, allowedRoles) {
+  await ensureSchema();
+  const membership = await getMembership(userId);
+  const roles = Array.isArray(allowedRoles) ? allowedRoles : [];
+  if (!roles.includes(membership.role)) {
+    throw Object.assign(new Error('Your organization role does not allow this action.'), {
+      statusCode: 403,
+      code: 'ORGANIZATION_ROLE_REQUIRED',
+    });
+  }
+  return true;
+}
+
 function enforceActiveSubscription(membership) {
   if (String(process.env.AGENCYOS_BILLING_ENFORCED || '').trim().toLowerCase() === 'true' &&
       membership.subscription_status !== 'active') {
