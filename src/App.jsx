@@ -14,6 +14,7 @@ import { getWebsiteAudit, opportunityReason, scoreOpportunity } from './lib/qual
 import { initials, ScorePill, titleCaseStatus } from './components/leadPrimitives.jsx';
 import { isAppPath, navigate, useRouterPath, withBase } from './lib/router.js';
 import RevoltzSite from './site/RevoltzSite.jsx';
+import WorkspaceAccess from './components/WorkspaceAccess.jsx';
 import BusinessAuditor from './components/BusinessAuditor.jsx';
 import SalesEngine from './components/SalesEngine.jsx';
 import DealTracker from './components/DealTracker.jsx';
@@ -1588,7 +1589,7 @@ function App() {
   // The public GitHub Pages build is intentionally website-only. AgencyOS
   // remains available in local/self-hosted builds for internal use.
   const publicSiteOnly = import.meta.env.VITE_PUBLIC_SITE_ONLY === 'true';
-  return !publicSiteOnly && isAppPath(path) ? <AgencyOSApp /> : <RevoltzSite />;
+  return !publicSiteOnly && isAppPath(path) ? <WorkspaceAccess><AgencyOSApp /></WorkspaceAccess> : <RevoltzSite />;
 }
 
 export default App;
