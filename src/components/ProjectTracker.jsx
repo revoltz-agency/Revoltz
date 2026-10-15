@@ -16,6 +16,7 @@ export default function ProjectTracker(){
  const [projects,setProjects]=useState(()=>{const v=read(KEY,[]);return Array.isArray(v)?v:[]});
  const projectsRef=useRef(projects);projectsRef.current=projects;
  const cloudReady=useRef(false);
+ const saveQueue=useRef(Promise.resolve());
  const [syncAttempt,setSyncAttempt]=useState(0);
  const [syncStatus,setSyncStatus]=useState('checking');
  const [form,setForm]=useState(blank);const [filter,setFilter]=useState('Active');const [notice,setNotice]=useState('');
@@ -37,12 +38,16 @@ export default function ProjectTracker(){
  useEffect(()=>{
   if(!cloudReady.current)return undefined;
   const timer=window.setTimeout(()=>{
-   const csrfEntry=document.cookie.split('; ').find(part=>part.startsWith('agencyos_workspace_csrf='));
-   const csrfToken=csrfEntry?decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)):'';
-   setSyncStatus('saving');
-   fetch('/api/workspace/modules/clients_delivery/data',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...(csrfToken?{'X-Workspace-CSRF':csrfToken}:{})},body:JSON.stringify({state:{projectTracker:projects.slice(0,500)}})})
-    .then(async response=>{if(!response.ok){const payload=await response.json().catch(()=>({}));throw new Error(payload.error||'Cloud save failed')}setSyncStatus('synced')})
-    .catch(error=>{setSyncStatus('failed');console.warn('[AgencyOS] Project Tracker cloud save failed:',error?.message||error)});
+   const state={projectTracker:projects.slice(0,500)};
+   saveQueue.current=saveQueue.current.catch(()=>{}).then(async()=>{
+    if(!cloudReady.current)return;
+    const csrfEntry=document.cookie.split('; ').find(part=>part.startsWith('agencyos_workspace_csrf='));
+    const csrfToken=csrfEntry?decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)):'';
+    setSyncStatus('saving');
+    const response=await fetch('/api/workspace/modules/clients_delivery/data',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...(csrfToken?{'X-Workspace-CSRF':csrfToken}:{})},body:JSON.stringify({state})});
+    if(!response.ok){const payload=await response.json().catch(()=>({}));throw new Error(payload.error||'Cloud save failed')}
+    setSyncStatus('synced');
+   }).catch(error=>{setSyncStatus('failed');console.warn('[AgencyOS] Project Tracker cloud save failed:',error?.message||error)});
   },800);
   return()=>window.clearTimeout(timer);
  },[projects]);
