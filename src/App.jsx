@@ -301,6 +301,7 @@ function AgencyOSApp() {
   const [auditRevealedIds, setAuditRevealedIds] = useState({});
   const [toast, setToast] = useState('');
   const [settingsNotice, setSettingsNotice] = useState('');
+  const [growthSalesSyncStatus, setGrowthSalesSyncStatus] = useState('checking');
   const initialConfigLoaded = useRef(false);
   const toastTimer = useRef(null);
   const detailsRequestsRef = useRef(new Map());
@@ -390,9 +391,15 @@ function AgencyOSApp() {
           credentials: 'include',
           cache: 'no-store',
         });
-        if (!response.ok) return;
+        if (!response.ok) {
+          if (active) setGrowthSalesSyncStatus('unavailable');
+          return;
+        }
         const payload = await response.json().catch(() => ({}));
-        if (!active || !payload.state || typeof payload.state !== 'object' || Array.isArray(payload.state)) return;
+        if (!active || !payload.state || typeof payload.state !== 'object' || Array.isArray(payload.state)) {
+          if (active) setGrowthSalesSyncStatus('unavailable');
+          return;
+        }
 
         // Merge against the latest browser state at response time. Local edits
         // win conflicts, while records that exist only in the cloud are kept.
@@ -410,9 +417,11 @@ function AgencyOSApp() {
           ...merged.savedGeminiPlaceIds.map((id) => savedGeminiLeadPlaceholder(id)),
         ].map((lead) => applyManualLeadOverride(lead, merged.manualOverrides))));
         growthSalesCloudReady.current = true;
+        setGrowthSalesSyncStatus('synced');
       } catch (error) {
         // Local mode and unauthenticated installs should keep working without
         // cloud sync. Existing browser data is never cleared on sync failure.
+        if (active) setGrowthSalesSyncStatus('unavailable');
         console.warn('[AgencyOS] Growth & Sales cloud sync unavailable:', error?.message || error);
       }
     })();
@@ -437,6 +446,7 @@ function AgencyOSApp() {
         .catch(() => {})
         .then(async () => {
           if (!growthSalesCloudReady.current) return;
+          setGrowthSalesSyncStatus('saving');
           const csrfEntry = document.cookie.split('; ').find((part) => part.startsWith('agencyos_workspace_csrf='));
           const csrfToken = csrfEntry ? decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)) : '';
           const response = await fetch('/api/workspace/modules/growth_sales/data', {
@@ -453,8 +463,12 @@ function AgencyOSApp() {
             const payload = await response.json().catch(() => ({}));
             throw new Error(payload.error || 'Cloud save failed.');
           }
+          setGrowthSalesSyncStatus('synced');
         })
-        .catch((error) => console.warn('[AgencyOS] Growth & Sales cloud save failed:', error?.message || error));
+        .catch((error) => {
+          setGrowthSalesSyncStatus('failed');
+          console.warn('[AgencyOS] Growth & Sales cloud save failed:', error?.message || error);
+        });
     }, 800);
     return () => window.clearTimeout(timer);
   }, [workflow, manualLeads, manualOverrides, savedPlaceIds, savedGeminiPlaceIds, searchHistory]);
@@ -862,7 +876,7 @@ function AgencyOSApp() {
         <header className="topbar">
           <button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Menu size={19} /></button>
           <div className="topbar-context"><span className="topbar-kicker">WORKSPACE</span><span className="topbar-separator">/</span><span className="topbar-page">{activePage}</span>{window.__agencyOSPreview && <span className="preview-mode-pill">PREVIEW · SAVED IN THIS BROWSER</span>}</div>
-          <div className="topbar-actions"><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
+          <div className="topbar-actions"><span className="preview-mode-pill" role="status" aria-live="polite" title="Growth & Sales cloud sync status">{({ checking: 'CLOUD SYNC · CHECKING', synced: 'CLOUD SYNC · SAVED', saving: 'CLOUD SYNC · SAVING', unavailable: 'CLOUD SYNC · LOCAL ONLY', failed: 'CLOUD SYNC · SAVE FAILED' })[growthSalesSyncStatus]}</span><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
         </header>
         <main className="main-content">
 
