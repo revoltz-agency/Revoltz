@@ -75,6 +75,10 @@ test('subscription cancellation is owner-only, scheduled at period end, and pers
   try {
     const result = await cancelRazorpaySubscriptionAtPeriodEnd('user-test');
     assert.deepEqual(result, { scheduled: true, cancelAtPeriodEnd: true });
+    const lockedRead = calls.find((call) => call.text.includes('FROM organization_memberships m') && call.text.includes('JOIN organization_subscriptions s'));
+    assert.match(lockedRead.text, /FOR UPDATE OF s/);
+    assert.ok(calls.some((call) => call.text === 'BEGIN'));
+    assert.ok(calls.some((call) => call.text === 'COMMIT'));
     assert.ok(calls.some((call) => call.text.includes('cancel_at_period_end = true') && call.values[0] === 'org-test'));
   } finally {
     __setPoolForTests(null);
