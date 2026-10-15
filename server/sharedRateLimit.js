@@ -6,6 +6,8 @@ import { sha256Hex } from './security.js';
 export async function checkSharedRateLimit(key, { windowMs = 900_000, limit = 20, now = new Date() } = {}) {
   await ensureSchema();
   const bucketKey = sha256Hex(String(key || 'unknown'));
+  // Opportunistically prune expired rows; the index keeps this bounded to stale buckets.
+  await queryDatabase('DELETE FROM shared_rate_limit_buckets WHERE expires_at <= $1', [now.toISOString()]);
   const result = await queryDatabase(
     `INSERT INTO shared_rate_limit_buckets (bucket_key, window_started_at, hit_count, expires_at)
      VALUES ($1, $2, 1, $2::timestamptz + ($3::bigint * interval '1 millisecond'))
