@@ -113,10 +113,8 @@ app.use(['/api/workspace', '/api/places', '/api/website'], (_req, res, next) => 
 });
 
 // --- Multi-user AgencyOS workspace accounts --------------------------------
-const workspaceLoginLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 10 });
-// Account-level failures use PostgreSQL so limits are shared across server instances.
-// Only a hash of the email is retained as the database key.
-const workspaceRegisterLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 5 });
+// Workspace account IP limits use PostgreSQL buckets, so multiple server instances
+// enforce the same thresholds. Client IPs and account identifiers are hashed before storage.
 
 function workspaceUnavailable(res) {
   return res.status(503).json({ error: 'Workspace accounts are temporarily unavailable. Please try again later.' });
@@ -141,7 +139,11 @@ app.post('/api/workspace/register', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDatabaseConfigured()) return workspaceUnavailable(res);
   if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
-  const rate = workspaceRegisterLimiter.check(`register:${clientKey(req)}`);
+  const rate = await checkSharedRateLimit(`workspace-register-ip:${clientKey(req)}`, {
+    windowMs: 60 * 60_000,
+    limit: 5,
+  }).catch(() => null);
+  if (!rate) return workspaceUnavailable(res);
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retryAfterSeconds));
     return res.status(429).json({ error: 'Too many account attempts. Please try again later.' });
@@ -163,7 +165,11 @@ app.post('/api/workspace/login', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDatabaseConfigured()) return workspaceUnavailable(res);
   if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
-  const rate = workspaceLoginLimiter.check(`login:${clientKey(req)}`);
+  const rate = await checkSharedRateLimit(`workspace-login-ip:${clientKey(req)}`, {
+    windowMs: 10 * 60_000,
+    limit: 10,
+  }).catch(() => null);
+  if (!rate) return workspaceUnavailable(res);
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retryAfterSeconds));
     return res.status(429).json({ error: 'Too many sign-in attempts. Please wait a few minutes.' });
