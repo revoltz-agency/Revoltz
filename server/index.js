@@ -38,7 +38,7 @@ import {
 } from './session.js';
 import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed } from './security.js';
 import { notifyTelegramAuditRequest } from './telegram.js';
-import { readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, updateOrganizationModules } from './organizationWorkspace.js';
+import { readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, requireOrganizationRole, updateOrganizationModules } from './organizationWorkspace.js';
 import { cancelRazorpaySubscriptionAtPeriodEnd, createRazorpaySubscription, processRazorpayWebhook } from './razorpaySubscriptions.js';
 import {
   authenticateWorkspaceUser,
@@ -297,6 +297,7 @@ app.put('/api/workspace/state', async (req, res) => {
   }
   try {
     await requireActiveOrganizationSubscription(session.user.id);
+    await requireOrganizationRole(session.user.id, ['owner', 'admin']);
     await writeWorkspaceState(session.user.id, state);
     return res.json({ saved: true, updatedAt: new Date().toISOString() });
   } catch (error) {
