@@ -116,6 +116,45 @@ export async function requireOrganizationModule(userId, moduleKey) {
   return true;
 }
 
+export async function readOrganizationModuleData(userId, moduleKey) {
+  await requireOrganizationModule(userId, moduleKey);
+  const membership = await getMembership(userId);
+  const result = await queryDatabase(
+    `SELECT state, updated_at FROM organization_module_data
+     WHERE organization_id = $1 AND module_key = $2 LIMIT 1`,
+    [membership.organization_id, moduleKey],
+  );
+  const row = result.rows[0];
+  return {
+    state: row?.state && typeof row.state === 'object' && !Array.isArray(row.state) ? row.state : {},
+    updatedAt: row?.updated_at || null,
+  };
+}
+
+export async function writeOrganizationModuleData(userId, moduleKey, state) {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) {
+    throw Object.assign(new Error('Module data must be an object.'), { statusCode: 400, code: 'INVALID_MODULE_DATA' });
+  }
+  let serialized;
+  try { serialized = JSON.stringify(state); } catch {
+    throw Object.assign(new Error('Module data is invalid.'), { statusCode: 400, code: 'INVALID_MODULE_DATA' });
+  }
+  if (serialized.length > 1_000_000 || Object.keys(state).length > 250) {
+    throw Object.assign(new Error('Module data is too large.'), { statusCode: 413, code: 'MODULE_DATA_TOO_LARGE' });
+  }
+  await requireOrganizationModule(userId, moduleKey);
+  const membership = await getMembership(userId);
+  const result = await queryDatabase(
+    `INSERT INTO organization_module_data (organization_id, module_key, state, updated_at)
+     VALUES ($1, $2, $3::jsonb, now())
+     ON CONFLICT (organization_id, module_key)
+     DO UPDATE SET state = EXCLUDED.state, updated_at = now()
+     RETURNING updated_at`,
+    [membership.organization_id, moduleKey, serialized],
+  );
+  return { saved: true, updatedAt: result.rows[0]?.updated_at || null };
+}
+
 export async function updateOrganizationModules(userId, requestedKeys) {
   await ensureSchema();
   if (!Array.isArray(requestedKeys) || requestedKeys.length > MODULE_KEYS.length ||
