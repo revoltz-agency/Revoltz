@@ -74,6 +74,18 @@ test('PostgreSQL module data remains isolated between two organizations', { skip
     assert.deepEqual(stateB.state, { leads: [{ id: 'private-b', business: 'B-only lead' }] });
     assert.ok(!JSON.stringify(stateA.state).includes('private-b'));
     assert.ok(!JSON.stringify(stateB.state).includes('private-a'));
+
+    // Saving a complete snapshot must also persist deletions, not merge stale cloud keys back in.
+    await writeOrganizationModuleData(userIdA, 'growth_sales', {
+      leads: [{ id: 'kept-a', business: 'Remaining lead' }],
+      workflow: { stage: 'updated' },
+    });
+    const replacedStateA = await readOrganizationModuleData(userIdA, 'growth_sales');
+    assert.deepEqual(replacedStateA.state, {
+      leads: [{ id: 'kept-a', business: 'Remaining lead' }],
+      workflow: { stage: 'updated' },
+    });
+    assert.ok(!JSON.stringify(replacedStateA.state).includes('private-a'));
   } finally {
     if (createdOrganizationIds.length) {
       await queryDatabase('DELETE FROM organizations WHERE id = ANY($1::uuid[])', [createdOrganizationIds]).catch(() => {});
