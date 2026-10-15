@@ -170,16 +170,24 @@ app.post('/api/workspace/login', async (req, res) => {
     return res.status(429).json({ error: 'Too many sign-in attempts. Please wait a few minutes.' });
   }
   const loginEmail = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail) && loginEmail.length <= 254) {
-    const accountRate = workspaceLoginAccountLimiter.check('account:' + sha256Hex(loginEmail));
-    if (!accountRate.allowed) {
-      res.setHeader('Retry-After', String(accountRate.retryAfterSeconds));
-      return res.status(429).json({ error: 'Too many sign-in attempts for this account. Please wait before trying again.' });
-    }
-  }
+  const accountKey = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail) && loginEmail.length <= 254
+    ? 'account:' + sha256Hex(loginEmail)
+    : null;
   try {
     const user = await authenticateWorkspaceUser(req.body || {});
-    if (!user) return res.status(401).json({ error: 'Email or password is incorrect.' });
+    if (!user) {
+      if (accountKey) {
+        const accountRate = workspaceLoginAccountLimiter.check(accountKey);
+        if (!accountRate.allowed) {
+          res.setHeader('Retry-After', String(accountRate.retryAfterSeconds));
+          return res.status(429).json({ error: 'Too many failed sign-in attempts for this account. Please wait before trying again.' });
+        }
+      }
+      return res.status(401).json({ error: 'Email or password is incorrect.' });
+    }
+    // Count failed attempts only: a correct password can still sign in, and
+    // successful authentication clears any accumulated account-level failures.
+    if (accountKey) workspaceLoginAccountLimiter.reset(accountKey);
     const session = await createWorkspaceSession(user.id);
     const maxAge = Math.floor((session.expiresAt.getTime() - Date.now()) / 1000);
     res.append('Set-Cookie', workspaceSessionCookie(session.token, req, maxAge));
