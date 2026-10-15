@@ -169,6 +169,14 @@ app.post('/api/workspace/login', async (req, res) => {
     res.setHeader('Retry-After', String(rate.retryAfterSeconds));
     return res.status(429).json({ error: 'Too many sign-in attempts. Please wait a few minutes.' });
   }
+  const loginEmail = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail) && loginEmail.length <= 254) {
+    const accountRate = workspaceLoginAccountLimiter.check('account:' + sha256Hex(loginEmail));
+    if (!accountRate.allowed) {
+      res.setHeader('Retry-After', String(accountRate.retryAfterSeconds));
+      return res.status(429).json({ error: 'Too many sign-in attempts for this account. Please wait before trying again.' });
+    }
+  }
   try {
     const user = await authenticateWorkspaceUser(req.body || {});
     if (!user) return res.status(401).json({ error: 'Email or password is incorrect.' });
