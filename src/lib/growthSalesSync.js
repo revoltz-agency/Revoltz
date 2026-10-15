@@ -26,14 +26,20 @@ function mergeStringLists(cloudValues, localValues, limit = 500) {
 }
 
 function mergeSearchHistory(cloudHistory, localHistory) {
-  const records = mergeRecords(
-    cloudHistory,
-    localHistory,
-    (item) => item && typeof item.category === 'string' && typeof item.city === 'string'
-      ? `${item.category.trim().toLowerCase()}|${item.city.trim().toLowerCase()}`
-      : '',
-  );
-  return records.slice(-8).reverse();
+  const records = [];
+  const seen = new Set();
+  for (const item of [
+    ...(Array.isArray(localHistory) ? localHistory : []),
+    ...(Array.isArray(cloudHistory) ? cloudHistory : []),
+  ]) {
+    if (!item || typeof item.category !== 'string' || typeof item.city !== 'string') continue;
+    const key = `${item.category.trim().toLowerCase()}|${item.city.trim().toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    records.push(item);
+    if (records.length === 8) break;
+  }
+  return records;
 }
 
 export function mergeGrowthSalesState(localState, cloudState) {
