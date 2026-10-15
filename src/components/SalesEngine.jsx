@@ -91,7 +91,7 @@ export default function SalesEngine({ leads = [], getCrm, apiKey = '' }) {
   function savePackage(pkg) {
     setPackages((current) => [pkg, ...current.filter((item) => item.id !== pkg.id)].slice(0, 100));
     setActivePackageId(pkg.id);
-    setNotice('Draft saved in this browser. Review it before sending.');
+    setNotice('Draft saved. Review it before sending.');
   }
   async function generate(event) {
     event.preventDefault(); setError(''); setNotice('');
