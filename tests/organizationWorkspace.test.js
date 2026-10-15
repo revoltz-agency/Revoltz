@@ -156,8 +156,14 @@ test('module data is stored separately and only accessible when that module is e
     assert.equal(saved.saved, true);
     const read = await readOrganizationModuleData(USER_ID, 'growth_sales');
     assert.deepEqual(read.state, { leads: [{ id: 'lead-1' }] });
-    assert.ok(db.calls.some((call) => call.text.includes('INSERT INTO organization_module_data')));
-    assert.ok(db.calls.some((call) => call.text.includes('SELECT state, updated_at FROM organization_module_data')));
+    const moduleInsert = db.calls.find((call) => call.text.includes('INSERT INTO organization_module_data'));
+    const moduleRead = db.calls.find((call) => call.text.includes('SELECT state, updated_at FROM organization_module_data'));
+    assert.ok(moduleInsert, 'module state must be persisted through the organization-scoped table');
+    assert.ok(moduleRead, 'module state must be read from the organization-scoped table');
+    assert.match(moduleInsert.text, /ON CONFLICT \(organization_id, module_key\)/);
+    assert.match(moduleRead.text, /WHERE organization_id = \$1 AND module_key = \$2/);
+    assert.deepEqual(moduleInsert.values.slice(0, 2), [ORGANIZATION_ID, 'growth_sales']);
+    assert.deepEqual(moduleRead.values, [ORGANIZATION_ID, 'growth_sales']);
 
     db.modules.set('growth_sales', { module_key: 'growth_sales', enabled: false, settings: {} });
     await assert.rejects(readOrganizationModuleData(USER_ID, 'growth_sales'), { statusCode: 403, code: 'WORKSPACE_MODULE_DISABLED' });
