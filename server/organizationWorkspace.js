@@ -148,7 +148,7 @@ export async function writeOrganizationModuleData(userId, moduleKey, state) {
     `INSERT INTO organization_module_data (organization_id, module_key, state, updated_at)
      VALUES ($1, $2, $3::jsonb, now())
      ON CONFLICT (organization_id, module_key)
-     DO UPDATE SET state = EXCLUDED.state, updated_at = now()
+     DO UPDATE SET state = organization_module_data.state || EXCLUDED.state, updated_at = now()
      RETURNING updated_at`,
     [membership.organization_id, moduleKey, serialized],
   );
