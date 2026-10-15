@@ -139,6 +139,12 @@ test('billing enforcement denies a known-expired active subscription but allows 
       code: 'SUBSCRIPTION_REQUIRED',
       subscriptionStatus: 'active',
     });
+    await assert.rejects(requireOrganizationModule(USER_ID, 'growth_sales'), {
+      statusCode: 402,
+      code: 'SUBSCRIPTION_REQUIRED',
+      subscriptionStatus: 'active',
+    });
+    assert.equal(db.calls.some((call) => call.text.includes('SELECT enabled FROM organization_modules')), false);
 
     useOrganizationDatabase('owner', ORGANIZATION_ID, new Map(), 'active', '2027-01-01T00:00:00.000Z');
     assert.equal(await requireActiveOrganizationSubscription(USER_ID), true);
