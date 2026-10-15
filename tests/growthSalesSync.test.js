@@ -123,3 +123,21 @@ test('Growth & Sales merge applies record and list bounds without dropping local
   assert.equal(merged.searchHistory.length, 8);
   assert.equal(merged.searchHistory[0].category, 'Category 0');
 });
+
+
+test('cloud-authoritative reload after a revision conflict does not resurrect stale local records', () => {
+  const reloaded = mergeGrowthSalesState({}, {
+    workflow: { currentLead: { status: 'CONTACTED' } },
+    manualLeads: [{ id: 'still-exists', name: 'Kept in cloud' }],
+    manualOverrides: {},
+    savedPlaceIds: ['current-place'],
+    savedGeminiPlaceIds: [],
+    searchHistory: [],
+  });
+
+  assert.deepEqual(reloaded.workflow, { currentLead: { status: 'CONTACTED' } });
+  assert.deepEqual(reloaded.manualLeads, [{ id: 'still-exists', name: 'Kept in cloud' }]);
+  assert.deepEqual(reloaded.savedPlaceIds, ['current-place']);
+  assert.equal(reloaded.manualLeads.some((lead) => lead.id === 'deleted-on-another-device'), false);
+  assert.equal(reloaded.savedPlaceIds.includes('deleted-place'), false);
+});
