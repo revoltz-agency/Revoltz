@@ -306,7 +306,8 @@ function AgencyOSApp() {
   const detailsRequestsRef = useRef(new Map());
   const growthSalesCloudReady = useRef(false);
   const growthSalesSaveQueue = useRef(Promise.resolve());
-  const growthSalesLocalSnapshot = {
+  const growthSalesLocalSnapshot = useRef(null);
+  growthSalesLocalSnapshot.current = {
     workflow, manualLeads, manualOverrides, savedPlaceIds, savedGeminiPlaceIds, searchHistory,
   };
 
@@ -395,7 +396,7 @@ function AgencyOSApp() {
 
         // Merge against the latest browser state at response time. Local edits
         // win conflicts, while records that exist only in the cloud are kept.
-        const merged = mergeGrowthSalesState(growthSalesLocalSnapshot, payload.state);
+        const merged = mergeGrowthSalesState(growthSalesLocalSnapshot.current, payload.state);
         setWorkflow(merged.workflow);
         setManualLeads(merged.manualLeads);
         setManualOverrides(merged.manualOverrides);
