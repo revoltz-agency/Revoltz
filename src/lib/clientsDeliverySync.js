@@ -31,3 +31,15 @@ export function mergeWebsiteDeliveryState(localItems, cloudItems) {
   for (const item of local) merged.set(item.id, item);
   return [...merged.values()].slice(-500);
 }
+
+export function mergeClientOnboardingState(localChecks, cloudChecks) {
+  const local = localChecks && typeof localChecks === 'object' && !Array.isArray(localChecks) ? localChecks : {};
+  const cloud = cloudChecks && typeof cloudChecks === 'object' && !Array.isArray(cloudChecks) ? cloudChecks : {};
+  const merged = { ...cloud };
+  for (const [clientId, record] of Object.entries(local)) {
+    if (clientId && record && typeof record === 'object' && !Array.isArray(record)) merged[clientId] = record;
+  }
+  return Object.fromEntries(Object.entries(merged).filter(([, record]) =>
+    record && typeof record === 'object' && !Array.isArray(record)
+  ).slice(-1000));
+}
