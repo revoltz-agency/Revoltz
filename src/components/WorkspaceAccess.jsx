@@ -59,6 +59,9 @@ export default function WorkspaceAccess({ children }) {
       const payload = await request(endpoint, { method: 'POST', body: JSON.stringify(form) });
       setUser(payload.user);
       setStatus('authenticated');
+      // The app may have checked organization settings before this session
+      // existed. Refresh module visibility now that the session cookie is set.
+      window.dispatchEvent(new Event('agencyos:modules-updated'));
     } catch (reason) {
       setError(reason.message || 'Unable to access your workspace.');
     } finally {
