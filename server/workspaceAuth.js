@@ -189,13 +189,38 @@ export async function readWorkspaceState(userId) {
   return { state: result.rows[0]?.state && typeof result.rows[0].state === 'object' ? result.rows[0].state : {}, updatedAt: result.rows[0]?.updated_at || null };
 }
 
-export async function writeWorkspaceState(userId, state) {
+export async function writeWorkspaceState(userId, state, expectedUpdatedAt) {
+  if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== null &&
+      (typeof expectedUpdatedAt !== 'string' || !Number.isFinite(Date.parse(expectedUpdatedAt)))) {
+    throw Object.assign(new Error('Workspace revision is invalid. Refresh before saving.'), { statusCode: 400, code: 'INVALID_WORKSPACE_REVISION' });
+  }
+  if (!state || typeof state !== 'object' || Array.isArray(state)) {
+    throw Object.assign(new Error('Workspace state must be an object.'), { statusCode: 400, code: 'INVALID_WORKSPACE_STATE' });
+  }
+  let serialized;
+  try { serialized = JSON.stringify(state); } catch {
+    throw Object.assign(new Error('Workspace state is invalid.'), { statusCode: 400, code: 'INVALID_WORKSPACE_STATE' });
+  }
+  if (serialized.length > 1_000_000 || Object.keys(state).length > 250) {
+    throw Object.assign(new Error('Workspace state is too large.'), { statusCode: 413, code: 'WORKSPACE_STATE_TOO_LARGE' });
+  }
+  if (expectedUpdatedAt === undefined) {
+    throw Object.assign(new Error('A cloud revision is required. Reload the latest workspace data before saving.'), { statusCode: 400, code: 'WORKSPACE_REVISION_REQUIRED' });
+  }
   await ensureSchema();
   const organizationId = await resolveWorkspaceOrganizationId(userId);
-  await queryDatabase(
+  const result = await queryDatabase(
     `INSERT INTO organization_workspace_data (organization_id, state, updated_at) VALUES ($1, $2::jsonb, now())
-     ON CONFLICT (organization_id) DO UPDATE SET state = EXCLUDED.state, updated_at = now()`,
-    [organizationId, JSON.stringify(state)],
+     ON CONFLICT (organization_id) DO UPDATE SET state = EXCLUDED.state, updated_at = now()
+     WHERE organization_workspace_data.updated_at IS NOT DISTINCT FROM $3::timestamptz
+     RETURNING updated_at`,
+    [organizationId, serialized, expectedUpdatedAt],
   );
-  return { saved: true };
+  if (!result.rows[0]) {
+    throw Object.assign(new Error('This workspace changed on another device. Refresh the latest data before saving again.'), {
+      statusCode: 409,
+      code: 'WORKSPACE_REVISION_CONFLICT',
+    });
+  }
+  return { saved: true, updatedAt: result.rows[0].updated_at || null };
 }
