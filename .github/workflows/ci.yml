@@ -9,6 +9,22 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agencyos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d agencyos_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      AGENCYOS_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/agencyos_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,6 +33,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Run real PostgreSQL isolation and rate-limit integration tests
+        run: node --test --test-concurrency=1 tests/organizationIsolation.postgres.integration.test.js tests/sharedRateLimit.postgres.integration.test.js
       - run: npm run build
       - name: Verify the public GitHub Pages build
         run: VITE_PUBLIC_SITE_ONLY=true npm run build -- --base=/Revoltz/
