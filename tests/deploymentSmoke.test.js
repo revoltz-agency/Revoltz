@@ -33,8 +33,8 @@ test('deployment smoke check passes only when public config and private-route bo
     fetchImpl: async (url) => payloads.get(url.pathname),
   });
   assert.equal(result.ready, true);
-  assert.equal(result.passed, 5);
-  assert.equal(result.total, 5);
+  assert.equal(result.passed, 6);
+  assert.equal(result.total, 6);
 });
 
 test('deployment smoke check blocks a private route that unexpectedly allows anonymous access', async () => {
