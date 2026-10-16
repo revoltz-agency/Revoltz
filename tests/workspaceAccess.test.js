@@ -34,4 +34,6 @@ test('the app uses one authentication gate and announces account changes across 
   assert.match(app, /agencyos-workspace-session/);
   assert.match(app, /event\.data\.userId !== userId/);
   assert.match(app, /window\.location\.reload\(\)/);
+  const authGate = await readFile(new URL('../src/components/WorkspaceAuthGate.jsx', import.meta.url), 'utf8');
+  assert.match(authGate, /type: 'session-changed', userId: null/);
 });
