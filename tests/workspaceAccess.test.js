@@ -36,4 +36,8 @@ test('the app uses one authentication gate and announces account changes across 
   assert.match(app, /window\.location\.reload\(\)/);
   const authGate = await readFile(new URL('../src/components/WorkspaceAuthGate.jsx', import.meta.url), 'utf8');
   assert.match(authGate, /type: 'session-changed', userId: null/);
+  assert.match(authGate, /expectedUserId: userId/);
+  const server = await readFile(new URL('../server/index.js', import.meta.url), 'utf8');
+  assert.match(server, /req\.body\.expectedUserId !== session\.user\.id/);
+  assert.match(server, /WORKSPACE_ACCOUNT_CHANGED/);
 });
