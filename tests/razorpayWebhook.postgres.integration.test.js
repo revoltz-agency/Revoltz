@@ -1,9 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import crypto from 'node:crypto';
-import { randomUUID } from 'node:crypto';
-import { closeDatabase, __setPoolForTests, queryDatabase } from '../server/db.js';
-import { ensureWorkspaceOrganization } from '../server/db.js';
+import crypto, { randomUUID } from 'node:crypto';
+import { closeDatabase, ensureSchema, ensureWorkspaceOrganization, __setPoolForTests, queryDatabase } from '../server/db.js';
 import { processRazorpayWebhook } from '../server/razorpaySubscriptions.js';
 
 const TEST_DATABASE_URL = String(process.env.AGENCYOS_TEST_DATABASE_URL || '').trim();
@@ -22,6 +20,7 @@ test('PostgreSQL webhook processing ignores an older subscription event delivere
   const subscriptionId = `sub-${suffix}`;
 
   try {
+    await ensureSchema();
     const user = await queryDatabase(
       'INSERT INTO workspace_users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id',
       ['Webhook Order Test', email, 'test-only-not-a-real-password-hash'],
