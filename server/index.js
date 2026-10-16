@@ -310,8 +310,16 @@ app.put('/api/workspace/modules/:moduleKey/data', async (req, res) => {
   if (!session) return;
   if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
   if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  // Require optimistic concurrency on every cloud write. Allow null only for
+  // the first write when the module has no saved cloud revision yet.
+  if (!req.body || !Object.prototype.hasOwnProperty.call(req.body, 'expectedUpdatedAt')) {
+    return res.status(400).json({
+      error: 'A cloud revision is required. Reload the latest workspace data before saving.',
+      code: 'WORKSPACE_REVISION_REQUIRED',
+    });
+  }
   try {
-    return res.json(await writeOrganizationModuleData(session.user.id, req.params.moduleKey, req.body?.state, req.body?.expectedUpdatedAt));
+    return res.json(await writeOrganizationModuleData(session.user.id, req.params.moduleKey, req.body?.state, req.body.expectedUpdatedAt));
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
     return workspaceUnavailable(res);
