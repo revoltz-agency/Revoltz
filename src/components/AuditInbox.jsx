@@ -143,7 +143,6 @@ export default function AuditInbox({ onAddToLeads }) {
       const response = await fetch(`/api/audit/requests/${id}`, {
         method: 'DELETE',
         credentials: 'include',
-        headers: { 'X-Audit-CSRF': csrfFromCookie() },
       });
       if (!response.ok) throw new Error(await readError(response, 'Could not delete this request.'));
       await loadInbox();
