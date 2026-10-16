@@ -115,8 +115,15 @@ function workspaceDatabase() {
       }
 
       if (text.includes('INSERT INTO organization_workspace_data (organization_id, state, updated_at) VALUES')) {
-        organizationStates.set(values[0], { state: JSON.parse(values[1]), updated_at: new Date('2026-01-02T00:00:00.000Z') });
-        return { rows: [], rowCount: 1 };
+        const [organizationId, serialized, expectedUpdatedAt] = values;
+        const existing = organizationStates.get(organizationId);
+        if (existing && (expectedUpdatedAt == null || Date.parse(expectedUpdatedAt) !== Date.parse(existing.updated_at))) {
+          return { rows: [], rowCount: 0 };
+        }
+        if (!existing && expectedUpdatedAt != null) return { rows: [], rowCount: 0 };
+        const row = { state: JSON.parse(serialized), updated_at: new Date('2026-01-02T00:00:00.000Z') };
+        organizationStates.set(organizationId, row);
+        return { rows: [{ updated_at: row.updated_at }], rowCount: 1 };
       }
 
       throw new Error(`Unexpected workspace SQL: ${text}`);
@@ -211,13 +218,24 @@ test('workspace state is upserted and read back for its account only', async () 
   await registerWorkspaceUser({ name: 'Priya', email: 'priya@example.test', password: 'a-strong-test-password' });
   const state = { 'agencyos:business-profile:v1': { name: 'North Star Cafe' }, employees: [{ name: 'Example Worker', salary: 0 }] };
 
-  assert.deepEqual(await writeWorkspaceState(USER_ID, state), { saved: true });
+  const firstSave = await writeWorkspaceState(USER_ID, state, null);
+  assert.deepEqual(firstSave, { saved: true, updatedAt: new Date('2026-01-02T00:00:00.000Z') });
   assert.deepEqual((await readWorkspaceState(USER_ID)).state, state);
   assert.deepEqual((await readWorkspaceState('another-user-id')).state, {});
 
+  await assert.rejects(writeWorkspaceState(USER_ID, { stale: true }, null), {
+    statusCode: 409,
+    code: 'WORKSPACE_REVISION_CONFLICT',
+  });
+  await assert.rejects(writeWorkspaceState(USER_ID, state), {
+    statusCode: 400,
+    code: 'WORKSPACE_REVISION_REQUIRED',
+  });
+
   const write = db.calls.find((call) => call.text.includes('INSERT INTO organization_workspace_data (organization_id, state, updated_at) VALUES'));
-  assert.deepEqual(write.values, ['org-' + USER_ID, JSON.stringify(state)]);
+  assert.deepEqual(write.values, ['org-' + USER_ID, JSON.stringify(state), null]);
   assert.match(write.text, /ON CONFLICT \(organization_id\) DO UPDATE/);
+  assert.match(write.text, /WHERE organization_workspace_data\.updated_at IS NOT DISTINCT FROM \$3::timestamptz/);
   assert.match(db.calls.find((call) => call.text.includes('FROM organization_workspace_data d')).text, /JOIN organization_memberships m ON m\.organization_id = d\.organization_id/);
   assert.match(db.calls.find((call) => call.text.includes('SELECT organization_id')).text, /WHERE user_id = \$1/);
   assert.equal(db.organizationStates.get('org-' + USER_ID).state['agencyos:business-profile:v1'].name, 'North Star Cafe');
