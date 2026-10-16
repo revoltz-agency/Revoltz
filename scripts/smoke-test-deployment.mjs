@@ -62,6 +62,9 @@ export async function runDeploymentSmokeCheck({
   await request('/api/workspace/state', 401, (payload) =>
     payload && typeof payload.error === 'string');
 
+  await request('/api/workspace/modules/growth_sales/data', 401, (payload) =>
+    payload && typeof payload.error === 'string');
+
   const result = {
     baseUrl: base.origin,
     passed: checks.filter((check) => check.ok).length,
