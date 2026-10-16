@@ -235,7 +235,7 @@ test('workspace state is upserted and read back for its account only', async () 
   const write = db.calls.find((call) => call.text.includes('INSERT INTO organization_workspace_data (organization_id, state, updated_at) VALUES'));
   assert.deepEqual(write.values, ['org-' + USER_ID, JSON.stringify(state), null]);
   assert.match(write.text, /ON CONFLICT \(organization_id\) DO UPDATE/);
-  assert.match(write.text, /WHERE organization_workspace_data\.updated_at IS NOT DISTINCT FROM \$3::timestamptz/);
+  assert.match(write.text, /WHERE date_trunc\('milliseconds', organization_workspace_data\.updated_at\) IS NOT DISTINCT FROM \$3::timestamptz/);
   assert.match(db.calls.find((call) => call.text.includes('FROM organization_workspace_data d')).text, /JOIN organization_memberships m ON m\.organization_id = d\.organization_id/);
   assert.match(db.calls.find((call) => call.text.includes('SELECT organization_id')).text, /WHERE user_id = \$1/);
   assert.equal(db.organizationStates.get('org-' + USER_ID).state['agencyos:business-profile:v1'].name, 'North Star Cafe');
