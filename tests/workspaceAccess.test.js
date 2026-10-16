@@ -25,3 +25,13 @@ test('module navigation fails closed when hosted organization settings are unava
   assert.equal(workspaceModuleFailureState(401, false), null, 'pre-login organization checks should not permanently hide modules');
   assert.equal(workspaceModuleFailureState(503, true), null, 'explicit local-only installs may keep local modules visible');
 });
+
+
+test('the app uses one authentication gate and announces account changes across tabs', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const app = await readFile(new URL('../src/App.jsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(app, /<WorkspaceAccess><AgencyOSApp\s*\/>\s*<\/WorkspaceAccess>/);
+  assert.match(app, /agencyos-workspace-session/);
+  assert.match(app, /event\.data\.userId !== userId/);
+  assert.match(app, /window\.location\.reload\(\)/);
+});
