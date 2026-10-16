@@ -348,6 +348,15 @@ app.put('/api/workspace/state', async (req, res) => {
   if (!session) return;
   if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
   if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  // The session cookie is shared across tabs. Bind each full-workspace save to
+  // the account that loaded its local snapshot, so a stale tab cannot write
+  // account A's data using account B's newly active browser session.
+  if (typeof req.body?.expectedUserId !== 'string' || req.body.expectedUserId !== session.user.id) {
+    return res.status(409).json({
+      error: 'The signed-in account changed in this browser. Reload the workspace before saving.',
+      code: 'WORKSPACE_ACCOUNT_CHANGED',
+    });
+  }
   if (!req.body || !Object.prototype.hasOwnProperty.call(req.body, 'expectedUpdatedAt')) {
     return res.status(400).json({ error: 'A cloud revision is required. Reload the latest workspace data before saving.', code: 'WORKSPACE_REVISION_REQUIRED' });
   }
