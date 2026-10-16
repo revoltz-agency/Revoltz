@@ -11,7 +11,7 @@ For local runs of the opt-in PostgreSQL integration tests (concurrent rate limit
 
 ## Cloud workspace sync safety
 
-Organization module-data writes require an `expectedUpdatedAt` revision from the latest cloud read. Send the returned `updatedAt` value with each save; send `null` only when the module has no cloud record yet. Writes with a stale revision return HTTP 409 (`WORKSPACE_REVISION_CONFLICT`), and writes that omit the revision return HTTP 400 (`WORKSPACE_REVISION_REQUIRED`). On conflict, reload the latest cloud state before saving; do not blindly retry an old full-state snapshot, because it could restore records another device deleted.
+Organization module-data writes require an `expectedUpdatedAt` revision from the latest cloud read. Send the returned `updatedAt` value with each save; send `null` only when the module has no cloud record yet. Writes with a stale revision return HTTP 409 (`WORKSPACE_REVISION_CONFLICT`), and writes that omit the revision return HTTP 400 (`WORKSPACE_REVISION_REQUIRED`). On conflict, reload the latest cloud state before saving; do not blindly retry an old full-state snapshot, because it could restore records another device deleted. The legacy full-workspace state write endpoint follows the same revision requirement and rejects oversized or invalid snapshots; it is restricted to owners/admins and is not used by the current app UI.
 
 ## Deployment
 
