@@ -207,9 +207,9 @@ test('module data is stored separately and only accessible when that module is e
     await assert.rejects(readOrganizationModuleData(USER_ID, 'growth_sales'), { statusCode: 403, code: 'WORKSPACE_MODULE_DISABLED' });
     await assert.rejects(writeOrganizationModuleData(USER_ID, 'growth_sales', { leads: [] }, null), { statusCode: 403, code: 'WORKSPACE_MODULE_DISABLED' });
     const queriesBeforeInvalidModule = db.calls.length;
-    await assert.rejects(writeOrganizationModuleData(USER_ID, 'not_a_module', {}), { statusCode: 400, code: 'INVALID_WORKSPACE_MODULE' });
+    await assert.rejects(writeOrganizationModuleData(USER_ID, 'not_a_module', {}, null), { statusCode: 400, code: 'INVALID_WORKSPACE_MODULE' });
     assert.equal(db.calls.length, queriesBeforeInvalidModule, 'unknown module keys are rejected before querying organization data');
-    await assert.rejects(writeOrganizationModuleData(USER_ID, 'tools', []), { statusCode: 400, code: 'INVALID_MODULE_DATA' });
+    await assert.rejects(writeOrganizationModuleData(USER_ID, 'tools', [], null), { statusCode: 400, code: 'INVALID_MODULE_DATA' });
   } finally {
     if (originalBilling === undefined) delete process.env.AGENCYOS_BILLING_ENFORCED;
     else process.env.AGENCYOS_BILLING_ENFORCED = originalBilling;
@@ -265,14 +265,14 @@ test('module data remains isolated between organizations in shared storage', asy
 test('module data rejects oversized payloads before touching organization storage', async () => {
   const db = useOrganizationDatabase();
   const tooManyKeys = Object.fromEntries(Array.from({ length: 251 }, (_, index) => [`key-${index}`, index]));
-  await assert.rejects(writeOrganizationModuleData(USER_ID, 'growth_sales', tooManyKeys), {
+  await assert.rejects(writeOrganizationModuleData(USER_ID, 'growth_sales', tooManyKeys, null), {
     statusCode: 413,
     code: 'MODULE_DATA_TOO_LARGE',
   });
 
   await assert.rejects(writeOrganizationModuleData(USER_ID, 'growth_sales', {
     largeValue: 'x'.repeat(1_000_001),
-  }), {
+  }, null), {
     statusCode: 413,
     code: 'MODULE_DATA_TOO_LARGE',
   });
@@ -283,7 +283,7 @@ test('module data rejects circular payloads with a validation error', async () =
   const db = useOrganizationDatabase();
   const circular = {};
   circular.self = circular;
-  await assert.rejects(writeOrganizationModuleData(USER_ID, 'growth_sales', circular), {
+  await assert.rejects(writeOrganizationModuleData(USER_ID, 'growth_sales', circular, null), {
     statusCode: 400,
     code: 'INVALID_MODULE_DATA',
   });
