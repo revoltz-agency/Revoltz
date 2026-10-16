@@ -149,7 +149,7 @@ function installWorkspaceStorage(userId, remoteState, remoteUpdatedAt = null) {
           credentials: 'include',
           cache: 'no-store',
           headers: { 'Content-Type': 'application/json', 'X-Workspace-CSRF': csrfFromCookie() },
-          body: JSON.stringify({ state, expectedUpdatedAt: cloudRevision }),
+          body: JSON.stringify({ state, expectedUpdatedAt: cloudRevision, expectedUserId: userId }),
         });
         const payload = await response.json().catch(() => ({}));
         if (response.status === 409 || payload.code === 'WORKSPACE_REVISION_CONFLICT') {
