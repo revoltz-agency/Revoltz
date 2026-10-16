@@ -160,10 +160,10 @@ export async function writeOrganizationModuleData(userId, moduleKey, state, expe
   const membership = await getMembership(userId);
   const result = await queryDatabase(
     `INSERT INTO organization_module_data (organization_id, module_key, state, updated_at)
-     VALUES ($1, $2, $3::jsonb, now())
+     VALUES ($1, $2, $3::jsonb, date_trunc('milliseconds', now()))
      ON CONFLICT (organization_id, module_key)
-     DO UPDATE SET state = EXCLUDED.state, updated_at = now()
-     WHERE organization_module_data.updated_at IS NOT DISTINCT FROM $4::timestamptz
+     DO UPDATE SET state = EXCLUDED.state, updated_at = date_trunc('milliseconds', now())
+     WHERE date_trunc('milliseconds', organization_module_data.updated_at) IS NOT DISTINCT FROM $4::timestamptz
      RETURNING updated_at`,
     [membership.organization_id, moduleKey, serialized, expectedUpdatedAt],
   );
