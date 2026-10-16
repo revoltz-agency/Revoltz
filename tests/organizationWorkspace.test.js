@@ -310,5 +310,5 @@ test('module data snapshot writes reject stale revisions instead of overwriting 
   const stored = await readOrganizationModuleData(USER_ID, 'growth_sales');
   assert.deepEqual(stored.state, { leads: [{ id: 'lead-new' }] });
   const guardedWrite = db.calls.find((call) => call.text.includes('INSERT INTO organization_module_data') && call.values.length === 4);
-  assert.match(guardedWrite.text, /WHERE organization_module_data\.updated_at IS NOT DISTINCT FROM \$4::timestamptz/);
+  assert.match(guardedWrite.text, /WHERE date_trunc\('milliseconds', organization_module_data\.updated_at\) IS NOT DISTINCT FROM \$4::timestamptz/);
 });
