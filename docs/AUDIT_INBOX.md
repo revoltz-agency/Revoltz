@@ -1,6 +1,6 @@
-# Audit Inbox
+ # Audit Inbox
 
-An owner-only inbox for enquiries submitted from the public REVOLTZ AI website.
+A passwordless inbox for enquiries submitted from the public REVOLTZ AI website.
 Requests are stored in PostgreSQL and deliberately separated from prospect CRM data.
 
 When Telegram is configured, every newly accepted public audit request also triggers
@@ -30,10 +30,10 @@ never returned by the configuration endpoint.
 
 | Capability | State |
 |---|---|
-| Code, schema, validation, session auth | ✅ Implemented |
+| Code, schema, validation, passwordless access | ✅ Implemented |
 | Unit tests | ✅ 137/137 passing (`npm test`) |
 | Database deployed | ⚠️ Verify in the live Render environment |
-| Owner credential configured | ⚠️ Verify in the live Render environment |
+| Owner credential no longer required | ⚠️ Verify in the live Render environment |
 | Public intake enabled | ✅ `true` in the current Render Blueprint; verify live configuration |
 | Scheduled retention cleanup | ❌ **Not deployed, not operational** |
 
@@ -69,20 +69,11 @@ migration runner and no destructive DDL.
 
 `gen_random_uuid()` is required (built into PostgreSQL 13+).
 
-### 2.2 Owner credential
+### 2.2 Passwordless access
 
-Generate a hash locally. The password is never written to disk or stdout:
+The inbox no longer requires `AUDIT_OWNER_PASSWORD_HASH`. Only `DATABASE_URL` is required for the inbox to load.
 
-```bash
-npm run audit:hash-password
-# or: node scripts/hash-audit-password.mjs
-```
-
-Set the printed value as `AUDIT_OWNER_PASSWORD_HASH` (format
-`scrypt$<saltHex>$<hashHex>`, scrypt N=16384 r=8 p=1, 64-byte key).
-
-**While either `DATABASE_URL` or `AUDIT_OWNER_PASSWORD_HASH` is missing, every
-inbox route returns 503.** It never falls back to weaker authentication.
+**Security warning:** anyone who can reach the service can read contact details and can update or delete requests. Origin checks are not authentication. Use this mode only while the service is private or the data is non-sensitive. It never falls back to weaker authentication.
 
 ### 2.3 Environment variables
 
@@ -91,7 +82,6 @@ All placeholders live in `.env.example`. Never commit real values.
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | *(none)* | PostgreSQL connection string |
-| `AUDIT_OWNER_PASSWORD_HASH` | *(none)* | scrypt hash of the owner password |
 | `AUDIT_PUBLIC_INTAKE_ENABLED` | `false` in local defaults; `true` in Render blueprint | Public `POST /api/audit/requests` |
 | `AUDIT_RETENTION_DAYS` | `89` | Retention window in days |
 | `AUDIT_ALLOWED_ORIGINS` | *(none)* | Comma-separated origins for state-changing calls |
@@ -99,32 +89,27 @@ All placeholders live in `.env.example`. Never commit real values.
 | `AUDIT_SESSION_ABSOLUTE_MINUTES` | `1440` | Absolute ceiling, never renewed |
 | `TRUST_PROXY_HOPS` | `0` | Proxy hops to trust so `req.ip` is the real client |
 
-## 3. Authentication model
+## 3. Access model (passwordless)
 
 | Control | Implementation |
 |---|---|
-| Storage | Server-side session rows in `audit_sessions`; the browser holds only an opaque token |
-| Session cookie | `HttpOnly`, `Secure` in production (incl. via `X-Forwarded-Proto`), `SameSite=Strict`, `Path=/`, `Max-Age` = idle TTL |
-| Expiry | Two-layered: idle lifetime renewed on use, hard absolute ceiling that is never renewed |
-| Revocation | `POST /api/audit/session/logout` deletes the row server-side, then clears cookies |
-| Token at rest | Only the SHA-256 digest is stored, so a database leak yields no usable token |
-| CSRF | Double-submit: readable CSRF cookie echoed in `X-Audit-CSRF`, compared timing-safely and bound to the session row |
-| Origin | `AUDIT_ALLOWED_ORIGINS` allowlist on every state-changing request; **fails closed when empty**; wildcards are never accepted |
-| Password check | scrypt + `timingSafeEqual`; minimum 12 characters |
-| Rate limiting | 5 sign-ins / 10 min and 5 intakes / hour per client address |
+| Database | PostgreSQL stores the audit requests. |
+| Browser access | No password or session required. |
+| Origin | `AUDIT_ALLOWED_ORIGINS` is checked for browser state-changing requests; this is not authentication. |
+| Rate limiting | Public intake remains limited per client address. Inbox reads and management actions are public. |
 
 ### Routes
 
 | Method | Path | Auth |
 |---|---|---|
 | `GET` | `/api/audit/config` | none (booleans only) |
-| `POST` | `/api/audit/session` | password + origin + rate limit |
-| `POST` | `/api/audit/session/logout` | session + origin + CSRF |
-| `GET` | `/api/audit/retention` | session |
-| `GET` | `/api/audit/requests` | session |
+| `POST` | `/api/audit/session` | legacy route; not required by the UI |
+| `POST` | `/api/audit/session/logout` | legacy route; not required by the UI |
+| `GET` | `/api/audit/retention` | none |
+| `GET` | `/api/audit/requests` | none |
 | `POST` | `/api/audit/requests` | **disabled by default**; origin + rate limit |
-| `PATCH` | `/api/audit/requests/:id` | session + origin + CSRF |
-| `DELETE` | `/api/audit/requests/:id` | session + origin + CSRF |
+| `PATCH` | `/api/audit/requests/:id` | origin check only; public |
+| `DELETE` | `/api/audit/requests/:id` | origin check only; public |
 
 ## 4. Retention: 89 days
 
