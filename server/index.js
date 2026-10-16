@@ -619,9 +619,23 @@ app.post('/api/audit/session', async (req, res) => {
   if (!auditInboxConfigured()) return auditNotConfigured(res);
   if (!passesOriginCheck(req)) return res.status(403).json({ error: 'Origin not allowed.' });
 
-  const rate = auditLoginLimiter.check(`login:${clientKey(req)}`);
+  let rate;
+  try {
+    rate = await checkSharedRateLimit(`audit-login-ip:${clientKey(req)}`, {
+      windowMs: 10 * 60_000,
+      limit: 5,
+    });
+  } catch {
+    return res.status(503).json({ error: 'Audit Inbox storage is unavailable. Please try again.' });
+  }
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+    return res.status(429).json({ error: 'Too many sign-in attempts. Wait a few minutes and try again.' });
+  }
+  // Keep the local limiter as an additional per-instance backstop.
+  const localRate = auditLoginLimiter.check(`login:${clientKey(req)}`);
+  if (!localRate.allowed) {
+    res.setHeader('Retry-After', String(localRate.retryAfterSeconds));
     return res.status(429).json({ error: 'Too many sign-in attempts. Wait a few minutes and try again.' });
   }
 
@@ -722,9 +736,25 @@ app.post('/api/audit/requests', async (req, res) => {
   if (!auditInboxConfigured()) return auditNotConfigured(res);
   if (!passesOriginCheck(req)) return res.status(403).json({ error: 'Origin not allowed.' });
 
-  const rate = auditIntakeLimiter.check(`intake:${clientKey(req)}`);
+  let rate;
+  try {
+    rate = await checkSharedRateLimit(`audit-intake-ip:${clientKey(req)}`, {
+      windowMs: 60 * 60_000,
+      limit: 5,
+    });
+  } catch {
+    // Public intake writes to PostgreSQL; fail closed when the shared abuse
+    // limit cannot be checked, rather than allowing unmetered submissions.
+    return res.status(503).json({ error: 'Could not record the audit request. Please try again later.' });
+  }
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+    return res.status(429).json({ error: 'Too many audit requests from this address. Try again later.' });
+  }
+  // Keep the local limiter as an additional per-instance backstop.
+  const localRate = auditIntakeLimiter.check(`intake:${clientKey(req)}`);
+  if (!localRate.allowed) {
+    res.setHeader('Retry-After', String(localRate.retryAfterSeconds));
     return res.status(429).json({ error: 'Too many audit requests from this address. Try again later.' });
   }
 
