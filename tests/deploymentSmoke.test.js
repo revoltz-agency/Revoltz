@@ -27,6 +27,7 @@ test('deployment smoke check passes only when public config and private-route bo
     ['/api/workspace/me', response(401, unauthorized)],
     ['/api/workspace/organization', response(401, unauthorized)],
     ['/api/workspace/state', response(401, unauthorized)],
+    ['/api/workspace/modules/growth_sales/data', response(401, unauthorized)],
   ]);
   const result = await runDeploymentSmokeCheck({
     baseUrl: 'https://agencyos.example.test',
