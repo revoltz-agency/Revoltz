@@ -206,7 +206,7 @@ export async function processRazorpayWebhook({ rawBody, signature, eventId }) {
        VALUES ($1, 'razorpay', $2, $3::jsonb)
        ON CONFLICT (event_id) DO NOTHING
        RETURNING event_id`,
-      [eventId.trim(), event.event, JSON.stringify(event)],
+      [eventId.trim(), event.event, JSON.stringify({ event: event.event })],
     );
     if (!inserted.rowCount) {
       await client.query('COMMIT');
