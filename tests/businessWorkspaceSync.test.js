@@ -13,6 +13,10 @@ test('business workspace records are included in account sync and backup', async
   ];
 
   assert.equal(new Set(WORKSPACE_STORAGE_KEYS).size, WORKSPACE_STORAGE_KEYS.length, 'workspace keys must be unique');
+  const backupKeys = [...backup.matchAll(/'((?:agencyos):[^']+)'/g)].map((match) => match[1]);
+  for (const key of backupKeys) {
+    assert.ok(WORKSPACE_STORAGE_KEYS.includes(key), `${key} is backed up but must also be synchronized to the account`);
+  }
   for (const key of requiredKeys) {
     assert.ok(WORKSPACE_STORAGE_KEYS.includes(key), `${key} must be synchronized to the account`);
     assert.ok(backup.includes(`'${key}'`), `${key} must be included in a backup`);
