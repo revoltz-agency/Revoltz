@@ -42,6 +42,7 @@ import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/g
 import { markLeadContacted, stripLegacyCrmEmail, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
 import { getOrCreateCachedRequest } from './lib/placeDetailsCache.js';
 import { mergeGrowthSalesState } from './lib/growthSalesSync.js';
+import { workspaceModuleFailureState } from './lib/workspaceAccess.js';
 import {
   applyManualLeadOverride, applyManualLeadUpdate, createManualLead, findManualLeadDuplicate,
   manualLeadOverrideFields, manualLeadSourceLabel, parseManualLeadCsv, validateManualLead,
@@ -241,11 +242,16 @@ function AgencyOSApp() {
       try {
         const response = await fetch('/api/workspace/organization', { credentials: 'include', cache: 'no-store' });
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !Array.isArray(payload.modules)) throw new Error('Module settings unavailable.');
+        if (!response.ok || !Array.isArray(payload.modules)) throw Object.assign(new Error('Module settings unavailable.'), { status: response.status });
         if (active) setWorkspaceModules(Object.fromEntries(payload.modules.map((module) => [module.key, Boolean(module.enabled)])));
-      } catch {
-        // Fail open for the local/internal workspace if SaaS settings are unavailable.
-        if (active) setWorkspaceModules(null);
+      } catch (error) {
+        // Only explicit local-only installs may keep modules visible when the
+        // organization API is unavailable. A pre-login 401 stays unresolved;
+        // hosted server/network failures fail closed instead of exposing every module.
+        if (active) setWorkspaceModules(workspaceModuleFailureState(
+          error?.status,
+          import.meta.env.VITE_AGENCYOS_ALLOW_LOCAL_WORKSPACE === 'true',
+        ));
       }
     };
     const handleModulesUpdated = () => { void refreshModules(); };
