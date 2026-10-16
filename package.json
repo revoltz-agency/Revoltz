@@ -12,7 +12,8 @@
     "start": "node scripts/start-production.mjs",
     "test": "node --test",
     "audit:hash-password": "node scripts/hash-audit-password.mjs",
-    "check:launch": "node scripts/check-launch-config.mjs"
+    "check:launch": "node scripts/check-launch-config.mjs",
+    "smoke:deployment": "node scripts/smoke-test-deployment.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
