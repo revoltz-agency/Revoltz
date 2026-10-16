@@ -28,7 +28,7 @@ The limit can be set to a positive integer up to 1000. Unset, blank, or malforme
 
 ## Scope and limitations
 
-- Workspace search, details, and website-analysis routes require an authenticated workspace session. App-level rate limits are per server instance and are not a substitute for platform controls.
+- Workspace search, details, and website-analysis routes require an authenticated workspace session. Places search/details use PostgreSQL-backed shared fixed-window limits per client and route, with an additional per-instance backstop; website audits use a PostgreSQL-backed per-user limit plus a per-instance backstop. Shared-limit storage failures fail closed with `503` so provider-cost and outbound-fetch routes do not become unmetered. These limits are still not a hard spending cap; configure Google Cloud API restrictions, quotas, budget alerts, and hosting-level protections.
 - `TRUST_PROXY_HOPS` must match the deployment proxy chain for `req.ip` to represent the client. The Render Blueprint sets it to one for Render's edge.
 - The global JSON parser accepts up to 2 MB; each workspace snapshot is separately limited by entry count and serialized size.
 - Public audit intake is disabled in `.env.example` and enabled in the Render Blueprint. It remains unavailable unless its database, owner credential, and origin allowlist are configured. Review those production settings before exposing the form.
