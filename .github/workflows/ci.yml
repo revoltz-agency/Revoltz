@@ -23,8 +23,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-    env:
-      AGENCYOS_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/agencyos_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,6 +32,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - name: Run real PostgreSQL isolation and rate-limit integration tests
+        env:
+          AGENCYOS_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/agencyos_test
         run: node --test --test-concurrency=1 tests/organizationIsolation.postgres.integration.test.js tests/sharedRateLimit.postgres.integration.test.js
       - run: npm run build
       - name: Verify the public GitHub Pages build
