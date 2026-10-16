@@ -131,8 +131,8 @@ The GitHub Pages workflow builds the public marketing-only site at `/Revoltz/`. 
 
 ## Important limitations
 
-- Workspace sync is best-effort and does not resolve concurrent edits across devices.
-- Account email verification, password reset, MFA, team sharing, billing, and account-deletion UI are not included.
+- Workspace sync is best-effort. Growth & Sales detects concurrent cloud revisions and requires a cloud reload after a conflict; not every screen has migrated to organization-scoped sync yet.
+- Account email verification, password reset, MFA, team invitations, and account-deletion UI are not included. Razorpay subscription integration is a foundation only: live plan/webhook setup and end-to-end payment verification are still required before accepting customers or real payments.
 - Gemini and Google Places access, pricing, quotas, and terms are controlled by Google. Calls happen only after the operator chooses an action, but a configured key may incur charges.
 - Google Places use must follow current Maps Platform attribution, display, retention, and export requirements.
 - Scores are explainable decision support, not guarantees. Demo data is fictional. Website checks inspect limited HTML and do not establish a business's actual needs.
