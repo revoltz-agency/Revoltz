@@ -210,9 +210,11 @@ export async function writeWorkspaceState(userId, state, expectedUpdatedAt) {
   await ensureSchema();
   const organizationId = await resolveWorkspaceOrganizationId(userId);
   const result = await queryDatabase(
-    `INSERT INTO organization_workspace_data (organization_id, state, updated_at) VALUES ($1, $2::jsonb, now())
-     ON CONFLICT (organization_id) DO UPDATE SET state = EXCLUDED.state, updated_at = now()
-     WHERE organization_workspace_data.updated_at IS NOT DISTINCT FROM $3::timestamptz
+    `INSERT INTO organization_workspace_data (organization_id, state, updated_at)
+     VALUES ($1, $2::jsonb, date_trunc('milliseconds', now()))
+     ON CONFLICT (organization_id) DO UPDATE
+     SET state = EXCLUDED.state, updated_at = date_trunc('milliseconds', now())
+     WHERE date_trunc('milliseconds', organization_workspace_data.updated_at) IS NOT DISTINCT FROM $3::timestamptz
      RETURNING updated_at`,
     [organizationId, serialized, expectedUpdatedAt],
   );
