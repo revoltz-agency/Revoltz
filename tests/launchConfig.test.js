@@ -43,7 +43,7 @@ test('paid launch preflight rejects malformed database URLs and origin allowlist
   const result = validateLaunchConfiguration({
     ...validEnvironment,
     DATABASE_URL: 'file:///tmp/agencyos.db',
-    AUDIT_ALLOWED_ORIGINS: 'https://example.com,not-a-valid-origin',
+    AUDIT_ALLOWED_ORIGINS: 'https://example.com,http://insecure.example',
     TRUST_PROXY_HOPS: '0',
   });
   assert.equal(result.ready, false);
