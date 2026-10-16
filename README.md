@@ -17,6 +17,8 @@ Organization module-data writes require an `expectedUpdatedAt` revision from the
 
 Before accepting subscriptions, run `npm run check:launch` with the intended production environment variables loaded. It checks that PostgreSQL, Razorpay credentials/plan/webhook secret, Google Places, billing enforcement, Audit Inbox intake/origins, and trusted proxy configuration are present and syntactically plausible. It never prints secret values. A pass is **not** an end-to-end health check: separately verify the live database connection, Google Places request, Razorpay checkout, signed webhook delivery, cancellation, and a real test subscription before taking payment.
 
+After deploying a candidate release, run `npm run smoke:deployment` (or set `AGENCYOS_BASE_URL` to the exact HTTPS service origin). This read-only smoke check verifies public configuration contracts and that workspace session/organization/state endpoints reject anonymous access. It does not sign in, write data, make a payment, or replace provider-specific acceptance tests.
+
 ## Deployment
 
 [`render.yaml`](render.yaml) is a Render Blueprint proposal; committing it does not create or change a cloud service. It expects secrets to be entered in the hosting dashboard. Verify the running deployment and provider status before treating any local change as live.
