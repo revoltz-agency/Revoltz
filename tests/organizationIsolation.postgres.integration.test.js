@@ -63,10 +63,10 @@ test('PostgreSQL module data remains isolated between two organizations', { skip
 
     await writeOrganizationModuleData(userIdA, 'growth_sales', {
       leads: [{ id: 'private-a', business: 'A-only lead' }],
-    });
+    }, null);
     await writeOrganizationModuleData(userIdB, 'growth_sales', {
       leads: [{ id: 'private-b', business: 'B-only lead' }],
-    });
+    }, null);
 
     const stateA = await readOrganizationModuleData(userIdA, 'growth_sales');
     const stateB = await readOrganizationModuleData(userIdB, 'growth_sales');
@@ -79,7 +79,7 @@ test('PostgreSQL module data remains isolated between two organizations', { skip
     await writeOrganizationModuleData(userIdA, 'growth_sales', {
       leads: [{ id: 'kept-a', business: 'Remaining lead' }],
       workflow: { stage: 'updated' },
-    });
+    }, stateA.updatedAt.toISOString());
     const replacedStateA = await readOrganizationModuleData(userIdA, 'growth_sales');
     assert.deepEqual(replacedStateA.state, {
       leads: [{ id: 'kept-a', business: 'Remaining lead' }],
