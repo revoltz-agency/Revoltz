@@ -134,6 +134,9 @@ test('webhook subscription updates carry provider event time to prevent stale st
   try {
     const result = await processRazorpayWebhook({ rawBody, signature, eventId: 'evt_newer' });
     assert.deepEqual(result, { received: true, duplicate: false });
+    const eventInsert = queries.find((query) => query.text.includes('INSERT INTO payment_webhook_events'));
+    assert.deepEqual(JSON.parse(eventInsert.values[2]), { event: 'subscription.activated' }, 'persist only the event type, not the full customer/payment payload');
+    assert.equal(eventInsert.values[2].includes('cus_order_test'), false, 'customer identifiers must not be copied into webhook history');
     const update = queries.find((query) => query.text.includes('UPDATE organization_subscriptions'));
     assert.ok(update, 'the subscription row is updated');
     assert.match(update.text, /last_provider_event_created\s*=\s*COALESCE\(\$6::bigint, last_provider_event_created\)/);
