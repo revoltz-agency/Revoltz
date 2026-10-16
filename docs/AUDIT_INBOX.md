@@ -1,6 +1,6 @@
 # Audit Inbox
 
-A passwordless inbox for enquiries submitted from the public REVOLTZ AI website. Anyone who can reach the service can view, update, and delete requests. Use only when access to the service is restricted or the data is non-sensitive.
+A passwordless inbox for enquiries submitted from the public REVOLTZ AI website. Anyone who can reach the service can view, update, and delete requests.
 Requests are stored in PostgreSQL and deliberately separated from prospect CRM data.
 
 When Telegram is configured, every newly accepted public audit request also triggers
@@ -71,9 +71,10 @@ migration runner and no destructive DDL.
 
 ### 2.2 Passwordless access
 
-The inbox no longer requires (no owner password hash required); only `DATABASE_URL` is required.
+The inbox no longer requires `AUDIT_OWNER_PASSWORD_HASH`; only `DATABASE_URL` is required.
 
-**Security warning:** anyone who can reach the service can read contact details and can update or delete requests. Origin checks are not authentication. It never falls back to weaker authentication.
+**Security warning:** anyone who can reach the service can read contact details and can update or delete requests. Origin checks are not authentication.
+
 
 ### 2.3 Environment variables
 
