@@ -33,7 +33,7 @@ test('deployment smoke check passes only when public config and private-route bo
     baseUrl: 'https://agencyos.example.test',
     fetchImpl: async (url) => payloads.get(url.pathname),
   });
-  assert.equal(result.ready, true);
+  assert.equal(result.ready, true, JSON.stringify(result.checks));
   assert.equal(result.passed, 6);
   assert.equal(result.total, 6);
 });
