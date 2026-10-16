@@ -136,7 +136,10 @@ function installWorkspaceStorage(userId, remoteState, remoteUpdatedAt = null) {
         }
       }).catch(() => {
         // Keep the local cache usable while offline; the next edit retries sync.
-        if (version === syncVersion) reportSyncStatus(conflictDetected ? 'conflict' : 'offline');
+        if (version === syncVersion) {
+          if (conflictDetected) reportSyncStatus('conflict');
+          else reportSyncStatus('offline');
+        }
       });
     }, 700);
   }
