@@ -9,8 +9,8 @@ This document reflects the current server routes in `server/index.js`. The publi
 | `GET /api/config` | Public | None | Returns configuration booleans and the configured Places request limit; never returns credentials. |
 | `/api/workspace/register`, `/login` | Public entry points | PostgreSQL | In-process limits: 5 registrations/hour and 10 login attempts per 10 minutes per client key. |
 | `/api/workspace/me`, `/logout`, `/state` | Signed-in workspace session | PostgreSQL | HttpOnly session cookie; state writes require exact-origin and session-bound CSRF checks. State size is bounded. |
-| `/api/places/search`, `/details` | Signed-in workspace session | Google Places; optional Geocoding | Per-client in-process limit, separately counted for search and details; default 20 requests/minute per route. Calls can incur Google charges. |
-| `/api/website/analyze` | Signed-in workspace session | Public website fetch | SSRF, redirect, timeout, content-type, and response-size safeguards. |
+| `/api/places/search`, `/details` | Signed-in workspace session | Google Places; optional Geocoding | PostgreSQL-backed shared per-client limit, separately counted for search and details, plus a per-instance backstop; default 20 requests/minute per route. Calls can incur Google charges. |
+| `/api/website/analyze` | Signed-in workspace session | Public website fetch | PostgreSQL-backed per-user limit plus a per-instance backstop; SSRF, redirect, timeout, content-type, and response-size safeguards. |
 | `/api/audit/config` | Public | None | Returns booleans only. |
 | `POST /api/audit/requests` | Public only when enabled | PostgreSQL; optional Telegram | Requires enabled intake and an exact allowlisted Origin; rate-limited to 5 submissions/hour per client. Telegram is optional and failures do not cancel database intake. |
 | `/api/audit/session` | Owner password | PostgreSQL | Rate-limited login, server-side session, HttpOnly cookies, origin and CSRF protections. |
@@ -22,7 +22,7 @@ Gemini calls do not pass through the Express server. The user supplies a Gemini 
 
 `GOOGLE_MAPS_API_KEY` is optional and server-only. Without it, Places routes return `503`. The key is not included in `/api/config` or frontend bundles. The UI requires the operator to select Google Places and submit a search. Saved-place details are requested only after an explicit refresh.
 
-`PLACES_RATE_LIMIT_PER_MIN` defaults to 20 per minute, independently for `/api/places/search` and `/api/places/details`. The limit is held in process memory and resets on restart; it is not a global spending cap. Configure Google Cloud API restrictions, quotas, and budget alerts for the key as well.
+`PLACES_RATE_LIMIT_PER_MIN` defaults to 20 per minute, independently for `/api/places/search` and `/api/places/details`. The shared limit is stored in PostgreSQL across instances; the additional in-process backstop resets on restart. Neither is a hard spending cap. Configure Google Cloud API restrictions, quotas, and budget alerts for the key as well.
 
 The limit can be set to a positive integer up to 1000. Unset, blank, or malformed values use 20. Setting it to `0` disables this backstop and is not recommended for an internet-facing service.
 
