@@ -232,7 +232,7 @@ test('workspace state is upserted and read back for its account only', async () 
     code: 'WORKSPACE_REVISION_REQUIRED',
   });
 
-  const write = db.calls.find((call) => call.text.includes('INSERT INTO organization_workspace_data (organization_id, state, updated_at)'));
+  const write = db.calls.find((call) => call.text.includes('date_trunc(\'milliseconds\', now())') && call.text.includes('organization_workspace_data'));
   assert.deepEqual(write.values, ['org-' + USER_ID, JSON.stringify(state), null]);
   assert.match(write.text, /ON CONFLICT \(organization_id\) DO UPDATE/);
   assert.match(write.text, /WHERE date_trunc\('milliseconds', organization_workspace_data\.updated_at\) IS NOT DISTINCT FROM \$3::timestamptz/);
