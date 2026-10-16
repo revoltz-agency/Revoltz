@@ -113,7 +113,7 @@ function installWorkspaceStorage(userId, remoteState, remoteUpdatedAt = null) {
     syncTimer = window.setTimeout(() => {
       const state = collectState();
       inFlight = inFlight.catch(() => {}).then(async () => {
-        if (!active) return;
+        if (!active || conflictDetected) return;
         const response = await fetch('/api/workspace/state', {
           method: 'PUT',
           credentials: 'include',
