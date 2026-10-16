@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f8f3eb">
+  <meta name="description" content="Plan your visit to Date's Cafe. Send a slot request ahead of time and spend less time waiting.">
+  <title>Date's Cafe — Save your spot</title>
+  <style>
+    :root{--ink:#28251f;--muted:#716a60;--paper:#f8f3eb;--cream:#fffaf2;--coffee:#573c2c;--orange:#c66b42;--line:#e7ded1;--sage:#dce4d5;--radius:24px}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.55}a{color:inherit}button,input,select,textarea{font:inherit}.wrap{width:min(1120px,calc(100% - 40px));margin:auto}
+    .nav{height:84px;display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{display:flex;align-items:center;gap:12px;text-decoration:none}.brand-mark{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--coffee);color:#fff5e8;font-family:Georgia,serif;font-size:23px}.brand-name{font-family:Georgia,"Times New Roman",serif;font-size:21px;font-weight:700;letter-spacing:-.5px}.brand-sub{font-size:10px;text-transform:uppercase;letter-spacing:2.4px;color:var(--muted);display:block;margin-top:-3px}.nav-links{display:flex;align-items:center;gap:28px}.nav-links a{text-decoration:none;font-size:14px;color:var(--muted)}.nav-links a:hover{color:var(--coffee)}.pill{display:inline-flex;align-items:center;justify-content:center;gap:9px;background:var(--coffee);color:#fff8ef!important;text-decoration:none;border:0;border-radius:999px;padding:13px 20px;font-weight:650;font-size:14px;cursor:pointer;transition:transform .18s,background .18s}.pill:hover{transform:translateY(-2px);background:#39271e}.pill.light{background:var(--cream);color:var(--coffee)!important;border:1px solid var(--line)}.pill.full{width:100%}
+    .hero{padding:48px 0 78px;display:grid;grid-template-columns:1.03fr .97fr;gap:58px;align-items:center}.eyebrow{display:inline-flex;align-items:center;gap:9px;text-transform:uppercase;letter-spacing:2px;font-size:11px;font-weight:800;color:var(--orange)}.dot{width:7px;height:7px;border-radius:50%;background:var(--orange)}h1,h2,h3,p{margin-top:0}h1,h2,.serif{font-family:Georgia,"Times New Roman",serif;font-weight:500;letter-spacing:-1.8px}h1{font-size:clamp(44px,6vw,76px);line-height:1.03;margin:20px 0}.accent{color:var(--orange);font-style:italic}.hero-copy{font-size:17px;line-height:1.8;color:var(--muted);max-width:510px}.hero-actions{display:flex;flex-wrap:wrap;gap:12px;margin:28px 0 24px}.micro{font-size:12px;color:var(--muted)}.hero-art{position:relative;min-height:460px;border-radius:180px 180px 28px 28px;background:var(--sage);overflow:hidden;display:flex;align-items:center;justify-content:center}.sun{position:absolute;width:250px;height:250px;border-radius:50%;background:#f0cba6;top:42px;right:32px}.cup{position:relative;margin-top:30px;width:245px;height:220px;border-radius:30px 30px 80px 80px;background:linear-gradient(125deg,#fff4e3,#e8d4bc);box-shadow:inset -18px -5px 0 #d8bfa4,0 28px 45px #7c64462c;transform:rotate(-7deg)}.cup:before{content:"";position:absolute;right:-72px;top:48px;width:90px;height:100px;border:20px solid #e9d5bd;border-left:0;border-radius:0 55px 55px 0}.coffee{position:absolute;top:15px;left:13px;right:13px;height:31px;border-radius:50%;background:#5c3928;border:7px solid #f9ead5}.steam{position:absolute;top:-68px;left:80px;display:flex;gap:20px}.steam span{height:58px;width:17px;border:3px solid #8b9b82;border-bottom:0;border-left:0;border-radius:50%;transform:rotate(15deg);opacity:.7}.steam span:nth-child(2){margin-top:-15px;transform:rotate(-8deg)}.art-label{position:absolute;bottom:26px;left:26px;background:var(--cream);border:1px solid #fff;border-radius:16px;padding:14px 18px;box-shadow:0 10px 28px #33271912}.art-label strong{display:block;font-family:Georgia,serif;font-size:18px;font-weight:500}.art-label span{font-size:12px;color:var(--muted)}
+    .ticker{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:18px 0}.ticker-row{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:12px;letter-spacing:1.5px;text-transform:uppercase}.ticker-item{display:flex;align-items:center;gap:10px}.star{color:var(--orange);font-size:18px}
+    section{padding:88px 0}.section-head{max-width:650px;margin-bottom:38px}.section-head h2{font-size:clamp(34px,4vw,52px);line-height:1.1;margin:14px 0}.section-head p{color:var(--muted);line-height:1.8}.booking-layout{display:grid;grid-template-columns:.78fr 1.22fr;gap:28px;align-items:start}.booking-aside{background:var(--coffee);color:#fff5e8;border-radius:var(--radius);padding:34px;position:sticky;top:20px}.booking-aside h3{font-family:Georgia,serif;font-weight:500;font-size:30px;line-height:1.15;margin:18px 0}.booking-aside p{color:#e3d3c4;font-size:14px;line-height:1.8}.step{display:flex;gap:14px;margin-top:24px;align-items:flex-start}.step-num{width:30px;height:30px;flex:0 0 30px;border:1px solid #a9907d;border-radius:50%;display:grid;place-items:center;font-size:12px}.step strong{font-size:14px;display:block;margin-bottom:3px}.step span{font-size:12px;color:#e3d3c4;display:block}.form-card{background:var(--cream);border:1px solid var(--line);border-radius:var(--radius);padding:34px}.form-card h3{font-family:Georgia,serif;font-size:27px;font-weight:500;margin-bottom:8px}.form-intro{font-size:13px;color:var(--muted);margin-bottom:25px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.field{display:grid;gap:7px}.field.wide{grid-column:1/-1}.field label{font-size:12px;font-weight:750;letter-spacing:.3px}.field input,.field select,.field textarea{width:100%;min-width:0;background:#fffdf8;border:1px solid #ded3c5;border-radius:12px;padding:13px 14px;color:var(--ink);outline:none}.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--orange);box-shadow:0 0 0 3px #c66b421c}.field textarea{min-height:94px;resize:vertical}.consent{font-size:11px;color:var(--muted);margin:14px 0 18px}.form-note{font-size:12px;color:var(--muted);margin:14px 0 0}.status{display:none;padding:13px 15px;border-radius:12px;background:#e6eddf;color:#33452e;font-size:13px;margin-top:14px}
+    .benefits{background:#eee6da}.benefit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.benefit{padding:27px;background:var(--cream);border:1px solid #e2d7c8;border-radius:20px}.benefit-icon{width:44px;height:44px;border-radius:14px;background:#f1dfce;display:grid;place-items:center;font-size:20px;margin-bottom:20px}.benefit h3{font-family:Georgia,serif;font-size:23px;font-weight:500;margin-bottom:8px}.benefit p{font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:0}.faq-grid{display:grid;grid-template-columns:.8fr 1.2fr;gap:50px}.faq-grid h2{font-size:clamp(34px,4vw,48px);line-height:1.1}.faq-item{padding:20px 0;border-bottom:1px solid var(--line)}.faq-item summary{font-weight:700;cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:16px}.faq-item summary:after{content:"+";color:var(--orange);font-size:21px}.faq-item[open] summary:after{content:"−"}.faq-item p{margin:12px 30px 0 0;color:var(--muted);font-size:14px;line-height:1.8}.cta{padding:0 0 84px}.cta-card{background:var(--sage);border-radius:28px;padding:48px;display:flex;justify-content:space-between;align-items:center;gap:30px}.cta-card h2{font-size:clamp(30px,4vw,45px);margin:10px 0}.cta-card p{color:var(--muted);margin-bottom:0}.footer{background:#28251f;color:#f8f0e5;padding:34px 0}.footer-row{display:flex;justify-content:space-between;gap:25px;align-items:center;flex-wrap:wrap}.footer .brand-sub{color:#c5b8aa}.footer-note{font-size:11px;color:#c5b8aa;max-width:470px}.footer a{color:#fff1df;text-decoration:none}.footer-bottom{border-top:1px solid #4c443c;margin-top:26px;padding-top:18px;font-size:11px;color:#c5b8aa;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+    @media(max-width:800px){.nav-links a:not(.pill){display:none}.hero{grid-template-columns:1fr;gap:34px;padding-top:28px}.hero-art{min-height:360px}.booking-layout,.faq-grid{grid-template-columns:1fr}.booking-aside{position:static}.benefit-grid{grid-template-columns:1fr}.cta-card{align-items:flex-start;flex-direction:column;padding:32px}.section-head{margin-bottom:28px}section{padding:65px 0}}
+    @media(max-width:520px){.wrap{width:min(100% - 28px,1120px)}.nav{height:72px}.brand-name{font-size:18px}.brand-mark{width:39px;height:39px}.nav-links .pill{padding:10px 13px;font-size:12px}.hero{padding-bottom:52px}h1{font-size:47px}.hero-copy{font-size:15px}.hero-art{min-height:315px}.cup{transform:scale(.82) rotate(-7deg)}.sun{width:190px;height:190px;right:10px}.form-card,.booking-aside{padding:24px}.form-grid{grid-template-columns:1fr}.field.wide{grid-column:auto}.ticker-row{justify-content:center}.ticker-item{font-size:10px}.footer-row{align-items:flex-start;flex-direction:column}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition:none!important;animation:none!important}}
+  </style>
+</head>
+<body>
+  <header class="wrap nav">
+    <a class="brand" href="#top" aria-label="Date's Cafe home">
+      <span class="brand-mark" aria-hidden="true">d.</span>
+      <span><span class="brand-name">Date's Cafe</span><span class="brand-sub">A little pause, just for you</span></span>
+    </a>
+    <nav class="nav-links" aria-label="Main navigation">
+      <a href="#how-it-works">How it works</a><a href="#faq">FAQs</a><a class="pill" href="#book">Request a slot <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+  <main id="top">
+    <div class="wrap hero">
+      <div>
+        <div class="eyebrow"><span class="dot"></span> Your time, better planned</div>
+        <h1>Good moments<br>shouldn't begin<br>with a <span class="accent">long wait.</span></h1>
+        <p class="hero-copy">Planning to visit Date's Cafe? Send us your preferred date and time before you head out. We'll review your request and get back to you so you can plan your visit with more confidence.</p>
+        <div class="hero-actions"><a class="pill" href="#book">Request your slot <span aria-hidden="true">→</span></a><a class="pill light" href="#how-it-works">How it works</a></div>
+        <p class="micro">A slot request is not a confirmed booking. We'll confirm with you directly.</p>
+      </div>
+      <div class="hero-art" role="img" aria-label="Illustration of a warm cup of coffee">
+        <div class="sun"></div><div class="cup"><div class="coffee"></div><div class="steam"><span></span><span></span><span></span></div></div>
+        <div class="art-label"><strong>Make room for a good moment.</strong><span>Pick a time that works for you.</span></div>
+      </div>
+    </div>
+    <div class="ticker"><div class="wrap ticker-row"><span class="ticker-item"><span class="star">✳</span> Less waiting around</span><span class="ticker-item"><span class="star">✳</span> A simple request</span><span class="ticker-item"><span class="star">✳</span> Plan ahead</span><span class="ticker-item"><span class="star">✳</span> More time for your visit</span></div></div>
+
+    <section id="book">
+      <div class="wrap">
+        <div class="section-head"><div class="eyebrow"><span class="dot"></span> Plan ahead</div><h2>Your visit, on your schedule.</h2><p>Tell us when you'd like to come. We'll receive your request by email and reply to confirm availability. No account needed.</p></div>
+        <div class="booking-layout">
+          <aside class="booking-aside">
+            <div class="eyebrow" style="color:#e8b28f"><span class="dot" style="background:#e8b28f"></span> A simpler way to visit</div>
+            <h3>Spend less time waiting. More time enjoying.</h3>
+            <p>Choose a date and preferred time. We'll check the request and confirm directly with you.</p>
+            <div class="step"><span class="step-num">01</span><div><strong>Share your plan</strong><span>Choose a date, time and party size.</span></div></div>
+            <div class="step"><span class="step-num">02</span><div><strong>We review it</strong><span>Your email app opens with the request ready to send.</span></div></div>
+            <div class="step"><span class="step-num">03</span><div><strong>Wait for confirmation</strong><span>Your slot is reserved only after the cafe confirms.</span></div></div>
+          </aside>
+          <div class="form-card">
+            <h3>Request a slot</h3><p class="form-intro">Fill in the details below. Fields marked * are required.</p>
+            <form id="booking-form">
+              <div class="form-grid">
+                <div class="field"><label for="name">Your name *</label><input id="name" name="name" autocomplete="name" required maxlength="80" placeholder="Full name"></div>
+                <div class="field"><label for="phone">Phone number *</label><input id="phone" name="phone" autocomplete="tel" required maxlength="24" type="tel" placeholder="Best number to reach you"></div>
+                <div class="field"><label for="date">Preferred date *</label><input id="date" name="date" type="date" required></div>
+                <div class="field"><label for="time">Preferred time *</label><select id="time" name="time" required><option value="">Choose a time</option><option>Morning</option><option>Afternoon</option><option>Evening</option><option>I'll mention a time in notes</option></select></div>
+                <div class="field"><label for="people">People in your group *</label><select id="people" name="people" required><option value="1">1 person</option><option value="2" selected>2 people</option><option value="3">3 people</option><option value="4">4 people</option><option value="5">5 people</option><option value="6+">6 or more</option></select></div>
+                <div class="field"><label for="purpose">What are you booking for?</label><select id="purpose" name="purpose"><option>Visit / table</option><option>Activity or session</option><option>Group visit</option><option>Other</option></select></div>
+                <div class="field wide"><label for="notes">Anything else we should know? (optional)</label><textarea id="notes" name="notes" maxlength="700" placeholder="Preferred exact time, special requests, or questions…"></textarea></div>
+              </div>
+              <p class="consent">By continuing, your details will be included in an email to Date's Cafe so the team can respond to your request. Please don't include sensitive personal information.</p>
+              <button class="pill full" type="submit">Prepare booking request <span aria-hidden="true">↗</span></button>
+              <div id="form-status" class="status" role="status" aria-live="polite"></div>
+              <p class="form-note">This free demo uses your device's email app to send the request. Your slot is not confirmed until the cafe replies.</p>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="benefits" id="how-it-works">
+      <div class="wrap">
+        <div class="section-head"><div class="eyebrow"><span class="dot"></span> Made to be simple</div><h2>A little planning goes a long way.</h2><p>A quick request helps both visitors and the cafe plan ahead. Here's what this page is designed to make easier.</p></div>
+        <div class="benefit-grid">
+          <article class="benefit"><div class="benefit-icon" aria-hidden="true">◷</div><h3>Plan before you leave</h3><p>Share your preferred time in advance instead of arriving without a plan.</p></article>
+          <article class="benefit"><div class="benefit-icon" aria-hidden="true">↗</div><h3>Simple on any phone</h3><p>A clean, mobile-friendly form that is easy to use without downloading an app.</p></article>
+          <article class="benefit"><div class="benefit-icon" aria-hidden="true">♡</div><h3>Clear confirmation</h3><p>Requests stay requests until the cafe checks availability and confirms with you.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq">
+      <div class="wrap faq-grid">
+        <div><div class="eyebrow"><span class="dot"></span> Good to know</div><h2>Before you send your request.</h2><p style="color:var(--muted);line-height:1.8">A few quick answers about how slot requests work.</p></div>
+        <div>
+          <details class="faq-item"><summary>Is my slot booked immediately?</summary><p>No. Sending a request does not reserve a slot automatically. Date's Cafe needs to review it and confirm with you.</p></details>
+          <details class="faq-item"><summary>What happens when I tap “Prepare booking request”?</summary><p>Your device will open its default email app with the details filled in. Review the message and tap Send to submit it.</p></details>
+          <details class="faq-item"><summary>What if my email app doesn't open?</summary><p>Make sure an email app is set up on your device. If it still doesn't work, contact the cafe directly using the contact details shared by the cafe.</p></details>
+          <details class="faq-item"><summary>Can I change my preferred time?</summary><p>Yes. Send another request with your updated preference, or reply to the cafe when they contact you.</p></details>
+        </div>
+      </div>
+    </section>
+    <section class="cta"><div class="wrap"><div class="cta-card"><div><div class="eyebrow"><span class="dot"></span> Your next visit starts here</div><h2>Pick a time. We'll take it from there.</h2><p>Send a slot request to Date's Cafe before you head out.</p></div><a class="pill" href="#book">Request a slot <span aria-hidden="true">→</span></a></div></div></section>
+  </main>
+  <footer class="footer"><div class="wrap"><div class="footer-row"><a class="brand" href="#top"><span class="brand-mark" style="background:#f5e8d8;color:#573c2c">d.</span><span><span class="brand-name">Date's Cafe</span><span class="brand-sub">A little pause, just for you</span></span></a><p class="footer-note">Slot requests are subject to availability. A booking is confirmed only when Date's Cafe responds directly.</p></div><div class="footer-bottom"><span>© <span id="year"></span> Date's Cafe</span><span>Thoughtfully made by <a href="https://revoltz-agency.github.io/Revoltz/" target="_blank" rel="noreferrer">REVOLTZ AI</a></span></div></div></footer>
+  <script>
+    (() => {
+      const form = document.getElementById('booking-form');
+      const date = document.getElementById('date');
+      const status = document.getElementById('form-status');
+      const today = new Date();
+      const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      date.min = localToday;
+      document.getElementById('year').textContent = new Date().getFullYear();
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (!form.reportValidity()) return;
+        const data = new FormData(form);
+        const lines = [
+          "Hello Date's Cafe,",
+          "",
+          "I'd like to request a slot. Please confirm whether this time is available.",
+          "",
+          "Name: " + data.get('name'),
+          "Phone: " + data.get('phone'),
+          "Preferred date: " + data.get('date'),
+          "Preferred time: " + data.get('time'),
+          "Group size: " + data.get('people'),
+          "Booking for: " + data.get('purpose'),
+          "Additional notes: " + (data.get('notes') || "None"),
+          "",
+          "I understand this is a request and is not confirmed until the cafe replies."
+        ];
+        const subject = "Slot request — " + data.get('name') + " — " + data.get('date');
+        const mailto = "mailto:som172002@gmail.com?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(lines.join("\n"));
+        status.style.display = 'block';
+        status.textContent = "Your email app should open with the request ready. Please press Send in your email app to submit it.";
+        window.location.href = mailto;
+      });
+    })();
+  </script>
+</body>
+</html>
