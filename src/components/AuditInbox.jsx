@@ -220,9 +220,7 @@ export default function AuditInbox({ onAddToLeads }) {
           <button type="button" onClick={() => Promise.all([loadInbox(), loadRetention()]).catch((e) => setError(e.message))} disabled={busy} style={{ padding: '8px 12px', borderRadius: 9, border: '1px solid var(--line, #333)', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <RefreshCw size={14} /> Refresh
           </button>
-          <button type="button" onClick={signOut} disabled={busy} style={{ padding: '8px 12px', borderRadius: 9, border: '1px solid var(--line, #333)', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <LogOut size={14} /> Sign out
-          </button>
+          
         </div>
       </div>
 
