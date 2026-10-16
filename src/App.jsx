@@ -1710,7 +1710,7 @@ function App() {
   // The public GitHub Pages build is intentionally website-only. AgencyOS
   // remains available in local/self-hosted builds for internal use.
   const publicSiteOnly = import.meta.env.VITE_PUBLIC_SITE_ONLY === 'true';
-  return !publicSiteOnly && isAppPath(path) ? <WorkspaceAccess><AgencyOSApp /></WorkspaceAccess> : <RevoltzSite />;
+  return !publicSiteOnly && isAppPath(path) ? <AgencyOSApp /> : <RevoltzSite />;
 }
 
 export default App;
