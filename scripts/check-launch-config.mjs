@@ -8,7 +8,7 @@ const REQUIRED_VALUES = [
   ['RAZORPAY_WEBHOOK_SECRET', (value) => value.length > 0, 'Razorpay webhook signing secret'],
   ['GOOGLE_MAPS_API_KEY', (value) => value.length > 0, 'Google Places API key'],
   ['AUDIT_OWNER_PASSWORD_HASH', (value) => /^scrypt\$[a-f0-9]+\$[a-f0-9]+$/i.test(value), 'Audit Inbox password hash'],
-  ['AUDIT_ALLOWED_ORIGINS', (value) => value.split(',').some((origin) => {
+  ['AUDIT_ALLOWED_ORIGINS', (value) => value.split(',').every((origin) => {
     try {
       const parsed = new URL(origin.trim());
       return ['https:', 'http:'].includes(parsed.protocol) && parsed.origin === origin.trim();
