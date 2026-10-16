@@ -8,10 +8,8 @@ import {
 // This component lives inside the AgencyOS workspace, so it is automatically
 // excluded from the public GitHub Pages marketing build (VITE_PUBLIC_SITE_ONLY).
 //
-// Authentication: the browser never stores a password, session token or CSRF
-// token. Signing in creates a server-side session returned as an HttpOnly cookie
-// this code cannot read. State-changing calls echo the readable CSRF cookie in
-// the X-Audit-CSRF header. Every request is sent with credentials: 'include'.
+// Passwordless mode: anyone who can reach this service can view and manage enquiries.
+// Keep the service private if contact details must remain confidential.
 
 const STATUS_OPTIONS = [
   { value: 'new', label: 'New' },
