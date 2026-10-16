@@ -348,6 +348,9 @@ app.put('/api/workspace/state', async (req, res) => {
   if (!session) return;
   if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
   if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  if (!req.body || !Object.prototype.hasOwnProperty.call(req.body, 'expectedUpdatedAt')) {
+    return res.status(400).json({ error: 'A cloud revision is required. Reload the latest workspace data before saving.', code: 'WORKSPACE_REVISION_REQUIRED' });
+  }
   const state = req.body?.state;
   if (!state || typeof state !== 'object' || Array.isArray(state)) {
     return res.status(400).json({ error: 'Workspace state must be an object.' });
@@ -360,8 +363,7 @@ app.put('/api/workspace/state', async (req, res) => {
   try {
     await requireActiveOrganizationSubscription(session.user.id);
     await requireOrganizationRole(session.user.id, ['owner', 'admin']);
-    await writeWorkspaceState(session.user.id, state);
-    return res.json({ saved: true, updatedAt: new Date().toISOString() });
+    return res.json(await writeWorkspaceState(session.user.id, state, req.body.expectedUpdatedAt));
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
     return workspaceUnavailable(res);
