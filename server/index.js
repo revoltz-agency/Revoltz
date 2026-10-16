@@ -416,14 +416,35 @@ const websiteAuditLimiter = createRateLimiter({ windowMs: 60_000, limit: website
  * Applies the Places rate limit. Returns true when the request may continue.
  * Checked before the API key so an unconfigured server is not hammered either.
  */
-function allowPlacesRequest(req, res, bucket) {
+async function allowPlacesRequest(req, res, bucket) {
   if (!placesLimiter.enabled) return true;
-  const result = placesLimiter.check(`${bucket}:${clientKey(req)}`);
-  if (result.allowed) return true;
-  res.setHeader('Retry-After', String(result.retryAfterSeconds));
+  let shared;
+  try {
+    shared = await checkSharedRateLimit(`places:${bucket}:${clientKey(req)}`, {
+      windowMs: 60_000,
+      limit: placesLimiter.limit,
+    });
+  } catch {
+    // Places calls can incur provider charges. If the shared limiter cannot
+    // check the budget, fail closed rather than allowing an unmetered request.
+    workspaceUnavailable(res);
+    return false;
+  }
+  if (!shared.allowed) {
+    res.setHeader('Retry-After', String(shared.retryAfterSeconds));
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(429).json({
+      error: `Places request limit reached (${placesLimiter.limit}/minute). Wait ${shared.retryAfterSeconds}s and try again.`,
+    });
+    return false;
+  }
+  // Keep the local limiter as an additional fast per-instance backstop.
+  const local = placesLimiter.check(`${bucket}:${clientKey(req)}`);
+  if (local.allowed) return true;
+  res.setHeader('Retry-After', String(local.retryAfterSeconds));
   res.setHeader('Cache-Control', 'no-store');
   res.status(429).json({
-    error: `Places request limit reached (${placesLimiter.limit}/minute). Wait ${result.retryAfterSeconds}s and try again.`,
+    error: `Places request limit reached (${placesLimiter.limit}/minute). Wait ${local.retryAfterSeconds}s and try again.`,
   });
   return false;
 }
@@ -443,7 +464,7 @@ app.get('/api/config', (_req, res) => {
 });
 
 app.post('/api/places/search', async (req, res) => {
-  if (!allowPlacesRequest(req, res, 'places-search')) return;
+  if (!await allowPlacesRequest(req, res, 'places-search')) return;
   if (!googleApiKey) {
     return res.status(503).json({ error: 'Google Places API is not configured on this server.' });
   }
@@ -473,7 +494,7 @@ app.post('/api/places/search', async (req, res) => {
 });
 
 app.post('/api/places/details', async (req, res) => {
-  if (!allowPlacesRequest(req, res, 'places-details')) return;
+  if (!await allowPlacesRequest(req, res, 'places-details')) return;
   if (!googleApiKey) return res.status(503).json({ error: 'Google Places API is not configured on this server.' });
   const placeId = typeof req.body?.placeId === 'string' ? req.body.placeId.trim() : '';
   if (!placeId || placeId.length > 300) return res.status(400).json({ error: 'A valid place ID is required.' });
@@ -487,12 +508,30 @@ app.post('/api/places/details', async (req, res) => {
 });
 
 app.post('/api/website/analyze', async (req, res) => {
-  const rate = websiteAuditLimiter.check(`website-audit:${req.workspaceUser.id}`);
+  let rate;
+  try {
+    rate = await checkSharedRateLimit(`website-audit:${req.workspaceUser.id}`, {
+      windowMs: 60_000,
+      limit: websiteAuditLimit,
+    });
+  } catch {
+    // Outbound fetches can be abused to consume server resources. Do not run
+    // them if the cross-instance abuse limit cannot be checked.
+    return workspaceUnavailable(res);
+  }
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retryAfterSeconds));
     res.setHeader('Cache-Control', 'no-store');
     return res.status(429).json({
-      error: `Website audit limit reached (${websiteAuditLimiter.limit}/minute). Wait ${rate.retryAfterSeconds}s and try again.`,
+      error: `Website audit limit reached (${websiteAuditLimit}/minute). Wait ${rate.retryAfterSeconds}s and try again.`,
+    });
+  }
+  const localRate = websiteAuditLimiter.check(`website-audit:${req.workspaceUser.id}`);
+  if (!localRate.allowed) {
+    res.setHeader('Retry-After', String(localRate.retryAfterSeconds));
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(429).json({
+      error: `Website audit limit reached (${websiteAuditLimit}/minute). Wait ${localRate.retryAfterSeconds}s and try again.`,
     });
   }
   const website = typeof req.body?.website === 'string' ? req.body.website.trim() : '';
