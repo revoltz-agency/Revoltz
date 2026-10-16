@@ -92,9 +92,11 @@ function installWorkspaceStorage(userId, remoteState, remoteUpdatedAt = null) {
     }
   }
 
-  // Preserve the legacy keys until the merged snapshot has successfully reached
-  // the server. This avoids losing pre-account data if cloud sync is unavailable.
-  let migrationPending = Object.keys(legacyState).length > 0;
+  // Once copied into this account's namespaced cache, remove the unscoped legacy
+  // keys immediately. Keeping them around until cloud sync succeeds could expose
+  // one person's unsynced legacy data to the next account using this browser.
+  const hasLegacyState = Object.keys(legacyState).length > 0;
+  for (const key of Object.keys(legacyState)) native.removeItem.call(window.localStorage, key);
 
   function collectState() {
     const state = {};
@@ -130,10 +132,6 @@ function installWorkspaceStorage(userId, remoteState, remoteUpdatedAt = null) {
         if (!response.ok) throw new Error(payload.error || 'Workspace cloud sync failed.');
         cloudRevision = payload.updatedAt || cloudRevision;
         if (version === syncVersion) reportSyncStatus('saved');
-        if (migrationPending) {
-          for (const key of Object.keys(legacyState)) native.removeItem.call(window.localStorage, key);
-          migrationPending = false;
-        }
       }).catch(() => {
         // Keep the local cache usable while offline; the next edit retries sync.
         if (version === syncVersion) {
@@ -191,7 +189,7 @@ function installWorkspaceStorage(userId, remoteState, remoteUpdatedAt = null) {
     },
   });
 
-  if (migrationPending) scheduleSync();
+  if (hasLegacyState) scheduleSync();
 
   return () => {
     active = false;
