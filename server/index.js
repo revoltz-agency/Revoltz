@@ -410,10 +410,10 @@ const googleApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
 const auditPublicIntakeEnabled = String(process.env.AUDIT_PUBLIC_INTAKE_ENABLED || '')
   .trim().toLowerCase() === 'true';
 const auditRetentionDays = retentionDaysFromEnv(process.env.AUDIT_RETENTION_DAYS);
-// The inbox is reachable only when BOTH the database and an owner credential are
-// configured. A half-configured deployment stays unavailable rather than
-// falling back to weaker authentication.
-const auditInboxConfigured = () => isDatabaseConfigured() && isOwnerAuthConfigured();
+// Passwordless mode requested by the operator: the inbox only requires its database.
+// WARNING: audit request contact details and inbox controls are accessible to anyone
+// who can reach this service. Keep the service private if the data is confidential.
+const auditInboxConfigured = () => isDatabaseConfigured();
 
 const auditLoginLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 5 });
 const auditIntakeLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 5 });
@@ -573,22 +573,17 @@ app.post('/api/website/analyze', async (req, res) => {
 // Audit requests are stored in Postgres and are deliberately separate from
 // prospect CRM data, which never leaves the operator's browser.
 //
-// Security model:
-//   * Owner routes require a server-side session held in an HttpOnly,
-//     Secure-in-production, SameSite=Strict cookie, with idle + absolute
-//     expiry and server-side revocation on logout.
-//   * State-changing requests must pass the AUDIT_ALLOWED_ORIGINS check and a
-//     double-submit CSRF token bound to the session row.
-//   * The inbox is unavailable (503) unless BOTH DATABASE_URL and
-//     AUDIT_OWNER_PASSWORD_HASH are configured. It never degrades to weaker auth.
-//   * Public intake is OFF unless AUDIT_PUBLIC_INTAKE_ENABLED === 'true'.
+// Passwordless access is intentionally enabled at the operator's request.
+// WARNING: anyone who can reach this service can read, update, and delete audit
+// enquiries. Origin checks remain as a browser safeguard, not authentication.
+// Public intake is OFF unless AUDIT_PUBLIC_INTAKE_ENABLED === 'true'.
 //
 // No email or WhatsApp message is ever sent from these routes.
 
 function auditNotConfigured(res) {
   res.setHeader('Cache-Control', 'no-store');
   return res.status(503).json({
-    error: 'Audit Inbox is not configured. Set DATABASE_URL and AUDIT_OWNER_PASSWORD_HASH on the server.',
+    error: 'Audit Inbox is not configured. Set DATABASE_URL on the server.',
     configured: false,
   });
 }
@@ -599,24 +594,12 @@ function auditNotConfigured(res) {
  * Always returns null after writing a response: an Express Response object is
  * truthy, and returning it would let the caller fall through and send twice.
  */
-async function requireAuditOwner(req, res) {
-  if (!auditInboxConfigured()) {
+async function requireAuditOwner(_req, res) {
+  if (!isDatabaseConfigured()) {
     auditNotConfigured(res);
     return null;
   }
-  try {
-    const session = await resolveOwnerSession(req);
-    if (!session) {
-      res.setHeader('Cache-Control', 'no-store');
-      res.status(401).json({ error: 'Sign in to open the Audit Inbox.' });
-      return null;
-    }
-    return session;
-  } catch (error) {
-    res.setHeader('Cache-Control', 'no-store');
-    res.status(503).json({ error: 'Audit Inbox storage is unavailable. Please try again.' });
-    return null;
-  }
+  return { passwordless: true };
 }
 
 /** Non-secret configuration the owner UI needs before it renders a login form. */
@@ -686,9 +669,7 @@ app.post('/api/audit/session/logout', async (req, res) => {
   if (!auditInboxConfigured()) return auditNotConfigured(res);
   if (!passesOriginCheck(req)) return res.status(403).json({ error: 'Origin not allowed.' });
   const session = await resolveOwnerSession(req, { renew: false }).catch(() => null);
-  if (session && !passesCsrfCheck(req, session)) {
-    return res.status(403).json({ error: 'CSRF check failed.' });
-  }
+  // No authenticated session exists in passwordless mode.
   await revokeOwnerSession(req).catch(() => false);
   for (const cookie of buildClearCookies(req)) res.append('Set-Cookie', cookie);
   return res.json({ ok: true });
@@ -801,7 +782,7 @@ app.patch('/api/audit/requests/:id', async (req, res) => {
   const session = await requireAuditOwner(req, res);
   if (!session) return;
   if (!passesOriginCheck(req)) return res.status(403).json({ error: 'Origin not allowed.' });
-  if (!passesCsrfCheck(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  // Passwordless mode: Origin allowlisting is retained, but is not authentication.
 
   const { id } = req.params;
   if (!isAuditRequestId(id)) return res.status(400).json({ error: 'A valid request id is required.' });
@@ -828,7 +809,7 @@ app.delete('/api/audit/requests/:id', async (req, res) => {
   const session = await requireAuditOwner(req, res);
   if (!session) return;
   if (!passesOriginCheck(req)) return res.status(403).json({ error: 'Origin not allowed.' });
-  if (!passesCsrfCheck(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  // Passwordless mode: Origin allowlisting is retained, but is not authentication.
 
   const { id } = req.params;
   if (!isAuditRequestId(id)) return res.status(400).json({ error: 'A valid request id is required.' });
