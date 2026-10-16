@@ -1,6 +1,6 @@
 # Audit Inbox
 
-An owner-only inbox for enquiries submitted from the public REVOLTZ AI website.
+A passwordless inbox for enquiries submitted from the public REVOLTZ AI website. Anyone who can reach the service can view, update, and delete requests. Use only when access to the service is restricted or the data is non-sensitive.
 Requests are stored in PostgreSQL and deliberately separated from prospect CRM data.
 
 When Telegram is configured, every newly accepted public audit request also triggers
@@ -69,20 +69,11 @@ migration runner and no destructive DDL.
 
 `gen_random_uuid()` is required (built into PostgreSQL 13+).
 
-### 2.2 Owner credential
+### 2.2 Passwordless access
 
-Generate a hash locally. The password is never written to disk or stdout:
+The inbox no longer requires (no owner password hash required); only `DATABASE_URL` is required.
 
-```bash
-npm run audit:hash-password
-# or: node scripts/hash-audit-password.mjs
-```
-
-Set the printed value as `AUDIT_OWNER_PASSWORD_HASH` (format
-`scrypt$<saltHex>$<hashHex>`, scrypt N=16384 r=8 p=1, 64-byte key).
-
-**While either `DATABASE_URL` or `AUDIT_OWNER_PASSWORD_HASH` is missing, every
-inbox route returns 503.** It never falls back to weaker authentication.
+**Security warning:** anyone who can reach the service can read contact details and can update or delete requests. Origin checks are not authentication. It never falls back to weaker authentication.
 
 ### 2.3 Environment variables
 
