@@ -236,6 +236,22 @@ function AgencyOSApp() {
   const [activePage, setActivePage] = useState('Business Management');
   const [workspaceModules, setWorkspaceModules] = useState(null);
 
+  // A session cookie is shared by tabs. Announce this tab's authenticated
+  // account and reload if a different account becomes active in another tab.
+  useEffect(() => {
+    if (window.__agencyOSPreview || typeof BroadcastChannel === 'undefined') return undefined;
+    const userId = window.__agencyOSUser?.id ?? null;
+    if (!userId) return undefined;
+    const channel = new BroadcastChannel('agencyos-workspace-session');
+    channel.onmessage = (event) => {
+      if (event.data?.type === 'session-changed' && event.data.userId !== userId) {
+        window.location.reload();
+      }
+    };
+    channel.postMessage({ type: 'session-changed', userId });
+    return () => channel.close();
+  }, []);
+
   useEffect(() => {
     let active = true;
     const refreshModules = async () => {
