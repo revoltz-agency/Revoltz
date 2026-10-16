@@ -11,7 +11,7 @@ const REQUIRED_VALUES = [
   ['AUDIT_ALLOWED_ORIGINS', (value) => value.split(',').every((origin) => {
     try {
       const parsed = new URL(origin.trim());
-      return ['https:', 'http:'].includes(parsed.protocol) && parsed.origin === origin.trim();
+      return parsed.protocol === 'https:' && parsed.origin === origin.trim();
     } catch { return false; }
   }), 'Exact allowed origins for Audit Inbox writes'],
 ];
