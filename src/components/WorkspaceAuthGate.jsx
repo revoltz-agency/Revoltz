@@ -65,17 +65,40 @@ function installWorkspaceStorage(userId, remoteState, remoteUpdatedAt = null) {
   let syncTimer = null;
   let inFlight = Promise.resolve();
   let syncVersion = 0;
-  let cloudRevision = remoteUpdatedAt || null;
+  const pendingKey = `agencyos:workspace-pending:${userId}`;
+  let pendingRevision = null;
+  try {
+    const pending = JSON.parse(native.getItem.call(window.localStorage, pendingKey) || 'null');
+    if (pending && typeof pending === 'object' && !Array.isArray(pending) &&
+        (pending.baseRevision === null || typeof pending.baseRevision === 'string')) {
+      pendingRevision = pending.baseRevision;
+    }
+  } catch { /* Ignore a malformed pending marker and trust the cloud snapshot. */ }
+  const hasPendingSnapshot = pendingRevision !== null ||
+    native.getItem.call(window.localStorage, pendingKey) === JSON.stringify({ baseRevision: null });
+  let cloudRevision = hasPendingSnapshot ? pendingRevision : (remoteUpdatedAt || null);
   let conflictDetected = false;
 
-  // Migrate the older, un-namespaced browser cache without discarding it.
-  // The cloud wins conflicts, while distinct legacy leads/CRM entries are merged.
-  const legacyState = {};
-  for (const key of LEGACY_WORKSPACE_KEYS) {
-    const value = native.getItem.call(window.localStorage, key);
-    if (value !== null) legacyState[key] = value;
+  // If a write was pending when the page closed, recover the account-scoped
+  // local snapshot rather than replacing it with the older cloud snapshot.
+  const cachedState = {};
+  if (hasPendingSnapshot) {
+    for (let i = native.length.get.call(window.localStorage) - 1; i >= 0; i -= 1) {
+      const key = native.key.call(window.localStorage, i);
+      if (key?.startsWith(prefix)) cachedState[key.slice(prefix.length)] = native.getItem.call(window.localStorage, key);
+    }
   }
-  const mergedState = { ...(remoteState || {}) };
+
+  // Migrate the older, un-namespaced browser cache only when there is no pending
+  // account snapshot. Cloud values win conflicts; distinct leads/CRM entries merge.
+  const legacyState = {};
+  if (!hasPendingSnapshot) {
+    for (const key of LEGACY_WORKSPACE_KEYS) {
+      const value = native.getItem.call(window.localStorage, key);
+      if (value !== null) legacyState[key] = value;
+    }
+  }
+  const mergedState = hasPendingSnapshot ? cachedState : { ...(remoteState || {}) };
   for (const [key, value] of Object.entries(legacyState)) {
     mergedState[key] = mergeLegacyValue(key, mergedState[key], value);
   }
@@ -96,7 +119,9 @@ function installWorkspaceStorage(userId, remoteState, remoteUpdatedAt = null) {
   // keys immediately. Keeping them around until cloud sync succeeds could expose
   // one person's unsynced legacy data to the next account using this browser.
   const hasLegacyState = Object.keys(legacyState).length > 0;
-  for (const key of Object.keys(legacyState)) native.removeItem.call(window.localStorage, key);
+  // Remove global legacy keys even when a pending snapshot exists; never allow
+  // unscoped records to be imported by a different account later.
+  for (const key of LEGACY_WORKSPACE_KEYS) native.removeItem.call(window.localStorage, key);
 
   function collectState() {
     const state = {};
@@ -110,6 +135,9 @@ function installWorkspaceStorage(userId, remoteState, remoteUpdatedAt = null) {
   function scheduleSync() {
     if (!active || conflictDetected) return;
     const version = ++syncVersion;
+    // Persist the revision marker before the debounce so edits survive reloads
+    // and can be retried using the exact cloud version they were based on.
+    native.setItem.call(window.localStorage, pendingKey, JSON.stringify({ baseRevision: cloudRevision }));
     reportSyncStatus('saving');
     window.clearTimeout(syncTimer);
     syncTimer = window.setTimeout(() => {
@@ -131,7 +159,12 @@ function installWorkspaceStorage(userId, remoteState, remoteUpdatedAt = null) {
         }
         if (!response.ok) throw new Error(payload.error || 'Workspace cloud sync failed.');
         cloudRevision = payload.updatedAt || cloudRevision;
-        if (version === syncVersion) reportSyncStatus('saved');
+        if (version === syncVersion) {
+          native.removeItem.call(window.localStorage, pendingKey);
+          reportSyncStatus('saved');
+        } else {
+          native.setItem.call(window.localStorage, pendingKey, JSON.stringify({ baseRevision: cloudRevision }));
+        }
       }).catch(() => {
         // Keep the local cache usable while offline; the next edit retries sync.
         if (version === syncVersion) {
@@ -143,6 +176,11 @@ function installWorkspaceStorage(userId, remoteState, remoteUpdatedAt = null) {
   }
   const retryWhenOnline = () => scheduleSync();
   window.addEventListener('online', retryWhenOnline);
+  const discardConflictAndReload = () => {
+    native.removeItem.call(window.localStorage, pendingKey);
+    window.location.reload();
+  };
+  window.addEventListener('agencyos:discard-cloud-conflict', discardConflictAndReload);
 
   proto.getItem = function (key) {
     return this === window.localStorage
@@ -189,12 +227,13 @@ function installWorkspaceStorage(userId, remoteState, remoteUpdatedAt = null) {
     },
   });
 
-  if (hasLegacyState) scheduleSync();
+  if (hasLegacyState || hasPendingSnapshot) scheduleSync();
 
   return () => {
     active = false;
     window.clearTimeout(syncTimer);
     window.removeEventListener('online', retryWhenOnline);
+    window.removeEventListener('agencyos:discard-cloud-conflict', discardConflictAndReload);
     proto.getItem = native.getItem;
     proto.setItem = native.setItem;
     proto.removeItem = native.removeItem;
@@ -330,6 +369,7 @@ export default function WorkspaceAuthGate() {
     return <>
       <div role="status" aria-live="polite" style={{ position: 'fixed', zIndex: 1100, top: 10, right: 12, maxWidth: 'min(420px, calc(100vw - 24px))', padding: '8px 11px', border: `1px solid ${warning ? '#84683b' : '#375b48'}`, borderRadius: 9, background: warning ? '#282319' : '#14221c', color: warning ? '#e5d2a4' : '#a9d9b8', fontSize: 12, lineHeight: 1.4, boxShadow: '0 4px 18px #0005' }}>
         {syncLabels[syncStatus] || syncLabels.saved}
+        {syncStatus === 'conflict' && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('agencyos:discard-cloud-conflict'))} style={{ display: 'block', marginTop: 6, padding: '4px 7px', border: '1px solid currentColor', borderRadius: 6, background: 'transparent', color: 'inherit', cursor: 'pointer' }}>Discard local edits &amp; reload cloud</button>}
       </div>
       <App />
     </>;
