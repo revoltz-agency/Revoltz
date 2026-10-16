@@ -314,6 +314,11 @@ export default function WorkspaceAuthGate() {
         headers: { 'X-Workspace-CSRF': csrfFromCookie() },
       });
     } finally {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const channel = new BroadcastChannel('agencyos-workspace-session');
+        channel.postMessage({ type: 'session-changed', userId: null });
+        channel.close();
+      }
       cleanupStorage?.();
       setCleanupStorage(null);
       setUser(null);
