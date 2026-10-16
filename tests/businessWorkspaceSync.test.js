@@ -46,3 +46,15 @@ test('legacy unscoped browser data is moved into one account before global keys 
   assert.match(authGate, /Keeping them around until cloud sync succeeds could expose/);
   assert.doesNotMatch(authGate, /let migrationPending = Object\.keys\(legacyState\)\.length > 0/);
 });
+
+
+test('pending offline workspace writes survive reload and can be explicitly discarded on conflict', async () => {
+  const authGate = await readFile(new URL('../src/components/WorkspaceAuthGate.jsx', import.meta.url), 'utf8');
+  assert.match(authGate, /agencyos:workspace-pending:/);
+  assert.match(authGate, /baseRevision: cloudRevision/);
+  assert.match(authGate, /if \(hasPendingSnapshot\) \{/);
+  assert.match(authGate, /mergedState = hasPendingSnapshot \? cachedState/);
+  assert.match(authGate, /native\.removeItem\.call\(window\.localStorage, pendingKey\)/);
+  assert.match(authGate, /agencyos:discard-cloud-conflict/);
+  assert.match(authGate, /Discard local edits &amp; reload cloud/);
+});
