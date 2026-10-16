@@ -188,7 +188,7 @@ test('module data is stored separately and only accessible when that module is e
   const originalBilling = process.env.AGENCYOS_BILLING_ENFORCED;
   delete process.env.AGENCYOS_BILLING_ENFORCED;
   try {
-    const saved = await writeOrganizationModuleData(USER_ID, 'growth_sales', { leads: [{ id: 'lead-1' }] });
+    const saved = await writeOrganizationModuleData(USER_ID, 'growth_sales', { leads: [{ id: 'lead-1' }] }, null);
     assert.equal(saved.saved, true);
     const read = await readOrganizationModuleData(USER_ID, 'growth_sales');
     assert.deepEqual(read.state, { leads: [{ id: 'lead-1' }] });
@@ -205,7 +205,7 @@ test('module data is stored separately and only accessible when that module is e
 
     db.modules.set('growth_sales', { module_key: 'growth_sales', enabled: false, settings: {} });
     await assert.rejects(readOrganizationModuleData(USER_ID, 'growth_sales'), { statusCode: 403, code: 'WORKSPACE_MODULE_DISABLED' });
-    await assert.rejects(writeOrganizationModuleData(USER_ID, 'growth_sales', { leads: [] }), { statusCode: 403, code: 'WORKSPACE_MODULE_DISABLED' });
+    await assert.rejects(writeOrganizationModuleData(USER_ID, 'growth_sales', { leads: [] }, null), { statusCode: 403, code: 'WORKSPACE_MODULE_DISABLED' });
     const queriesBeforeInvalidModule = db.calls.length;
     await assert.rejects(writeOrganizationModuleData(USER_ID, 'not_a_module', {}), { statusCode: 400, code: 'INVALID_WORKSPACE_MODULE' });
     assert.equal(db.calls.length, queriesBeforeInvalidModule, 'unknown module keys are rejected before querying organization data');
@@ -243,7 +243,7 @@ test('module data remains isolated between organizations in shared storage', asy
   const first = useOrganizationDatabase('owner', 'org-first', sharedModuleData);
   await writeOrganizationModuleData(USER_ID, 'growth_sales', {
     leads: [{ id: 'first-org-lead', name: 'First organization lead' }],
-  });
+  }, null);
 
   const second = useOrganizationDatabase('owner', 'org-second', sharedModuleData);
   const emptySecondWorkspace = await readOrganizationModuleData(USER_ID, 'growth_sales');
@@ -251,7 +251,7 @@ test('module data remains isolated between organizations in shared storage', asy
 
   await writeOrganizationModuleData(USER_ID, 'growth_sales', {
     leads: [{ id: 'second-org-lead', name: 'Second organization lead' }],
-  });
+  }, null);
 
   const firstState = sharedModuleData.get('org-first:growth_sales');
   const secondState = sharedModuleData.get('org-second:growth_sales');
@@ -287,6 +287,15 @@ test('module data rejects circular payloads with a validation error', async () =
     statusCode: 400,
     code: 'INVALID_MODULE_DATA',
   });
+  assert.equal(db.calls.some((call) => call.text.includes('INSERT INTO organization_module_data')), false);
+});
+
+test('module data writes reject missing revisions before querying storage', async () => {
+  const db = useOrganizationDatabase();
+  await assert.rejects(
+    writeOrganizationModuleData(USER_ID, 'growth_sales', { leads: [] }),
+    { statusCode: 400, code: 'WORKSPACE_REVISION_REQUIRED' },
+  );
   assert.equal(db.calls.some((call) => call.text.includes('INSERT INTO organization_module_data')), false);
 });
 
