@@ -136,7 +136,13 @@ export async function readOrganizationModuleData(userId, moduleKey) {
 }
 
 export async function writeOrganizationModuleData(userId, moduleKey, state, expectedUpdatedAt) {
-  if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== null &&
+  if (expectedUpdatedAt === undefined) {
+    throw Object.assign(new Error('Refresh the latest cloud data before saving.'), {
+      statusCode: 400,
+      code: 'WORKSPACE_REVISION_REQUIRED',
+    });
+  }
+  if (expectedUpdatedAt !== null &&
       (typeof expectedUpdatedAt !== 'string' || !Number.isFinite(Date.parse(expectedUpdatedAt)))) {
     throw Object.assign(new Error('Workspace revision is invalid. Refresh before saving.'), { statusCode: 400, code: 'INVALID_WORKSPACE_REVISION' });
   }
@@ -152,23 +158,14 @@ export async function writeOrganizationModuleData(userId, moduleKey, state, expe
   }
   await requireOrganizationModule(userId, moduleKey);
   const membership = await getMembership(userId);
-  const guardedWrite = expectedUpdatedAt !== undefined;
   const result = await queryDatabase(
-    guardedWrite
-      ? `INSERT INTO organization_module_data (organization_id, module_key, state, updated_at)
-         VALUES ($1, $2, $3::jsonb, now())
-         ON CONFLICT (organization_id, module_key)
-         DO UPDATE SET state = EXCLUDED.state, updated_at = now()
-         WHERE organization_module_data.updated_at IS NOT DISTINCT FROM $4::timestamptz
-         RETURNING updated_at`
-      : `INSERT INTO organization_module_data (organization_id, module_key, state, updated_at)
-         VALUES ($1, $2, $3::jsonb, now())
-         ON CONFLICT (organization_id, module_key)
-         DO UPDATE SET state = EXCLUDED.state, updated_at = now()
-         RETURNING updated_at`,
-    guardedWrite
-      ? [membership.organization_id, moduleKey, serialized, expectedUpdatedAt]
-      : [membership.organization_id, moduleKey, serialized],
+    `INSERT INTO organization_module_data (organization_id, module_key, state, updated_at)
+     VALUES ($1, $2, $3::jsonb, now())
+     ON CONFLICT (organization_id, module_key)
+     DO UPDATE SET state = EXCLUDED.state, updated_at = now()
+     WHERE organization_module_data.updated_at IS NOT DISTINCT FROM $4::timestamptz
+     RETURNING updated_at`,
+    [membership.organization_id, moduleKey, serialized, expectedUpdatedAt],
   );
   if (!result.rows[0]) {
     throw Object.assign(new Error('This workspace changed on another device. Refresh the latest data before saving again.'), {
