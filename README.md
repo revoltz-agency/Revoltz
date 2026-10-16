@@ -9,6 +9,10 @@ GitHub Actions runs these three checks on pull requests and pushes to `main`. CI
 
 For local runs of the opt-in PostgreSQL integration tests (concurrent rate limiting and organization module-data isolation), set `AGENCYOS_TEST_DATABASE_URL` to a **disposable test database** before running `npm test`. The tests create the app schema and clean up only their own rows; they do not drop tables.
 
+## Cloud workspace sync safety
+
+Organization module-data writes require an `expectedUpdatedAt` revision from the latest cloud read. Send the returned `updatedAt` value with each save; send `null` only when the module has no cloud record yet. Writes with a stale revision return HTTP 409 (`WORKSPACE_REVISION_CONFLICT`), and writes that omit the revision return HTTP 400 (`WORKSPACE_REVISION_REQUIRED`). On conflict, reload the latest cloud state before saving; do not blindly retry an old full-state snapshot, because it could restore records another device deleted.
+
 ## Deployment
 
 [`render.yaml`](render.yaml) is a Render Blueprint proposal; committing it does not create or change a cloud service. It expects secrets to be entered in the hosting dashboard. Verify the running deployment and provider status before treating any local change as live.
