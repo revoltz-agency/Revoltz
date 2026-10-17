@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Plus, UsersRound, Trash2, CalendarClock } from 'lucide-react';
 import { mergeClientRetentionState } from '../lib/clientsDeliverySync.js';
 
+import { saveOrganizationModulePatch } from '../lib/moduleDataSync.js';
 const KEY = 'agencyos:client-retention:v1';
 const muted = { color:'var(--viz-muted, #a1a1aa)', fontSize:13, lineHeight:1.55 };
 const field = { width:'100%', boxSizing:'border-box', border:'1px solid var(--viz-border, #333)', borderRadius:9, padding:'10px 11px', background:'var(--viz-card, #151515)', color:'var(--viz-text, #f5f5f5)', font:'inherit' };
@@ -42,12 +43,9 @@ export default function ClientRetention(){
    const state={clientRetention:clients.slice(0,1000)};
    saveQueue.current=saveQueue.current.catch(()=>{}).then(async()=>{
     if(!cloudReady.current)return;
-    const csrfEntry=document.cookie.split('; ').find(part=>part.startsWith('agencyos_workspace_csrf='));
-    const csrfToken=csrfEntry?decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)):'';
     setSyncStatus('saving');
-    const response=await fetch('/api/workspace/modules/clients_delivery/data',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...(csrfToken?{'X-Workspace-CSRF':csrfToken}:{})},body:JSON.stringify({state})});
-    if(!response.ok){const payload=await response.json().catch(()=>({}));throw new Error(payload.error||'Cloud save failed')}
-    setSyncStatus('synced');
+        await saveOrganizationModulePatch('clients_delivery', state);
+        setSyncStatus('synced');
    }).catch(error=>{setSyncStatus('failed');console.warn('[AgencyOS] Client Retention cloud save failed:',error?.message||error)});
   },800);
   return()=>window.clearTimeout(timer);
