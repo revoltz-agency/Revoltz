@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, CalendarDays, CheckCircle2, CircleDollarSign, Download, Filter, Handshake, MessageSquare, Save, TrendingUp } from 'lucide-react';
 import { mergeDealTrackerState, mergeSalesPackagesState } from '../lib/financeReportsSync.js';
 
+import { saveOrganizationModulePatch } from '../lib/moduleDataSync.js';
 const PACKAGES_KEY = 'agencyos:sales-packages:v1';
 const DEALS_KEY = 'agencyos:deal-tracker:v1';
 const STAGES = ['Draft', 'Ready to contact', 'Contacted', 'Meeting booked', 'Proposal sent', 'Negotiation', 'Won', 'Lost'];
@@ -44,11 +45,8 @@ export default function DealTracker() {
       const state = { dealTracker: deals };
       saveQueue.current = saveQueue.current.catch(() => {}).then(async () => {
         if (!cloudReady.current) return;
-        const csrfEntry = document.cookie.split('; ').find(part => part.startsWith('agencyos_workspace_csrf='));
-        const csrfToken = csrfEntry ? decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)) : '';
         setSyncStatus('saving');
-        const response = await fetch('/api/workspace/modules/growth_sales/data', { method: 'PUT', credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-Workspace-CSRF': csrfToken } : {}) }, body: JSON.stringify({ state }) });
-        if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.error || 'Cloud save failed'); }
+        await saveOrganizationModulePatch('growth_sales', state);
         setSyncStatus('synced');
       }).catch(error => { setSyncStatus('failed'); console.warn('[AgencyOS] Deal Pipeline cloud save failed:', error?.message || error); });
     }, 800);
