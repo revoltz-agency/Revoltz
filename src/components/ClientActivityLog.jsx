@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, History, Plus, Search, Trash2, Pencil, X, Copy } from 'lucide-react';
 import { mergeClientActivityState } from '../lib/clientsDeliverySync.js';
 
+import { saveOrganizationModulePatch } from '../lib/moduleDataSync.js';
 const KEY='agencyos:client-activity-log:v1';
 const card={border:'1px solid var(--viz-border, #333)',borderRadius:12,padding:14,background:'var(--viz-card, #151515)'};
 const muted={color:'var(--viz-muted, #a1a1aa)',fontSize:13,lineHeight:1.55};
@@ -31,12 +32,9 @@ export default function ClientActivityLog(){
    const state={clientActivityLog:items.slice(0,2000)};
    saveQueue.current=saveQueue.current.catch(()=>{}).then(async()=>{
     if(!cloudReady.current)return;
-    const csrfEntry=document.cookie.split('; ').find(part=>part.startsWith('agencyos_workspace_csrf='));
-    const csrfToken=csrfEntry?decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)):'';
     setSyncStatus('saving');
-    const response=await fetch('/api/workspace/modules/clients_delivery/data',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...(csrfToken?{'X-Workspace-CSRF':csrfToken}:{})},body:JSON.stringify({state})});
-    if(!response.ok){const payload=await response.json().catch(()=>({}));throw new Error(payload.error||'Cloud save failed')}
-    setSyncStatus('synced');
+        await saveOrganizationModulePatch('clients_delivery', state);
+        setSyncStatus('synced');
    }).catch(error=>{setSyncStatus('failed');console.warn('[AgencyOS] Client Activity Log cloud save failed:',error?.message||error)});
   },800);
   return()=>window.clearTimeout(timer);
