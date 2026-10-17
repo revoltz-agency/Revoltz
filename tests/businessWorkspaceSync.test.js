@@ -10,6 +10,8 @@ test('business workspace records are included in account sync and backup', async
     'agencyos:business-profile:v1',
     'agencyos:business-team:v1',
     'agencyos:coaching-center:v1',
+    'agencyos:proposal-builder:v1',
+    'agencyos:website-demo-builder:v1',
   ];
 
   assert.equal(new Set(WORKSPACE_STORAGE_KEYS).size, WORKSPACE_STORAGE_KEYS.length, 'workspace keys must be unique');
