@@ -80,3 +80,15 @@ export async function saveOrganizationModulePatch(moduleKey, patch, {
     code: 'WORKSPACE_REVISION_CONFLICT',
   });
 }
+
+/** Merge cloud records with browser-local records without dropping either side. */
+export function mergeRecordsById(localRecords, cloudRecords, limit = 1000) {
+  const merged = new Map();
+  for (const record of Array.isArray(cloudRecords) ? cloudRecords : []) {
+    if (record && typeof record.id === 'string' && record.id) merged.set(record.id, record);
+  }
+  for (const record of Array.isArray(localRecords) ? localRecords : []) {
+    if (record && typeof record.id === 'string' && record.id) merged.set(record.id, record);
+  }
+  return [...merged.values()].slice(-limit);
+}
