@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Download, Plus, Trash2 } from 'lucide-react';
 import { mergeClientsDeliveryState } from '../lib/clientsDeliverySync.js';
+import { saveOrganizationModulePatch } from '../lib/moduleDataSync.js';
 const KEY='agencyos:project-tracker:v1';
 const PACKAGES_KEY='agencyos:sales-packages:v1';
 const DEALS_KEY='agencyos:deal-tracker:v1';
@@ -41,12 +42,9 @@ export default function ProjectTracker(){
    const state={projectTracker:projects.slice(0,500)};
    saveQueue.current=saveQueue.current.catch(()=>{}).then(async()=>{
     if(!cloudReady.current)return;
-    const csrfEntry=document.cookie.split('; ').find(part=>part.startsWith('agencyos_workspace_csrf='));
-    const csrfToken=csrfEntry?decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)):'';
     setSyncStatus('saving');
-    const response=await fetch('/api/workspace/modules/clients_delivery/data',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...(csrfToken?{'X-Workspace-CSRF':csrfToken}:{})},body:JSON.stringify({state})});
-    if(!response.ok){const payload=await response.json().catch(()=>({}));throw new Error(payload.error||'Cloud save failed')}
-    setSyncStatus('synced');
+        await saveOrganizationModulePatch('clients_delivery', state);
+        setSyncStatus('synced');
    }).catch(error=>{setSyncStatus('failed');console.warn('[AgencyOS] Project Tracker cloud save failed:',error?.message||error)});
   },800);
   return()=>window.clearTimeout(timer);
