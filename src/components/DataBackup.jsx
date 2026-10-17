@@ -4,8 +4,10 @@ import { Download, Upload, ShieldCheck, AlertTriangle } from 'lucide-react';
 const BACKUP_KEYS = [
   'agencyos:business-profile:v1',
   'agencyos:business-team:v1',
+  'agencyos:proposal-builder:v1',
   'agencyos:coaching-center:v1',
   'agencyos:workflow:v1',
+  'agencyos:website-demo-builder:v1',
   'agencyos:saved-place-ids:v1',
   'agencyos:saved-gemini-place-ids:v1',
   'agencyos:search-history:v1',
