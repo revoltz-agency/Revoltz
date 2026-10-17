@@ -166,8 +166,9 @@ export function createRateLimiter({ windowMs = 60_000, limit = 20, maxKeys = 5_0
       existing.count += 1;
       return { allowed: true, remaining: limit - existing.count, retryAfterSeconds: 0 };
     },
-    reset() {
-      buckets.clear();
+    reset(key) {
+      if (key === undefined) buckets.clear();
+      else buckets.delete(String(key || 'unknown'));
     },
   };
 }

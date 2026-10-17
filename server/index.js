@@ -36,8 +36,11 @@ import {
   sessionAbsoluteMs,
   verifyOwnerPassword,
 } from './session.js';
-import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed } from './security.js';
+import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed, sha256Hex } from './security.js';
+import { checkSharedRateLimit, resetSharedRateLimit } from './sharedRateLimit.js';
 import { notifyTelegramAuditRequest } from './telegram.js';
+import { readOrganizationModuleData, readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, requireOrganizationRole, updateOrganizationModules, writeOrganizationModuleData } from './organizationWorkspace.js';
+import { cancelRazorpaySubscriptionAtPeriodEnd, createRazorpaySubscription, processRazorpayWebhook } from './razorpaySubscriptions.js';
 import {
   authenticateWorkspaceUser,
   clearWorkspaceCookies,
@@ -93,11 +96,25 @@ app.use('/api/audit/requests', (req, res, next) => {
   return next();
 });
 
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({
+  limit: '2mb',
+  verify(req, _res, buffer) {
+    // Razorpay signs the exact bytes, not a re-serialized JSON object.
+    if (req.path === '/api/webhooks/razorpay') req.rawBody = Buffer.from(buffer);
+  },
+}));
+
+// Workspace account, billing, prospect, and audit responses can contain private
+// customer/workspace data. Prevent browsers and intermediary caches from storing
+// either successful responses or authorization/error responses for these APIs.
+app.use(['/api/workspace', '/api/places', '/api/website'], (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 
 // --- Multi-user AgencyOS workspace accounts --------------------------------
-const workspaceLoginLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 10 });
-const workspaceRegisterLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 5 });
+// Workspace account IP limits use PostgreSQL buckets, so multiple server instances
+// enforce the same thresholds. Client IPs and account identifiers are hashed before storage.
 
 function workspaceUnavailable(res) {
   return res.status(503).json({ error: 'Workspace accounts are temporarily unavailable. Please try again later.' });
@@ -122,7 +139,11 @@ app.post('/api/workspace/register', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDatabaseConfigured()) return workspaceUnavailable(res);
   if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
-  const rate = workspaceRegisterLimiter.check(`register:${clientKey(req)}`);
+  const rate = await checkSharedRateLimit(`workspace-register-ip:${clientKey(req)}`, {
+    windowMs: 60 * 60_000,
+    limit: 5,
+  }).catch(() => null);
+  if (!rate) return workspaceUnavailable(res);
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retryAfterSeconds));
     return res.status(429).json({ error: 'Too many account attempts. Please try again later.' });
@@ -144,14 +165,34 @@ app.post('/api/workspace/login', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDatabaseConfigured()) return workspaceUnavailable(res);
   if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
-  const rate = workspaceLoginLimiter.check(`login:${clientKey(req)}`);
+  const rate = await checkSharedRateLimit(`workspace-login-ip:${clientKey(req)}`, {
+    windowMs: 10 * 60_000,
+    limit: 10,
+  }).catch(() => null);
+  if (!rate) return workspaceUnavailable(res);
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retryAfterSeconds));
     return res.status(429).json({ error: 'Too many sign-in attempts. Please wait a few minutes.' });
   }
+  const loginEmail = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  const accountKey = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail) && loginEmail.length <= 254
+    ? 'account:' + sha256Hex(loginEmail)
+    : null;
   try {
     const user = await authenticateWorkspaceUser(req.body || {});
-    if (!user) return res.status(401).json({ error: 'Email or password is incorrect.' });
+    if (!user) {
+      if (accountKey) {
+        const accountRate = await checkSharedRateLimit(accountKey, { windowMs: 15 * 60_000, limit: 20 });
+        if (!accountRate.allowed) {
+          res.setHeader('Retry-After', String(accountRate.retryAfterSeconds));
+          return res.status(429).json({ error: 'Too many failed sign-in attempts for this account. Please wait before trying again.' });
+        }
+      }
+      return res.status(401).json({ error: 'Email or password is incorrect.' });
+    }
+    // Count failed attempts only: a correct password can still sign in, and
+    // successful authentication clears any accumulated account-level failures.
+    if (accountKey) await resetSharedRateLimit(accountKey);
     const session = await createWorkspaceSession(user.id);
     const maxAge = Math.floor((session.expiresAt.getTime() - Date.now()) / 1000);
     res.append('Set-Cookie', workspaceSessionCookie(session.token, req, maxAge));
@@ -180,13 +221,123 @@ app.post('/api/workspace/logout', async (req, res) => {
   return res.json({ ok: true });
 });
 
+app.post('/api/workspace/subscription/checkout', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  try {
+    return res.json(await createRazorpaySubscription(session.user.id));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return workspaceUnavailable(res);
+  }
+});
+
+app.post('/api/workspace/subscription/cancel', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  try {
+    return res.json(await cancelRazorpaySubscriptionAtPeriodEnd(session.user.id));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return workspaceUnavailable(res);
+  }
+});
+
+app.post('/api/webhooks/razorpay', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!req.rawBody) return res.status(400).json({ error: 'Raw webhook body is required.' });
+  try {
+    const result = await processRazorpayWebhook({
+      rawBody: req.rawBody,
+      signature: req.get('X-Razorpay-Signature'),
+      eventId: req.get('X-Razorpay-Event-Id'),
+    });
+    return res.json(result);
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    console.error('[razorpay] webhook processing failed:', error?.message || error);
+    return res.status(500).json({ error: 'Webhook processing failed. Razorpay should retry this event.' });
+  }
+});
+
+app.get('/api/workspace/organization', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  try {
+    return res.json(await readOrganizationWorkspace(session.user.id));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return workspaceUnavailable(res);
+  }
+});
+
+app.put('/api/workspace/modules', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  try {
+    return res.json(await updateOrganizationModules(session.user.id, req.body?.modules));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return workspaceUnavailable(res);
+  }
+});
+
+app.get('/api/workspace/modules/:moduleKey/data', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  try {
+    return res.json(await readOrganizationModuleData(session.user.id, req.params.moduleKey));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
+    return workspaceUnavailable(res);
+  }
+});
+
+app.put('/api/workspace/modules/:moduleKey/data', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  // Require optimistic concurrency on every cloud write. Allow null only for
+  // the first write when the module has no saved cloud revision yet.
+  if (!req.body || !Object.prototype.hasOwnProperty.call(req.body, 'expectedUpdatedAt')) {
+    return res.status(400).json({
+      error: 'A cloud revision is required. Reload the latest workspace data before saving.',
+      code: 'WORKSPACE_REVISION_REQUIRED',
+    });
+  }
+  try {
+    return res.json(await writeOrganizationModuleData(session.user.id, req.params.moduleKey, req.body?.state, req.body.expectedUpdatedAt));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
+    return workspaceUnavailable(res);
+  }
+});
+
 app.get('/api/workspace/state', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const session = await requireWorkspaceUser(req, res);
   if (!session) return;
   try {
+    await requireActiveOrganizationSubscription(session.user.id);
+    // The workspace is still one shared JSON document, so limit full-document reads
+    // to owners/admins until data is isolated by module.
+    await requireOrganizationRole(session.user.id, ['owner', 'admin']);
     return res.json(await readWorkspaceState(session.user.id));
-  } catch {
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
     return workspaceUnavailable(res);
   }
 });
@@ -197,6 +348,18 @@ app.put('/api/workspace/state', async (req, res) => {
   if (!session) return;
   if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
   if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  // The session cookie is shared across tabs. Bind each full-workspace save to
+  // the account that loaded its local snapshot, so a stale tab cannot write
+  // account A's data using account B's newly active browser session.
+  if (typeof req.body?.expectedUserId !== 'string' || req.body.expectedUserId !== session.user.id) {
+    return res.status(409).json({
+      error: 'The signed-in account changed in this browser. Reload the workspace before saving.',
+      code: 'WORKSPACE_ACCOUNT_CHANGED',
+    });
+  }
+  if (!req.body || !Object.prototype.hasOwnProperty.call(req.body, 'expectedUpdatedAt')) {
+    return res.status(400).json({ error: 'A cloud revision is required. Reload the latest workspace data before saving.', code: 'WORKSPACE_REVISION_REQUIRED' });
+  }
   const state = req.body?.state;
   if (!state || typeof state !== 'object' || Array.isArray(state)) {
     return res.status(400).json({ error: 'Workspace state must be an object.' });
@@ -207,9 +370,11 @@ app.put('/api/workspace/state', async (req, res) => {
     return res.status(413).json({ error: 'Workspace data is too large. Export a backup and remove old data before syncing.' });
   }
   try {
-    await writeWorkspaceState(session.user.id, state);
-    return res.json({ saved: true, updatedAt: new Date().toISOString() });
-  } catch {
+    await requireActiveOrganizationSubscription(session.user.id);
+    await requireOrganizationRole(session.user.id, ['owner', 'admin']);
+    return res.json(await writeWorkspaceState(session.user.id, state, req.body.expectedUpdatedAt));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
     return workspaceUnavailable(res);
   }
 });
@@ -220,8 +385,21 @@ app.put('/api/workspace/state', async (req, res) => {
 app.use(['/api/places', '/api/website'], async (req, res, next) => {
   const session = await requireWorkspaceUser(req, res);
   if (!session) return;
-  req.workspaceUser = session.user;
-  return next();
+  // Express strips a mounted prefix from req.path; use baseUrl to identify
+  // which protected API family matched this middleware.
+  const moduleKey = req.baseUrl.startsWith('/api/places') ? 'growth_sales' : 'tools';
+  try {
+    await requireOrganizationModule(session.user.id, moduleKey);
+    req.workspaceUser = session.user;
+    return next();
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({
+      error: error.message,
+      code: error.code || 'WORKSPACE_ENTITLEMENT_DENIED',
+      module: error.moduleKey || moduleKey,
+    });
+    return workspaceUnavailable(res);
+  }
 });
 
 const googleApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
@@ -232,10 +410,10 @@ const googleApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
 const auditPublicIntakeEnabled = String(process.env.AUDIT_PUBLIC_INTAKE_ENABLED || '')
   .trim().toLowerCase() === 'true';
 const auditRetentionDays = retentionDaysFromEnv(process.env.AUDIT_RETENTION_DAYS);
-// The inbox is reachable only when BOTH the database and an owner credential are
-// configured. A half-configured deployment stays unavailable rather than
-// falling back to weaker authentication.
-const auditInboxConfigured = () => isDatabaseConfigured() && isOwnerAuthConfigured();
+// Passwordless mode requested by the operator: the inbox only requires its database.
+// WARNING: audit request contact details and inbox controls are accessible to anyone
+// who can reach this service. Keep the service private if the data is confidential.
+const auditInboxConfigured = () => isDatabaseConfigured();
 
 const auditLoginLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 5 });
 const auditIntakeLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 5 });
@@ -244,19 +422,48 @@ const auditIntakeLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 5 }
 // disables it entirely. See docs/API_ABUSE_AND_COST_REVIEW.md — this is a
 // backstop only and is not a global spending cap.
 const placesLimiter = createPlacesRateLimiter();
+// Website audits perform outbound requests and parsing, so cap them per signed-in
+// workspace user as a cost/abuse backstop. This is independent of the Places quota.
+const rawWebsiteAuditLimit = String(process.env.WEBSITE_AUDIT_RATE_LIMIT_PER_MIN || '').trim();
+const parsedWebsiteAuditLimit = Number.parseInt(rawWebsiteAuditLimit, 10);
+const websiteAuditLimit = Number.isFinite(parsedWebsiteAuditLimit) && parsedWebsiteAuditLimit > 0
+  ? Math.min(parsedWebsiteAuditLimit, 1_000)
+  : 10;
+const websiteAuditLimiter = createRateLimiter({ windowMs: 60_000, limit: websiteAuditLimit });
 
 /**
  * Applies the Places rate limit. Returns true when the request may continue.
  * Checked before the API key so an unconfigured server is not hammered either.
  */
-function allowPlacesRequest(req, res, bucket) {
+async function allowPlacesRequest(req, res, bucket) {
   if (!placesLimiter.enabled) return true;
-  const result = placesLimiter.check(`${bucket}:${clientKey(req)}`);
-  if (result.allowed) return true;
-  res.setHeader('Retry-After', String(result.retryAfterSeconds));
+  let shared;
+  try {
+    shared = await checkSharedRateLimit(`places:${bucket}:${clientKey(req)}`, {
+      windowMs: 60_000,
+      limit: placesLimiter.limit,
+    });
+  } catch {
+    // Places calls can incur provider charges. If the shared limiter cannot
+    // check the budget, fail closed rather than allowing an unmetered request.
+    workspaceUnavailable(res);
+    return false;
+  }
+  if (!shared.allowed) {
+    res.setHeader('Retry-After', String(shared.retryAfterSeconds));
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(429).json({
+      error: `Places request limit reached (${placesLimiter.limit}/minute). Wait ${shared.retryAfterSeconds}s and try again.`,
+    });
+    return false;
+  }
+  // Keep the local limiter as an additional fast per-instance backstop.
+  const local = placesLimiter.check(`${bucket}:${clientKey(req)}`);
+  if (local.allowed) return true;
+  res.setHeader('Retry-After', String(local.retryAfterSeconds));
   res.setHeader('Cache-Control', 'no-store');
   res.status(429).json({
-    error: `Places request limit reached (${placesLimiter.limit}/minute). Wait ${result.retryAfterSeconds}s and try again.`,
+    error: `Places request limit reached (${placesLimiter.limit}/minute). Wait ${local.retryAfterSeconds}s and try again.`,
   });
   return false;
 }
@@ -276,7 +483,7 @@ app.get('/api/config', (_req, res) => {
 });
 
 app.post('/api/places/search', async (req, res) => {
-  if (!allowPlacesRequest(req, res, 'places-search')) return;
+  if (!await allowPlacesRequest(req, res, 'places-search')) return;
   if (!googleApiKey) {
     return res.status(503).json({ error: 'Google Places API is not configured on this server.' });
   }
@@ -306,7 +513,7 @@ app.post('/api/places/search', async (req, res) => {
 });
 
 app.post('/api/places/details', async (req, res) => {
-  if (!allowPlacesRequest(req, res, 'places-details')) return;
+  if (!await allowPlacesRequest(req, res, 'places-details')) return;
   if (!googleApiKey) return res.status(503).json({ error: 'Google Places API is not configured on this server.' });
   const placeId = typeof req.body?.placeId === 'string' ? req.body.placeId.trim() : '';
   if (!placeId || placeId.length > 300) return res.status(400).json({ error: 'A valid place ID is required.' });
@@ -320,6 +527,32 @@ app.post('/api/places/details', async (req, res) => {
 });
 
 app.post('/api/website/analyze', async (req, res) => {
+  let rate;
+  try {
+    rate = await checkSharedRateLimit(`website-audit:${req.workspaceUser.id}`, {
+      windowMs: 60_000,
+      limit: websiteAuditLimit,
+    });
+  } catch {
+    // Outbound fetches can be abused to consume server resources. Do not run
+    // them if the cross-instance abuse limit cannot be checked.
+    return workspaceUnavailable(res);
+  }
+  if (!rate.allowed) {
+    res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(429).json({
+      error: `Website audit limit reached (${websiteAuditLimit}/minute). Wait ${rate.retryAfterSeconds}s and try again.`,
+    });
+  }
+  const localRate = websiteAuditLimiter.check(`website-audit:${req.workspaceUser.id}`);
+  if (!localRate.allowed) {
+    res.setHeader('Retry-After', String(localRate.retryAfterSeconds));
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(429).json({
+      error: `Website audit limit reached (${websiteAuditLimit}/minute). Wait ${localRate.retryAfterSeconds}s and try again.`,
+    });
+  }
   const website = typeof req.body?.website === 'string' ? req.body.website.trim() : '';
   if (!website || website.length > 2_000) {
     return res.status(400).json({ error: 'A valid website URL is required.' });
@@ -340,22 +573,17 @@ app.post('/api/website/analyze', async (req, res) => {
 // Audit requests are stored in Postgres and are deliberately separate from
 // prospect CRM data, which never leaves the operator's browser.
 //
-// Security model:
-//   * Owner routes require a server-side session held in an HttpOnly,
-//     Secure-in-production, SameSite=Strict cookie, with idle + absolute
-//     expiry and server-side revocation on logout.
-//   * State-changing requests must pass the AUDIT_ALLOWED_ORIGINS check and a
-//     double-submit CSRF token bound to the session row.
-//   * The inbox is unavailable (503) unless BOTH DATABASE_URL and
-//     AUDIT_OWNER_PASSWORD_HASH are configured. It never degrades to weaker auth.
-//   * Public intake is OFF unless AUDIT_PUBLIC_INTAKE_ENABLED === 'true'.
+// Passwordless access is intentionally enabled at the operator's request.
+// WARNING: anyone who can reach this service can read, update, and delete audit
+// enquiries. Origin checks remain as a browser safeguard, not authentication.
+// Public intake is OFF unless AUDIT_PUBLIC_INTAKE_ENABLED === 'true'.
 //
 // No email or WhatsApp message is ever sent from these routes.
 
 function auditNotConfigured(res) {
   res.setHeader('Cache-Control', 'no-store');
   return res.status(503).json({
-    error: 'Audit Inbox is not configured. Set DATABASE_URL and AUDIT_OWNER_PASSWORD_HASH on the server.',
+    error: 'Audit Inbox is not configured. Set DATABASE_URL on the server.',
     configured: false,
   });
 }
@@ -366,24 +594,12 @@ function auditNotConfigured(res) {
  * Always returns null after writing a response: an Express Response object is
  * truthy, and returning it would let the caller fall through and send twice.
  */
-async function requireAuditOwner(req, res) {
-  if (!auditInboxConfigured()) {
+async function requireAuditOwner(_req, res) {
+  if (!isDatabaseConfigured()) {
     auditNotConfigured(res);
     return null;
   }
-  try {
-    const session = await resolveOwnerSession(req);
-    if (!session) {
-      res.setHeader('Cache-Control', 'no-store');
-      res.status(401).json({ error: 'Sign in to open the Audit Inbox.' });
-      return null;
-    }
-    return session;
-  } catch (error) {
-    res.setHeader('Cache-Control', 'no-store');
-    res.status(503).json({ error: 'Audit Inbox storage is unavailable. Please try again.' });
-    return null;
-  }
+  return { passwordless: true };
 }
 
 /** Non-secret configuration the owner UI needs before it renders a login form. */
@@ -405,9 +621,23 @@ app.post('/api/audit/session', async (req, res) => {
   if (!auditInboxConfigured()) return auditNotConfigured(res);
   if (!passesOriginCheck(req)) return res.status(403).json({ error: 'Origin not allowed.' });
 
-  const rate = auditLoginLimiter.check(`login:${clientKey(req)}`);
+  let rate;
+  try {
+    rate = await checkSharedRateLimit(`audit-login-ip:${clientKey(req)}`, {
+      windowMs: 10 * 60_000,
+      limit: 5,
+    });
+  } catch {
+    return res.status(503).json({ error: 'Audit Inbox storage is unavailable. Please try again.' });
+  }
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+    return res.status(429).json({ error: 'Too many sign-in attempts. Wait a few minutes and try again.' });
+  }
+  // Keep the local limiter as an additional per-instance backstop.
+  const localRate = auditLoginLimiter.check(`login:${clientKey(req)}`);
+  if (!localRate.allowed) {
+    res.setHeader('Retry-After', String(localRate.retryAfterSeconds));
     return res.status(429).json({ error: 'Too many sign-in attempts. Wait a few minutes and try again.' });
   }
 
@@ -439,9 +669,7 @@ app.post('/api/audit/session/logout', async (req, res) => {
   if (!auditInboxConfigured()) return auditNotConfigured(res);
   if (!passesOriginCheck(req)) return res.status(403).json({ error: 'Origin not allowed.' });
   const session = await resolveOwnerSession(req, { renew: false }).catch(() => null);
-  if (session && !passesCsrfCheck(req, session)) {
-    return res.status(403).json({ error: 'CSRF check failed.' });
-  }
+  // No authenticated session exists in passwordless mode.
   await revokeOwnerSession(req).catch(() => false);
   for (const cookie of buildClearCookies(req)) res.append('Set-Cookie', cookie);
   return res.json({ ok: true });
@@ -508,9 +736,25 @@ app.post('/api/audit/requests', async (req, res) => {
   if (!auditInboxConfigured()) return auditNotConfigured(res);
   if (!passesOriginCheck(req)) return res.status(403).json({ error: 'Origin not allowed.' });
 
-  const rate = auditIntakeLimiter.check(`intake:${clientKey(req)}`);
+  let rate;
+  try {
+    rate = await checkSharedRateLimit(`audit-intake-ip:${clientKey(req)}`, {
+      windowMs: 60 * 60_000,
+      limit: 5,
+    });
+  } catch {
+    // Public intake writes to PostgreSQL; fail closed when the shared abuse
+    // limit cannot be checked, rather than allowing unmetered submissions.
+    return res.status(503).json({ error: 'Could not record the audit request. Please try again later.' });
+  }
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+    return res.status(429).json({ error: 'Too many audit requests from this address. Try again later.' });
+  }
+  // Keep the local limiter as an additional per-instance backstop.
+  const localRate = auditIntakeLimiter.check(`intake:${clientKey(req)}`);
+  if (!localRate.allowed) {
+    res.setHeader('Retry-After', String(localRate.retryAfterSeconds));
     return res.status(429).json({ error: 'Too many audit requests from this address. Try again later.' });
   }
 
@@ -538,7 +782,7 @@ app.patch('/api/audit/requests/:id', async (req, res) => {
   const session = await requireAuditOwner(req, res);
   if (!session) return;
   if (!passesOriginCheck(req)) return res.status(403).json({ error: 'Origin not allowed.' });
-  if (!passesCsrfCheck(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  // Passwordless mode: Origin allowlisting is retained, but is not authentication.
 
   const { id } = req.params;
   if (!isAuditRequestId(id)) return res.status(400).json({ error: 'A valid request id is required.' });
@@ -565,7 +809,7 @@ app.delete('/api/audit/requests/:id', async (req, res) => {
   const session = await requireAuditOwner(req, res);
   if (!session) return;
   if (!passesOriginCheck(req)) return res.status(403).json({ error: 'Origin not allowed.' });
-  if (!passesCsrfCheck(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  // Passwordless mode: Origin allowlisting is retained, but is not authentication.
 
   const { id } = req.params;
   if (!isAuditRequestId(id)) return res.status(400).json({ error: 'A valid request id is required.' });

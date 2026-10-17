@@ -26,13 +26,50 @@ function workspaceDatabase() {
   const users = new Map();
   const sessions = new Map();
   const states = new Map();
+  const organizationStates = new Map();
+  const organizations = new Map();
+  let failOrganizationProvisioning = false;
   const pool = {
     calls,
     on() {},
     async end() {},
     async query(text, values = []) {
       calls.push({ text, values });
-      if (/^\s*CREATE (TABLE|INDEX) IF NOT EXISTS/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*(CREATE (TABLE|INDEX) IF NOT EXISTS|ALTER TABLE organization_subscriptions)/i.test(text)) return { rows: [], rowCount: 0 };
+      // Schema backfills are no-ops in this in-memory database; focused
+      // organization helper queries below exercise per-user provisioning.
+      if (/^\s*INSERT INTO organizations\s*\(name, owner_user_id\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*INSERT INTO organization_memberships\s*\(organization_id, user_id, role\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*INSERT INTO organization_subscriptions\s*\(organization_id, plan_key, status\)\s*SELECT/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*INSERT INTO organization_modules\s*\(organization_id, module_key, enabled\)\s*SELECT o\.id/i.test(text)) return { rows: [], rowCount: 0 };
+      if (text.includes('INSERT INTO organization_workspace_data') && text.includes('SELECT o.id, wd.state')) return { rows: [], rowCount: 0 };
+      if (text.includes('DELETE FROM organizations WHERE owner_user_id')) {
+        const organization = organizations.get(values[0]);
+        if (organization) organizations.delete(values[0]);
+        return { rows: [], rowCount: organization ? 1 : 0 };
+      }
+      if (text.includes('DELETE FROM workspace_users WHERE id')) {
+        const email = [...users.entries()].find(([, user]) => user.id === values[0])?.[0];
+        if (email) users.delete(email);
+        return { rows: [], rowCount: email ? 1 : 0 };
+      }
+      if (text.includes('INSERT INTO organizations (name, owner_user_id)')) {
+        if (failOrganizationProvisioning) throw new Error('simulated organization provisioning failure');
+        const [name, userId] = values;
+        if (!organizations.has(userId)) organizations.set(userId, { id: 'org-' + userId, name, owner_user_id: userId });
+        return { rows: [], rowCount: 1 };
+      }
+      if (text.includes('SELECT id FROM organizations WHERE owner_user_id')) {
+        const organization = organizations.get(values[0]);
+        return { rows: organization ? [{ id: organization.id }] : [], rowCount: organization ? 1 : 0 };
+      }
+      if (text.includes('INSERT INTO organization_memberships')) return { rows: [], rowCount: 1 };
+      if (text.includes('INSERT INTO organization_subscriptions')) return { rows: [], rowCount: 1 };
+      if (text.includes('INSERT INTO organization_modules')) return { rows: [], rowCount: 4 };
+      if (text.includes('FROM organization_memberships') && text.includes('SELECT organization_id')) {
+        const organization = organizations.get(values[0]);
+        return { rows: organization ? [{ organization_id: organization.id }] : [], rowCount: organization ? 1 : 0 };
+      }
 
       if (text.includes('INSERT INTO workspace_users')) {
         const [name, email, passwordHash] = values;
@@ -71,20 +108,28 @@ function workspaceDatabase() {
         return { rows: [], rowCount: session && session.revoked_at ? 1 : 0 };
       }
 
-      if (text.includes('SELECT state, updated_at FROM workspace_data')) {
-        const row = states.get(values[0]);
+      if (text.includes('FROM organization_workspace_data d')) {
+        const organization = organizations.get(values[0]);
+        const row = organization ? organizationStates.get(organization.id) : null;
         return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
       }
 
-      if (text.includes('INSERT INTO workspace_data')) {
-        states.set(values[0], { state: JSON.parse(values[1]), updated_at: new Date('2026-01-02T00:00:00.000Z') });
-        return { rows: [], rowCount: 1 };
+      if (text.includes('INSERT INTO organization_workspace_data (organization_id, state, updated_at)')) {
+        const [organizationId, serialized, expectedUpdatedAt] = values;
+        const existing = organizationStates.get(organizationId);
+        if (existing && (expectedUpdatedAt == null || Date.parse(expectedUpdatedAt) !== Date.parse(existing.updated_at))) {
+          return { rows: [], rowCount: 0 };
+        }
+        if (!existing && expectedUpdatedAt != null) return { rows: [], rowCount: 0 };
+        const row = { state: JSON.parse(serialized), updated_at: new Date('2026-01-02T00:00:00.000Z') };
+        organizationStates.set(organizationId, row);
+        return { rows: [{ updated_at: row.updated_at }], rowCount: 1 };
       }
 
       throw new Error(`Unexpected workspace SQL: ${text}`);
     },
   };
-  return { calls, pool, users, sessions, states };
+  return { calls, pool, users, sessions, states, organizations, organizationStates, setFailOrganizationProvisioning(value) { failOrganizationProvisioning = value; } };
 }
 
 function useWorkspaceDatabase() {
@@ -170,14 +215,49 @@ test('workspace session cookies are secure, CSRF-bound, renewable, and revocable
 
 test('workspace state is upserted and read back for its account only', async () => {
   const db = useWorkspaceDatabase();
+  await registerWorkspaceUser({ name: 'Priya', email: 'priya@example.test', password: 'a-strong-test-password' });
   const state = { 'agencyos:business-profile:v1': { name: 'North Star Cafe' }, employees: [{ name: 'Example Worker', salary: 0 }] };
 
-  assert.deepEqual(await writeWorkspaceState(USER_ID, state), { saved: true });
+  const firstSave = await writeWorkspaceState(USER_ID, state, null);
+  assert.deepEqual(firstSave, { saved: true, updatedAt: new Date('2026-01-02T00:00:00.000Z') });
   assert.deepEqual((await readWorkspaceState(USER_ID)).state, state);
   assert.deepEqual((await readWorkspaceState('another-user-id')).state, {});
 
-  const write = db.calls.find((call) => call.text.includes('INSERT INTO workspace_data'));
-  assert.deepEqual(write.values, [USER_ID, JSON.stringify(state)]);
-  assert.match(write.text, /ON CONFLICT \(user_id\) DO UPDATE/);
-  assert.match(db.calls.find((call) => call.text.includes('SELECT state, updated_at')).text, /WHERE user_id = \$1/);
+  await assert.rejects(writeWorkspaceState(USER_ID, { stale: true }, null), {
+    statusCode: 409,
+    code: 'WORKSPACE_REVISION_CONFLICT',
+  });
+  await assert.rejects(writeWorkspaceState(USER_ID, state), {
+    statusCode: 400,
+    code: 'WORKSPACE_REVISION_REQUIRED',
+  });
+
+  const write = db.calls.find((call) => call.text.includes('date_trunc(\'milliseconds\', now())') && call.text.includes('organization_workspace_data'));
+  assert.deepEqual(write.values, ['org-' + USER_ID, JSON.stringify(state), null]);
+  assert.match(write.text, /ON CONFLICT \(organization_id\) DO UPDATE/);
+  assert.match(write.text, /WHERE date_trunc\('milliseconds', organization_workspace_data\.updated_at\) IS NOT DISTINCT FROM \$3::timestamptz/);
+  assert.match(db.calls.find((call) => call.text.includes('FROM organization_workspace_data d')).text, /JOIN organization_memberships m ON m\.organization_id = d\.organization_id/);
+  assert.match(db.calls.find((call) => call.text.includes('SELECT organization_id')).text, /WHERE user_id = \$1/);
+  assert.equal(db.organizationStates.get('org-' + USER_ID).state['agencyos:business-profile:v1'].name, 'North Star Cafe');
+
+  // A complete snapshot must preserve intentional deletions instead of
+  // merging removed keys back from an older server-side copy.
+  await writeWorkspaceState(USER_ID, { employees: [{ name: 'Example Worker', salary: 0 }] }, firstSave.updatedAt.toISOString());
+  const afterDeletion = await readWorkspaceState(USER_ID);
+  assert.deepEqual(afterDeletion.state, { employees: [{ name: 'Example Worker', salary: 0 }] });
+  assert.equal('agencyos:business-profile:v1' in afterDeletion.state, false);
+});
+
+test('workspace registration rolls back a newly-created account when organization provisioning fails', async () => {
+  const db = useWorkspaceDatabase();
+  db.setFailOrganizationProvisioning(true);
+
+  await assert.rejects(
+    registerWorkspaceUser({ name: 'Priya', email: 'priya@example.test', password: 'a-strong-test-password' }),
+    /simulated organization provisioning failure/,
+  );
+
+  assert.equal(db.users.size, 0, 'failed registration must not reserve the email');
+  assert.equal(db.organizations.size, 0, 'failed registration must not leave a partial organization');
+  assert.ok(db.calls.some((call) => call.text.includes('DELETE FROM workspace_users WHERE id')));
 });

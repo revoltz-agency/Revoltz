@@ -50,7 +50,7 @@ function mergeLegacyValue(key, cloudValue, legacyValue) {
   return cloudValue;
 }
 
-function installWorkspaceStorage(userId, remoteState) {
+function installWorkspaceStorage(userId, remoteState, remoteUpdatedAt = null) {
   const prefix = `agencyos:account:${userId}:`;
   const proto = Storage.prototype;
   const native = {
@@ -65,15 +65,40 @@ function installWorkspaceStorage(userId, remoteState) {
   let syncTimer = null;
   let inFlight = Promise.resolve();
   let syncVersion = 0;
+  const pendingKey = `agencyos:workspace-pending:${userId}`;
+  let pendingRevision = null;
+  try {
+    const pending = JSON.parse(native.getItem.call(window.localStorage, pendingKey) || 'null');
+    if (pending && typeof pending === 'object' && !Array.isArray(pending) &&
+        (pending.baseRevision === null || typeof pending.baseRevision === 'string')) {
+      pendingRevision = pending.baseRevision;
+    }
+  } catch { /* Ignore a malformed pending marker and trust the cloud snapshot. */ }
+  const hasPendingSnapshot = pendingRevision !== null ||
+    native.getItem.call(window.localStorage, pendingKey) === JSON.stringify({ baseRevision: null });
+  let cloudRevision = hasPendingSnapshot ? pendingRevision : (remoteUpdatedAt || null);
+  let conflictDetected = false;
 
-  // Migrate the older, un-namespaced browser cache without discarding it.
-  // The cloud wins conflicts, while distinct legacy leads/CRM entries are merged.
-  const legacyState = {};
-  for (const key of LEGACY_WORKSPACE_KEYS) {
-    const value = native.getItem.call(window.localStorage, key);
-    if (value !== null) legacyState[key] = value;
+  // If a write was pending when the page closed, recover the account-scoped
+  // local snapshot rather than replacing it with the older cloud snapshot.
+  const cachedState = {};
+  if (hasPendingSnapshot) {
+    for (let i = native.length.get.call(window.localStorage) - 1; i >= 0; i -= 1) {
+      const key = native.key.call(window.localStorage, i);
+      if (key?.startsWith(prefix)) cachedState[key.slice(prefix.length)] = native.getItem.call(window.localStorage, key);
+    }
   }
-  const mergedState = { ...(remoteState || {}) };
+
+  // Migrate the older, un-namespaced browser cache only when there is no pending
+  // account snapshot. Cloud values win conflicts; distinct leads/CRM entries merge.
+  const legacyState = {};
+  if (!hasPendingSnapshot) {
+    for (const key of LEGACY_WORKSPACE_KEYS) {
+      const value = native.getItem.call(window.localStorage, key);
+      if (value !== null) legacyState[key] = value;
+    }
+  }
+  const mergedState = hasPendingSnapshot ? cachedState : { ...(remoteState || {}) };
   for (const [key, value] of Object.entries(legacyState)) {
     mergedState[key] = mergeLegacyValue(key, mergedState[key], value);
   }
@@ -90,9 +115,13 @@ function installWorkspaceStorage(userId, remoteState) {
     }
   }
 
-  // Preserve the legacy keys until the merged snapshot has successfully reached
-  // the server. This avoids losing pre-account data if cloud sync is unavailable.
-  let migrationPending = Object.keys(legacyState).length > 0;
+  // Once copied into this account's namespaced cache, remove the unscoped legacy
+  // keys immediately. Keeping them around until cloud sync succeeds could expose
+  // one person's unsynced legacy data to the next account using this browser.
+  const hasLegacyState = Object.keys(legacyState).length > 0;
+  // Remove global legacy keys even when a pending snapshot exists; never allow
+  // unscoped records to be imported by a different account later.
+  for (const key of LEGACY_WORKSPACE_KEYS) native.removeItem.call(window.localStorage, key);
 
   function collectState() {
     const state = {};
@@ -104,34 +133,54 @@ function installWorkspaceStorage(userId, remoteState) {
     return state;
   }
   function scheduleSync() {
-    if (!active) return;
+    if (!active || conflictDetected) return;
     const version = ++syncVersion;
+    // Persist the revision marker before the debounce so edits survive reloads
+    // and can be retried using the exact cloud version they were based on.
+    native.setItem.call(window.localStorage, pendingKey, JSON.stringify({ baseRevision: cloudRevision }));
     reportSyncStatus('saving');
     window.clearTimeout(syncTimer);
     syncTimer = window.setTimeout(() => {
       const state = collectState();
       inFlight = inFlight.catch(() => {}).then(async () => {
-        if (!active) return;
+        if (!active || conflictDetected) return;
         const response = await fetch('/api/workspace/state', {
           method: 'PUT',
           credentials: 'include',
+          cache: 'no-store',
           headers: { 'Content-Type': 'application/json', 'X-Workspace-CSRF': csrfFromCookie() },
-          body: JSON.stringify({ state }),
+          body: JSON.stringify({ state, expectedUpdatedAt: cloudRevision, expectedUserId: userId }),
         });
-        if (!response.ok) throw new Error('Workspace cloud sync failed.');
-        if (version === syncVersion) reportSyncStatus('saved');
-        if (migrationPending) {
-          for (const key of Object.keys(legacyState)) native.removeItem.call(window.localStorage, key);
-          migrationPending = false;
+        const payload = await response.json().catch(() => ({}));
+        if (response.status === 409 || payload.code === 'WORKSPACE_REVISION_CONFLICT') {
+          conflictDetected = true;
+          if (version === syncVersion) reportSyncStatus('conflict');
+          throw new Error('Workspace changed elsewhere. Reload to get the latest saved version before continuing.');
+        }
+        if (!response.ok) throw new Error(payload.error || 'Workspace cloud sync failed.');
+        cloudRevision = payload.updatedAt || cloudRevision;
+        if (version === syncVersion) {
+          native.removeItem.call(window.localStorage, pendingKey);
+          reportSyncStatus('saved');
+        } else {
+          native.setItem.call(window.localStorage, pendingKey, JSON.stringify({ baseRevision: cloudRevision }));
         }
       }).catch(() => {
         // Keep the local cache usable while offline; the next edit retries sync.
-        if (version === syncVersion) reportSyncStatus('offline');
+        if (version === syncVersion) {
+          if (conflictDetected) reportSyncStatus('conflict');
+          else reportSyncStatus('offline');
+        }
       });
     }, 700);
   }
   const retryWhenOnline = () => scheduleSync();
   window.addEventListener('online', retryWhenOnline);
+  const discardConflictAndReload = () => {
+    native.removeItem.call(window.localStorage, pendingKey);
+    window.location.reload();
+  };
+  window.addEventListener('agencyos:discard-cloud-conflict', discardConflictAndReload);
 
   proto.getItem = function (key) {
     return this === window.localStorage
@@ -178,12 +227,13 @@ function installWorkspaceStorage(userId, remoteState) {
     },
   });
 
-  if (migrationPending) scheduleSync();
+  if (hasLegacyState || hasPendingSnapshot) scheduleSync();
 
   return () => {
     active = false;
     window.clearTimeout(syncTimer);
     window.removeEventListener('online', retryWhenOnline);
+    window.removeEventListener('agencyos:discard-cloud-conflict', discardConflictAndReload);
     proto.getItem = native.getItem;
     proto.setItem = native.setItem;
     proto.removeItem = native.removeItem;
@@ -210,7 +260,7 @@ export default function WorkspaceAuthGate() {
     const response = await fetch('/api/workspace/state', { credentials: 'include', cache: 'no-store' });
     if (!response.ok) throw new Error('Could not load your saved workspace. Please sign in again.');
     const result = await response.json();
-    const cleanup = installWorkspaceStorage(account.id, result.state || {});
+    const cleanup = installWorkspaceStorage(account.id, result.state || {}, result.updatedAt || null);
     setSyncStatus('saved');
     window.__agencyOSUser = account;
     setCleanupStorage(() => cleanup);
@@ -264,6 +314,11 @@ export default function WorkspaceAuthGate() {
         headers: { 'X-Workspace-CSRF': csrfFromCookie() },
       });
     } finally {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const channel = new BroadcastChannel('agencyos-workspace-session');
+        channel.postMessage({ type: 'session-changed', userId: null });
+        channel.close();
+      }
       cleanupStorage?.();
       setCleanupStorage(null);
       setUser(null);
@@ -313,11 +368,13 @@ export default function WorkspaceAuthGate() {
       saving: 'Saving changes to your account…',
       offline: 'Not synced — changes are saved only in this browser. Sync will retry when you are online.',
       preview: 'Preview only — data stays in this browser',
+      conflict: 'Cloud data changed elsewhere — reload this workspace before editing further',
     };
-    const warning = syncStatus === 'offline' || syncStatus === 'preview';
+    const warning = syncStatus === 'offline' || syncStatus === 'preview' || syncStatus === 'conflict';
     return <>
       <div role="status" aria-live="polite" style={{ position: 'fixed', zIndex: 1100, top: 10, right: 12, maxWidth: 'min(420px, calc(100vw - 24px))', padding: '8px 11px', border: `1px solid ${warning ? '#84683b' : '#375b48'}`, borderRadius: 9, background: warning ? '#282319' : '#14221c', color: warning ? '#e5d2a4' : '#a9d9b8', fontSize: 12, lineHeight: 1.4, boxShadow: '0 4px 18px #0005' }}>
         {syncLabels[syncStatus] || syncLabels.saved}
+        {syncStatus === 'conflict' && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('agencyos:discard-cloud-conflict'))} style={{ display: 'block', marginTop: 6, padding: '4px 7px', border: '1px solid currentColor', borderRadius: 6, background: 'transparent', color: 'inherit', cursor: 'pointer' }}>Discard local edits &amp; reload cloud</button>}
       </div>
       <App />
     </>;

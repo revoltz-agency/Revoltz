@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Download, Plus, Trash2 } from 'lucide-react';
+import { mergeClientsDeliveryState } from '../lib/clientsDeliverySync.js';
+import { saveOrganizationModulePatch } from '../lib/moduleDataSync.js';
 const KEY='agencyos:project-tracker:v1';
 const PACKAGES_KEY='agencyos:sales-packages:v1';
 const DEALS_KEY='agencyos:deal-tracker:v1';
@@ -13,10 +15,40 @@ export default function ProjectTracker(){
  const [packages,setPackages]=useState(()=>{const v=read(PACKAGES_KEY,[]);return Array.isArray(v)?v:[]});
  const [deals,setDeals]=useState(()=>{const v=read(DEALS_KEY,{});return v&&typeof v==='object'&&!Array.isArray(v)?v:{}});
  const [projects,setProjects]=useState(()=>{const v=read(KEY,[]);return Array.isArray(v)?v:[]});
+ const projectsRef=useRef(projects);projectsRef.current=projects;
+ const cloudReady=useRef(false);
+ const saveQueue=useRef(Promise.resolve());
+ const [syncAttempt,setSyncAttempt]=useState(0);
+ const [syncStatus,setSyncStatus]=useState('checking');
  const [form,setForm]=useState(blank);const [filter,setFilter]=useState('Active');const [notice,setNotice]=useState('');
  const refresh=()=>{const p=read(PACKAGES_KEY,[]),d=read(DEALS_KEY,{});setPackages(Array.isArray(p)?p:[]);setDeals(d&&typeof d==='object'&&!Array.isArray(d)?d:{})};
  useEffect(()=>{const f=()=>refresh();window.addEventListener('focus',f);return()=>window.removeEventListener('focus',f)},[]);
  useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(projects))}catch{setNotice('Browser storage is full; changes may not persist.')}},[projects]);
+ useEffect(()=>{
+  let active=true;cloudReady.current=false;setSyncStatus('checking');
+  (async()=>{try{
+   const response=await fetch('/api/workspace/modules/clients_delivery/data',{credentials:'include',cache:'no-store'});
+   if(!response.ok)throw new Error('Cloud sync unavailable');
+   const payload=await response.json();
+   if(!active||!payload.state||typeof payload.state!=='object'||Array.isArray(payload.state))throw new Error('Invalid cloud state');
+   const merged=mergeClientsDeliveryState(projectsRef.current,payload.state.projectTracker);
+   setProjects(merged);cloudReady.current=true;setSyncStatus('connected');
+  }catch(error){if(active){setSyncStatus('unavailable');console.warn('[AgencyOS] Project Tracker cloud sync unavailable:',error?.message||error)}}})();
+  return()=>{active=false;cloudReady.current=false};
+ },[syncAttempt]);
+ useEffect(()=>{
+  if(!cloudReady.current)return undefined;
+  const timer=window.setTimeout(()=>{
+   const state={projectTracker:projects.slice(0,500)};
+   saveQueue.current=saveQueue.current.catch(()=>{}).then(async()=>{
+    if(!cloudReady.current)return;
+    setSyncStatus('saving');
+        await saveOrganizationModulePatch('clients_delivery', state);
+        setSyncStatus('synced');
+   }).catch(error=>{setSyncStatus('failed');console.warn('[AgencyOS] Project Tracker cloud save failed:',error?.message||error)});
+  },800);
+  return()=>window.clearTimeout(timer);
+ },[projects]);
  const clients=useMemo(()=>packages.filter(p=>(deals[p.id]||{}).stage==='Won'),[packages,deals]);
  const shown=projects.filter(p=>filter==='All'||(filter==='Active'?!['Completed','On hold'].includes(p.status):p.status===filter));
  const stats=[['Projects',projects.length],['Active',projects.filter(p=>!['Completed','On hold'].includes(p.status)).length],['Overdue',projects.filter(p=>p.dueDate&&p.dueDate<today()&&p.status!=='Completed').length],['Completed',projects.filter(p=>p.status==='Completed').length]];
@@ -25,7 +57,7 @@ export default function ProjectTracker(){
  function remove(id){setProjects(prev=>prev.filter(p=>p.id!==id));setNotice('Project removed.')}
  function exportCsv(){const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const csv=[['Project','Client','Status','Priority','Start date','Due date','Owner','Notes'],...projects.map(p=>[p.title,p.clientName,p.status,p.priority,p.startDate,p.dueDate,p.owner,p.notes])].map(row=>row.map(esc).join(',')).join('\r\n');const url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='revoltz-projects.csv';a.click();URL.revokeObjectURL(url)}
  return <div style={{display:'grid',gap:20,maxWidth:1100}}>
- <header style={{display:'flex',gap:13,alignItems:'flex-start'}}><div style={{border:'1px solid var(--viz-border, #333)',borderRadius:13,padding:12}}><CalendarDays size={23}/></div><div><div style={{...muted,letterSpacing:'.14em',fontWeight:700}}>REVOLTZ AI · DELIVERY OPERATIONS</div><h1 style={{fontSize:32,margin:'4px 0 7px'}}>Project Tracker</h1><p style={{...muted,margin:0}}>Organise client work, deadlines, priorities and internal tasks after a deal is confirmed.</p></div></header>
+ <header style={{display:'flex',gap:13,alignItems:'flex-start'}}><div style={{border:'1px solid var(--viz-border, #333)',borderRadius:13,padding:12}}><CalendarDays size={23}/></div><div><div style={{...muted,letterSpacing:'.14em',fontWeight:700}}>REVOLTZ AI · DELIVERY OPERATIONS</div><h1 style={{fontSize:32,margin:'4px 0 7px'}}>Project Tracker</h1><p style={{...muted,margin:0}}>Organise client work, deadlines, priorities and internal tasks after a deal is confirmed.</p><button type="button" aria-live="polite" aria-label={['unavailable','failed'].includes(syncStatus)?'Retry cloud sync':'Project Tracker cloud sync status'} onClick={()=>{if(['unavailable','failed'].includes(syncStatus)){setSyncStatus('checking');setSyncAttempt(v=>v+1)}}} style={{marginTop:9,border:'1px solid var(--viz-border, #333)',borderRadius:999,padding:'5px 9px',background:'transparent',color:'var(--viz-muted, #a1a1aa)',fontSize:11,cursor:['unavailable','failed'].includes(syncStatus)?'pointer':'default'}}>{({checking:'CLOUD SYNC · CHECKING',connected:'CLOUD SYNC · CONNECTED',saving:'CLOUD SYNC · SAVING',synced:'CLOUD SYNC · SAVED',unavailable:'CLOUD SYNC · LOCAL ONLY · RETRY',failed:'CLOUD SYNC · SAVE FAILED · RETRY'})[syncStatus]}</button></div></header>
  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}>{stats.map(([k,v])=><div key={k} style={{border:'1px solid var(--viz-border, #333)',borderRadius:12,padding:14}}><div style={muted}>{k}</div><div style={{fontSize:26,fontWeight:750,marginTop:6}}>{v}</div></div>)}</div>
  {notice&&<div role="status" style={{...muted,border:'1px solid var(--viz-border, #333)',borderRadius:9,padding:10}}>{notice}</div>}
  <form onSubmit={create} style={{border:'1px solid var(--viz-border, #333)',borderRadius:13,padding:16,display:'grid',gap:12}}><h2 style={{fontSize:19,margin:0}}>Add project or task</h2><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,190px),1fr))',gap:10}}>
@@ -39,6 +71,6 @@ export default function ProjectTracker(){
  </div><label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Notes<textarea rows={2} maxLength={3000} style={{...field,resize:'vertical'}} value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="Next step, blockers, or deliverables"/></label><button type="submit" style={{justifySelf:'start',display:'inline-flex',gap:7,alignItems:'center',border:0,borderRadius:9,padding:'10px 13px',background:'var(--viz-accent, #3977dc)',color:'#fff',cursor:'pointer'}}><Plus size={16}/> Add project</button></form>
  <section style={{display:'grid',gap:12}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap'}}><select aria-label="Filter projects" style={{...field,width:'auto',minWidth:180}} value={filter} onChange={e=>setFilter(e.target.value)}>{['Active','All',...statuses].map(v=><option key={v}>{v}</option>)}</select><button type="button" disabled={!projects.length} onClick={exportCsv} style={{display:'inline-flex',gap:7,alignItems:'center',border:'1px solid var(--viz-border, #333)',borderRadius:9,padding:'9px 12px',background:'transparent',color:'var(--viz-text, #fff)',cursor:'pointer'}}><Download size={15}/> Export CSV</button></div>
  {!shown.length?<div style={{border:'1px dashed var(--viz-border, #444)',borderRadius:13,padding:24,textAlign:'center'}}><h2 style={{fontSize:19}}>No projects in this view</h2><p style={{...muted,margin:0}}>Add a project or task above to start tracking delivery.</p></div>:shown.map(p=><article key={p.id} style={{border:'1px solid var(--viz-border, #333)',borderRadius:12,padding:14,display:'grid',gap:10}}><div style={{display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}><div><div style={{fontWeight:750,fontSize:17}}>{p.title}</div><div style={muted}>{p.clientName} · Owner: {p.owner||'Unassigned'} · Priority: {p.priority}</div><div style={{...muted,marginTop:4}}>{p.dueDate?'Due '+p.dueDate+(p.dueDate<today()&&p.status!=='Completed'?' · OVERDUE':''):'No due date'}</div></div><button type="button" aria-label={'Delete '+p.title} onClick={()=>remove(p.id)} style={{border:'1px solid var(--viz-border, #333)',borderRadius:9,padding:9,height:38,background:'transparent',color:'var(--viz-text, #fff)',cursor:'pointer'}}><Trash2 size={15}/></button></div><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:9}}><label style={{display:'grid',gap:5,fontSize:12,fontWeight:650}}>Status<select style={field} value={p.status} onChange={e=>update(p.id,{status:e.target.value})}>{statuses.map(v=><option key={v}>{v}</option>)}</select></label><label style={{display:'grid',gap:5,fontSize:12,fontWeight:650}}>Due date<input type="date" style={field} value={p.dueDate||''} onChange={e=>update(p.id,{dueDate:e.target.value})}/></label><label style={{display:'grid',gap:5,fontSize:12,fontWeight:650}}>Notes<input style={field} maxLength={3000} value={p.notes||''} onChange={e=>update(p.id,{notes:e.target.value})}/></label></div></article>)}
- </section><p style={muted}>Projects are stored in this browser only. Export CSV for a backup; records are not shared across devices or team members.</p>
+ </section><p style={muted}>Projects save in this browser and, when signed in with cloud sync available, to your workspace. Export CSV for a backup. If cloud sync is unavailable, your browser copy is preserved and you can retry from the status above.</p>
  </div>
 }

@@ -14,6 +14,7 @@ import { getWebsiteAudit, opportunityReason, scoreOpportunity } from './lib/qual
 import { initials, ScorePill, titleCaseStatus } from './components/leadPrimitives.jsx';
 import { isAppPath, navigate, useRouterPath, withBase } from './lib/router.js';
 import RevoltzSite from './site/RevoltzSite.jsx';
+import WorkspaceAccess from './components/WorkspaceAccess.jsx';
 import BusinessAuditor from './components/BusinessAuditor.jsx';
 import SalesEngine from './components/SalesEngine.jsx';
 import DealTracker from './components/DealTracker.jsx';
@@ -40,6 +41,9 @@ import { dedupeLeads, isFoodBusiness, recommendService, savedGeminiLeadPlacehold
 import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
 import { markLeadContacted, stripLegacyCrmEmail, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
 import { getOrCreateCachedRequest } from './lib/placeDetailsCache.js';
+import { mergeGrowthSalesState } from './lib/growthSalesSync.js';
+import { saveOrganizationModulePatch } from './lib/moduleDataSync.js';
+import { workspaceModuleFailureState } from './lib/workspaceAccess.js';
 import {
   applyManualLeadOverride, applyManualLeadUpdate, createManualLead, findManualLeadDuplicate,
   manualLeadOverrideFields, manualLeadSourceLabel, parseManualLeadCsv, validateManualLead,
@@ -231,6 +235,56 @@ function getDefaultCrm(lead) { return cleanCrmRecord({ ...DEFAULT_CRM, ...(lead?
 
 function AgencyOSApp() {
   const [activePage, setActivePage] = useState('Business Management');
+  const [workspaceModules, setWorkspaceModules] = useState(null);
+
+  // A session cookie is shared by tabs. Announce this tab's authenticated
+  // account and reload if a different account becomes active in another tab.
+  useEffect(() => {
+    if (window.__agencyOSPreview || typeof BroadcastChannel === 'undefined') return undefined;
+    const userId = window.__agencyOSUser?.id ?? null;
+    if (!userId) return undefined;
+    const channel = new BroadcastChannel('agencyos-workspace-session');
+    channel.onmessage = (event) => {
+      if (event.data?.type === 'session-changed' && event.data.userId !== userId) {
+        window.location.reload();
+      }
+    };
+    channel.postMessage({ type: 'session-changed', userId });
+    return () => channel.close();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const refreshModules = async () => {
+      try {
+        const response = await fetch('/api/workspace/organization', { credentials: 'include', cache: 'no-store' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !Array.isArray(payload.modules)) throw Object.assign(new Error('Module settings unavailable.'), { status: response.status });
+        if (active) setWorkspaceModules(Object.fromEntries(payload.modules.map((module) => [module.key, Boolean(module.enabled)])));
+      } catch (error) {
+        // Only explicit local-only installs may keep modules visible when the
+        // organization API is unavailable. A pre-login 401 stays unresolved;
+        // hosted server/network failures fail closed instead of exposing every module.
+        if (active) setWorkspaceModules(workspaceModuleFailureState(
+          error?.status,
+          import.meta.env.VITE_AGENCYOS_ALLOW_LOCAL_WORKSPACE === 'true',
+        ));
+      }
+    };
+    const handleModulesUpdated = () => { void refreshModules(); };
+    window.addEventListener('agencyos:modules-updated', handleModulesUpdated);
+    void refreshModules();
+    return () => {
+      active = false;
+      window.removeEventListener('agencyos:modules-updated', handleModulesUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!workspaceModules) return;
+    const group = NAV_GROUPS.find((item) => item.items.includes(activePage));
+    if (group && workspaceModules[group.key] === false) setActivePage('Business Management');
+  }, [activePage, workspaceModules]);
   const [businessProfile, setBusinessProfile] = useState(() => {
     try { const value = JSON.parse(window.localStorage.getItem(BUSINESS_PROFILE_KEY) || 'null'); return value && typeof value === 'object' ? value : null; } catch { return null; }
   });
@@ -270,9 +324,19 @@ function AgencyOSApp() {
   const [auditRevealedIds, setAuditRevealedIds] = useState({});
   const [toast, setToast] = useState('');
   const [settingsNotice, setSettingsNotice] = useState('');
+  const [growthSalesSyncStatus, setGrowthSalesSyncStatus] = useState('checking');
+  const [growthSalesSyncAttempt, setGrowthSalesSyncAttempt] = useState(0);
   const initialConfigLoaded = useRef(false);
   const toastTimer = useRef(null);
   const detailsRequestsRef = useRef(new Map());
+  const growthSalesCloudReady = useRef(false);
+  const growthSalesRevision = useRef(null);
+  const growthSalesConflict = useRef(false);
+  const growthSalesSaveQueue = useRef(Promise.resolve());
+  const growthSalesLocalSnapshot = useRef(null);
+  growthSalesLocalSnapshot.current = {
+    workflow, manualLeads, manualOverrides, savedPlaceIds, savedGeminiPlaceIds, searchHistory,
+  };
 
   useEffect(() => {
     if (!businessProfile) return;
@@ -344,6 +408,91 @@ function AgencyOSApp() {
     try { window.localStorage.setItem(MANUAL_OVERRIDES_STORAGE_KEY, JSON.stringify(manualOverrides)); }
     catch { /* Only explicitly user-entered overrides are stored; the active session remains usable. */ }
   }, [manualOverrides]);
+  useEffect(() => {
+    let active = true;
+    growthSalesCloudReady.current = false;
+    (async () => {
+      try {
+        const response = await fetch('/api/workspace/modules/growth_sales/data', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (!response.ok) {
+          if (active) setGrowthSalesSyncStatus('unavailable');
+          return;
+        }
+        const payload = await response.json().catch(() => ({}));
+        if (!active || !payload.state || typeof payload.state !== 'object' || Array.isArray(payload.state)) {
+          if (active) setGrowthSalesSyncStatus('unavailable');
+          return;
+        }
+
+        // Merge against the latest browser state at response time. Local edits
+        // win conflicts, while records that exist only in the cloud are kept.
+        growthSalesRevision.current = payload.updatedAt || null;
+        const merged = growthSalesConflict.current
+          ? mergeGrowthSalesState({}, payload.state)
+          : mergeGrowthSalesState(growthSalesLocalSnapshot.current, payload.state);
+        growthSalesConflict.current = false;
+        setWorkflow(merged.workflow);
+        setManualLeads(merged.manualLeads);
+        setManualOverrides(merged.manualOverrides);
+        setSavedPlaceIds(merged.savedPlaceIds);
+        setSavedGeminiPlaceIds(merged.savedGeminiPlaceIds);
+        setSearchHistory(merged.searchHistory);
+        setLeads((current) => dedupeLeads([
+          ...current,
+          ...merged.manualLeads,
+          ...merged.savedPlaceIds.map((id) => savedLeadPlaceholder(id)),
+          ...merged.savedGeminiPlaceIds.map((id) => savedGeminiLeadPlaceholder(id)),
+        ].map((lead) => applyManualLeadOverride(lead, merged.manualOverrides))));
+        growthSalesCloudReady.current = true;
+        setGrowthSalesSyncStatus('connected');
+      } catch (error) {
+        // Local mode and unauthenticated installs should keep working without
+        // cloud sync. Existing browser data is never cleared on sync failure.
+        if (active) setGrowthSalesSyncStatus('unavailable');
+        console.warn('[AgencyOS] Growth & Sales cloud sync unavailable:', error?.message || error);
+      }
+    })();
+    return () => {
+      active = false;
+      growthSalesCloudReady.current = false;
+    };
+  }, [growthSalesSyncAttempt]);
+
+  useEffect(() => {
+    if (!growthSalesCloudReady.current) return undefined;
+    const timer = window.setTimeout(() => {
+      const state = {
+        workflow: Object.fromEntries(Object.entries(workflow).map(([key, value]) => [key, cleanCrmRecord(value)])),
+        manualLeads: manualLeads.slice(0, 1000),
+        manualOverrides,
+        savedPlaceIds: savedPlaceIds.slice(0, 500),
+        savedGeminiPlaceIds: savedGeminiPlaceIds.slice(0, 500),
+        searchHistory: searchHistory.slice(0, 8),
+      };
+      growthSalesSaveQueue.current = growthSalesSaveQueue.current
+        .catch(() => {})
+        .then(async () => {
+          if (!growthSalesCloudReady.current) return;
+          setGrowthSalesSyncStatus('saving');
+          const savedPayload = await saveOrganizationModulePatch('growth_sales', state);
+          growthSalesRevision.current = savedPayload.updatedAt || growthSalesRevision.current;
+          setGrowthSalesSyncStatus('synced');
+        })
+        .catch((error) => {
+          if (error?.code === 'WORKSPACE_REVISION_CONFLICT') {
+            growthSalesCloudReady.current = false;
+            growthSalesConflict.current = true;
+          }
+          setGrowthSalesSyncStatus(growthSalesConflict.current ? 'conflict' : 'failed');
+          console.warn('[AgencyOS] Growth & Sales cloud save failed:', error?.message || error);
+        });
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [workflow, manualLeads, manualOverrides, savedPlaceIds, savedGeminiPlaceIds, searchHistory]);
+
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
   function showToast(message) {
@@ -742,12 +891,12 @@ function AgencyOSApp() {
     <div className="app-shell">
       {sidebarOpen && <button type="button" className="mobile-scrim" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} />}
       {!businessProfile ? <BusinessSetup onSave={setBusinessProfile} /> : <>
-      <Sidebar activePage={activePage} onNavigate={(page) => { setActivePage(page); setSidebarOpen(false); }} open={sidebarOpen} profile={businessProfile} />
+      <Sidebar activePage={activePage} onNavigate={(page) => { setActivePage(page); setSidebarOpen(false); }} open={sidebarOpen} profile={businessProfile} enabledModules={workspaceModules} />
       <div className="main-shell">
         <header className="topbar">
           <button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Menu size={19} /></button>
           <div className="topbar-context"><span className="topbar-kicker">WORKSPACE</span><span className="topbar-separator">/</span><span className="topbar-page">{activePage}</span>{window.__agencyOSPreview && <span className="preview-mode-pill">PREVIEW · SAVED IN THIS BROWSER</span>}</div>
-          <div className="topbar-actions"><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
+          <div className="topbar-actions"><button type="button" className="preview-mode-pill" aria-live="polite" title={growthSalesSyncStatus === 'failed' || growthSalesSyncStatus === 'unavailable' || growthSalesSyncStatus === 'conflict' ? 'Retry Growth & Sales cloud sync' : 'Growth & Sales cloud sync status'} aria-label={growthSalesSyncStatus === 'failed' || growthSalesSyncStatus === 'unavailable' || growthSalesSyncStatus === 'conflict' ? 'Retry cloud sync' : 'Growth & Sales cloud sync status'} onClick={() => { if (growthSalesSyncStatus === 'failed' || growthSalesSyncStatus === 'unavailable' || growthSalesSyncStatus === 'conflict') { setGrowthSalesSyncStatus('checking'); setGrowthSalesSyncAttempt((attempt) => attempt + 1); } }}>{({ checking: 'CLOUD SYNC · CHECKING', connected: 'CLOUD SYNC · CONNECTED', synced: 'CLOUD SYNC · SAVED', saving: 'CLOUD SYNC · SAVING', unavailable: 'CLOUD SYNC · LOCAL ONLY · RETRY', failed: 'CLOUD SYNC · SAVE FAILED · RETRY', conflict: 'CLOUD SYNC · CONFLICT · LOAD CLOUD' })[growthSalesSyncStatus]}</button><button className="icon-button help-button" title="Privacy-first by design" aria-label="Privacy-first by design" onClick={() => setActivePage('Privacy Policy')}><CircleHelp size={18} /></button><div className="user-avatar" aria-label="AgencyOS workspace">A</div></div>
         </header>
         <main className="main-content">
 
@@ -803,17 +952,20 @@ function AgencyOSApp() {
 }
 
 const NAV_GROUPS = [
-  { label: 'Growth & sales', icon: Target, items: ['Growth Dashboard', 'Find Leads', 'Leads', 'AI Business Auditor', 'Audit Inbox', 'Campaigns', 'Sales Engine', 'Deal Pipeline', 'Follow-up Assistant'] },
-  { label: 'Clients & delivery', icon: Users, items: ['Client Onboarding', 'Client Retention', 'Website Delivery Hub', 'Project Tracker', 'Client Activity Log'] },
-  { label: 'Finance & reports', icon: CircleDollarSign, items: ['Invoice Tracker', 'Cash Flow Planner', 'Expense Tracker', 'Revenue Goals', 'Business Reports'] },
-  { label: 'Tools', icon: Zap, items: ['Daily Action Center', 'Quick Notes', 'Website Demo Builder', 'Proposal Builder', 'Data Backup'] },
+  { key: 'growth_sales', label: 'Growth & sales', icon: Target, items: ['Growth Dashboard', 'Find Leads', 'Leads', 'AI Business Auditor', 'Audit Inbox', 'Campaigns', 'Sales Engine', 'Deal Pipeline', 'Follow-up Assistant'] },
+  { key: 'clients_delivery', label: 'Clients & delivery', icon: Users, items: ['Client Onboarding', 'Client Retention', 'Website Delivery Hub', 'Project Tracker', 'Client Activity Log'] },
+  { key: 'finance_reports', label: 'Finance & reports', icon: CircleDollarSign, items: ['Invoice Tracker', 'Cash Flow Planner', 'Expense Tracker', 'Revenue Goals', 'Business Reports'] },
+  { key: 'tools', label: 'Tools', icon: Zap, items: ['Daily Action Center', 'Quick Notes', 'Website Demo Builder', 'Proposal Builder', 'Data Backup'] },
 ];
-function Sidebar({ activePage, onNavigate, open, profile }) {
+function Sidebar({ activePage, onNavigate, open, profile, enabledModules }) {
+  const visibleGroups = enabledModules
+    ? NAV_GROUPS.filter((group) => enabledModules[group.key] !== false)
+    : NAV_GROUPS;
   const [expandedGroup, setExpandedGroup] = useState(() => NAV_GROUPS.find(group => group.items.includes(activePage))?.label || '');
   useEffect(() => {
-    const group = NAV_GROUPS.find(item => item.items.includes(activePage));
+    const group = visibleGroups.find(item => item.items.includes(activePage));
     if (group) setExpandedGroup(group.label);
-  }, [activePage]);
+  }, [activePage, enabledModules]);
   const navButton = (item) => {
     const Icon = item.icon || NAV_ITEMS.find(nav => nav.label === item.label)?.icon || LayoutDashboard;
     return <button type="button" key={item.label} onClick={() => onNavigate(item.label)} className={`nav-item ${activePage === item.label ? 'nav-item-active' : ''}`} style={{width:'100%'}}><Icon size={18} strokeWidth={1.8} /><span>{item.label}</span>{item.label === 'Leads' && <span className="nav-count">•</span>}</button>;
@@ -824,7 +976,7 @@ function Sidebar({ activePage, onNavigate, open, profile }) {
     <div className="nav-section-label">WORKSPACE</div>
     <nav className="main-nav" aria-label="Main navigation">
       {navButton({label:'Business Management',icon:Building2})}
-      {NAV_GROUPS.map(group => {
+      {visibleGroups.map(group => {
         const GroupIcon = group.icon;
         const expanded = expandedGroup === group.label;
         const active = group.items.includes(activePage);
@@ -1224,10 +1376,125 @@ function CampaignsPage({ leads, getCrm, onOpenLead, onPitch }) {
 }
 
 function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onGeminiApiKeyChange, geminiTesting, onTestGemini }) {
+  const [organizationWorkspace, setOrganizationWorkspace] = useState(null);
+  const [organizationLoading, setOrganizationLoading] = useState(true);
+  const [organizationError, setOrganizationError] = useState('');
+  const [organizationSaving, setOrganizationSaving] = useState(false);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [organizationNotice, setOrganizationNotice] = useState('');
+  const [moduleNotice, setModuleNotice] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/workspace/organization', { credentials: 'include', cache: 'no-store' })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not load organization settings.');
+        if (active) {
+          setOrganizationWorkspace(payload);
+          setOrganizationError('');
+        }
+      })
+      .catch((error) => { if (active) setOrganizationError(error.message || 'Organization settings are unavailable.'); })
+      .finally(() => { if (active) setOrganizationLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  const workspaceCsrf = () => {
+    const cookie = document.cookie.split('; ').find((part) => part.startsWith('agencyos_workspace_csrf='));
+    return cookie ? decodeURIComponent(cookie.slice('agencyos_workspace_csrf='.length)) : '';
+  };
+
+  const saveOrganizationModules = async () => {
+    if (!organizationWorkspace) return;
+    setOrganizationSaving(true);
+    setModuleNotice('');
+    try {
+      const response = await fetch('/api/workspace/modules', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-Workspace-CSRF': workspaceCsrf() },
+        body: JSON.stringify({ modules: organizationWorkspace.modules.filter((module) => module.enabled).map((module) => module.key) }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Could not save module settings.');
+      setOrganizationWorkspace(payload);
+      window.dispatchEvent(new Event('agencyos:modules-updated'));
+      setModuleNotice('Module access saved.');
+    } catch (error) {
+      setModuleNotice(error.message || 'Could not save module settings.');
+    } finally {
+      setOrganizationSaving(false);
+    }
+  };
+
+  const startSubscriptionCheckout = async () => {
+    setCheckoutBusy(true);
+    setOrganizationNotice('');
+    try {
+      const response = await fetch('/api/workspace/subscription/checkout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-Workspace-CSRF': workspaceCsrf() },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Checkout could not be started.');
+      if (!payload.checkoutUrl || !/^https:\/\//i.test(payload.checkoutUrl)) throw new Error('The payment provider returned an invalid checkout link.');
+      window.location.assign(payload.checkoutUrl);
+    } catch (error) {
+      setOrganizationNotice(error.message || 'Checkout is unavailable. Check the server billing configuration.');
+      setCheckoutBusy(false);
+    }
+  };
+
+  const cancelSubscriptionAtPeriodEnd = async () => {
+    if (!window.confirm('Schedule cancellation at the end of the current billing period? Access remains active until then.')) return;
+    setCancelBusy(true);
+    setOrganizationNotice('');
+    try {
+      const response = await fetch('/api/workspace/subscription/cancel', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-Workspace-CSRF': workspaceCsrf() },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Cancellation could not be scheduled.');
+      const refresh = await fetch('/api/workspace/organization', { credentials: 'include', cache: 'no-store' });
+      const refreshed = await refresh.json().catch(() => ({}));
+      if (refresh.ok) setOrganizationWorkspace(refreshed);
+      setOrganizationNotice('Cancellation scheduled for the end of the billing period.');
+    } catch (error) {
+      setOrganizationNotice(error.message || 'Cancellation could not be scheduled.');
+    } finally {
+      setCancelBusy(false);
+    }
+  };
+
+  const subscriptionStatus = organizationWorkspace?.subscription?.status || 'inactive';
   return <div className="page-stack">
     <PageHeading eyebrow="WORKSPACE PREFERENCES" title="Settings & integrations." description="Know what is connected, where data lives, and what AgencyOS will never do." />
     <section className={`integration-status-card ${config.googlePlacesConfigured ? 'integration-ready' : ''}`}><div className="integration-icon"><Globe2 size={20} /></div><div className="integration-copy"><div className="card-kicker">GOOGLE PLACES INTEGRATION</div><h2>{config.loading ? 'Checking server configuration…' : config.googlePlacesConfigured ? 'Server key configured' : 'Places search unavailable'}</h2><p>{config.googlePlacesConfigured ? 'Google Places is available as a selectable source in Find Leads. The key stays on the server; searches run only when you choose Google Places and submit a search.' : config.reachable ? 'Add GOOGLE_MAPS_API_KEY to the server environment to enable Google Places searches. Gemini search, manual entry, CSV import, and demo mode remain available.' : 'The server status endpoint could not be reached. Gemini search, manual entry, CSV import, and demo mode remain available.'}</p></div><div className={`integration-state ${config.googlePlacesConfigured ? 'integration-state-ready' : ''}`}><span />{config.loading ? 'Checking' : config.googlePlacesConfigured ? 'Configured' : 'Not configured'}</div></section>
     <div className="settings-grid">
+      <section className="surface-card settings-card">
+        <div className="card-heading-row"><div><div className="card-kicker">ORGANIZATION & BILLING</div><h2>{organizationLoading ? 'Loading workspace…' : organizationWorkspace?.organization?.name || 'Workspace plan'}</h2></div><CircleDollarSign size={19} className="muted-icon" /></div>
+        {organizationError ? <p className="settings-paragraph">{organizationError} Billing controls are unavailable until the organization service is reachable.</p> : <>
+          <p className="settings-paragraph">Plan: <strong>{organizationWorkspace?.subscription?.planKey || 'Starter'}</strong> · Status: <strong>{organizationLoading ? 'Loading' : subscriptionStatus.replaceAll('_', ' ')}</strong></p>
+          <p className="settings-paragraph settings-small-note">Payment status is confirmed by signed server webhooks. Prices and billing intervals are managed in the Razorpay plan configured by the workspace administrator.</p>
+          {subscriptionStatus === 'active'
+            ? <div className="settings-callout"><CheckCircle2 size={15} /><span>{organizationWorkspace?.subscription?.cancelAtPeriodEnd ? 'Cancellation is scheduled for the end of the billing period.' : 'Your subscription is active.'}</span></div>
+            : <button className="button button-primary" type="button" onClick={startSubscriptionCheckout} disabled={organizationLoading || checkoutBusy || organizationWorkspace?.organization?.role !== 'owner'}>{checkoutBusy ? 'Connecting to Razorpay…' : organizationWorkspace?.organization?.role === 'owner' ? 'Continue to secure checkout' : 'Only the owner can manage billing'}</button>}
+          {subscriptionStatus === 'active' && !organizationWorkspace?.subscription?.cancelAtPeriodEnd && organizationWorkspace?.organization?.role === 'owner' && <button className="button button-secondary" type="button" onClick={cancelSubscriptionAtPeriodEnd} disabled={cancelBusy}>{cancelBusy ? 'Scheduling cancellation…' : 'Cancel at period end'}</button>}
+          {organizationNotice && <p className="settings-paragraph" role="status">{organizationNotice}</p>}
+        </>}
+      </section>
+      <section className="surface-card settings-card">
+        <div className="card-heading-row"><div><div className="card-kicker">WORKSPACE MODULES</div><h2>Choose your tools</h2></div><SlidersHorizontal size={19} className="muted-icon" /></div>
+        <p className="settings-paragraph">Choose which modules this organization keeps enabled. Disabled modules are denied by the server for protected lead-search and website-audit APIs.</p>
+        {organizationLoading ? <p className="settings-paragraph">Loading module access…</p> : organizationWorkspace?.modules?.map((module) => <label key={module.key} className="settings-feature-list" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><input type="checkbox" checked={Boolean(module.enabled)} disabled={!['owner', 'admin'].includes(organizationWorkspace?.organization?.role) || organizationSaving} onChange={(event) => setOrganizationWorkspace((current) => ({ ...current, modules: current.modules.map((item) => item.key === module.key ? { ...item, enabled: event.target.checked } : item) }))} /><span>{module.label}</span></label>)}
+        <button className="button button-secondary" type="button" onClick={saveOrganizationModules} disabled={organizationLoading || organizationSaving || !organizationWorkspace || !['owner', 'admin'].includes(organizationWorkspace?.organization?.role)}>{organizationSaving ? 'Saving…' : 'Save module access'}</button>
+        {moduleNotice && <p className="settings-paragraph" role="status">{moduleNotice}</p>}
+      </section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">GEMINI AI ENGINE</div><h2>Connect Gemini</h2></div><Globe2 size={18} className="muted-icon" /></div><p className="settings-paragraph">All AgencyOS AI features use Gemini. Add your Google AI Studio API key here to power lead discovery and AI-assisted tools.</p><label className="field-group"><span>Gemini API key</span><input className="field-input" type="password" autoComplete="off" value={geminiApiKey} onChange={(event) => onGeminiApiKeyChange(event.target.value)} placeholder="Paste your Gemini API key" /></label><div className="settings-inline-actions"><button className="button button-secondary" type="button" onClick={onTestGemini} disabled={!geminiApiKey || geminiTesting}>{geminiTesting ? 'Testing…' : 'Test Gemini key'}</button>{geminiApiKey && <button className="text-button" type="button" onClick={() => onGeminiApiKeyChange('')}>Clear key</button>}</div><p className="settings-paragraph settings-small-note">The Gemini key stays in this browser session and is sent directly to Google for grounded lead discovery. Do not share it or commit it to GitHub.</p></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">EXPLAINABLE AI QUALIFICATION</div><h2>Evidence in, reason out</h2></div><div className="engine-icon"><Sparkles size={16} /></div></div><p className="settings-paragraph">Lead scoring and draft outreach remain deterministic and evidence-based; Gemini is used for grounded lead discovery and the AI Business Auditor, not for every button in the CRM.</p><div className="score-rule-list"><div><span>No website listed (Google only; manual missing = unknown)</span><strong>+30</strong></div><div><span>Weak website checks</span><strong>+20</strong></div><div><span>100+ reviews / 4.5+ rating</span><strong>+15 / +10</strong></div><div><span>Operational / contact gap / social link</span><strong>+10 / +10 / +5</strong></div></div><div className="settings-callout"><Info size={15} /><span>Priority bands: HOT 80–100, WARM 50–79, COLD 0–49. These are deterministic signals, not a forecast of conversion.</span></div><div className="settings-callout"><Info size={15} /><span>Mutually exclusive website signals cap the raw sum at 70. The app normalizes the observed raw score to 0–100 for the requested priority bands and shows both values in lead details.</span></div></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">DATA & RETENTION</div><h2>Minimal by default</h2></div><ShieldCheck size={18} className="muted-icon" /></div><div className="settings-feature-list"><div><CheckCircle2 size={16} /><span>Google Places business content stays in browser memory for this session only.</span></div><div><CheckCircle2 size={16} /><span>Local storage holds user-entered manual leads, their CRM fields, saved Google place IDs, and recent search terms. Google Places listing content is not cached.</span></div><div><CheckCircle2 size={16} /><span>Saved place details refresh only on request; the same place ID is not fetched twice in one app session.</span></div><div><CheckCircle2 size={16} /><span>CSV export includes user-entered manual lead details and CRM fields; Google Places business listing content remains excluded.</span></div></div><button className="text-button settings-link" type="button" onClick={() => onNavigate('Privacy Policy')}>Read the Privacy Policy <ArrowRight size={14} /></button></section>

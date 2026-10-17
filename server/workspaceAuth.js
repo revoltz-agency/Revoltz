@@ -1,7 +1,7 @@
 // Multi-user workspace authentication and cloud workspace persistence.
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
-import { ensureSchema, queryDatabase } from './db.js';
+import { ensureSchema, ensureWorkspaceOrganization, queryDatabase } from './db.js';
 import { isSecureRequest, randomToken, readCookie, serializeCookie, sha256Hex, timingSafeEqualStrings } from './security.js';
 
 const scrypt = promisify(crypto.scrypt);
@@ -43,14 +43,36 @@ export async function registerWorkspaceUser({ name, email, password }) {
     throw Object.assign(new Error('Use a password between 12 and 128 characters.'), { statusCode: 400 });
   }
   const passwordHash = await hashPassword(password);
+  let createdUserId = null;
   try {
     const result = await queryDatabase(
       'INSERT INTO workspace_users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email, created_at',
       [cleanName, cleanEmail, passwordHash],
     );
-    return safeUser(result.rows[0]);
+    const user = safeUser(result.rows[0]);
+    createdUserId = user.id;
+    await ensureWorkspaceOrganization(user.id, user.name);
+    return user;
   } catch (error) {
-    if (error?.code === '23505') throw Object.assign(new Error('An account with this email already exists. Sign in instead.'), { statusCode: 409 });
+    // Organization provisioning spans several queries. If it fails after the
+    // user row was inserted, remove any partially-created organization first
+    // (its dependent rows cascade), then remove the account so the email can
+    // be used for a clean retry instead of leaving an unusable orphan.
+    if (createdUserId) {
+      try {
+        await queryDatabase('DELETE FROM organizations WHERE owner_user_id = $1', [createdUserId]);
+      } catch (cleanupError) {
+        console.error('[workspace-auth] organization cleanup after registration failure:', cleanupError?.message || cleanupError);
+      }
+      try {
+        await queryDatabase('DELETE FROM workspace_users WHERE id = $1', [createdUserId]);
+      } catch (cleanupError) {
+        console.error('[workspace-auth] account cleanup after registration failure:', cleanupError?.message || cleanupError);
+      }
+    }
+    if (!createdUserId && error?.code === '23505') {
+      throw Object.assign(new Error('An account with this email already exists. Sign in instead.'), { statusCode: 409 });
+    }
     throw error;
   }
 }
@@ -65,7 +87,10 @@ export async function authenticateWorkspaceUser({ email, password }) {
   const row = result.rows[0];
   // Perform a same-cost derivation for unknown addresses to reduce account enumeration timing differences.
   const valid = row ? await verifyPassword(password, row.password_hash) : await hashPassword(password).then(() => false);
-  return valid ? safeUser(row) : null;
+  if (!valid) return null;
+  // Repair any account created before organization initialization was added.
+  await ensureWorkspaceOrganization(row.id, row.name);
+  return safeUser(row);
 }
 export async function createWorkspaceSession(userId, now = new Date()) {
   await ensureSchema();
@@ -134,17 +159,70 @@ export function workspaceCsrfAllowed(req, session) {
   const cookie = readCookie(req, WORKSPACE_CSRF_COOKIE);
   return Boolean(session && header && cookie && timingSafeEqualStrings(header, cookie) && timingSafeEqualStrings(sha256Hex(cookie), session.csrfHash));
 }
+async function resolveWorkspaceOrganizationId(userId) {
+  const result = await queryDatabase(
+    `SELECT organization_id
+     FROM organization_memberships
+     WHERE user_id = $1
+     ORDER BY CASE WHEN role = 'owner' THEN 0 ELSE 1 END, created_at ASC
+     LIMIT 1`,
+    [userId],
+  );
+  const organizationId = result.rows[0]?.organization_id;
+  if (!organizationId) {
+    throw Object.assign(new Error('No organization is available for this workspace account.'), { statusCode: 403 });
+  }
+  return organizationId;
+}
+
 export async function readWorkspaceState(userId) {
   await ensureSchema();
-  const result = await queryDatabase('SELECT state, updated_at FROM workspace_data WHERE user_id = $1', [userId]);
+  const result = await queryDatabase(
+    `SELECT d.state, d.updated_at
+     FROM organization_workspace_data d
+     JOIN organization_memberships m ON m.organization_id = d.organization_id
+     WHERE m.user_id = $1
+     ORDER BY CASE WHEN m.role = 'owner' THEN 0 ELSE 1 END, m.created_at ASC
+     LIMIT 1`,
+    [userId],
+  );
   return { state: result.rows[0]?.state && typeof result.rows[0].state === 'object' ? result.rows[0].state : {}, updatedAt: result.rows[0]?.updated_at || null };
 }
-export async function writeWorkspaceState(userId, state) {
+
+export async function writeWorkspaceState(userId, state, expectedUpdatedAt) {
+  if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== null &&
+      (typeof expectedUpdatedAt !== 'string' || !Number.isFinite(Date.parse(expectedUpdatedAt)))) {
+    throw Object.assign(new Error('Workspace revision is invalid. Refresh before saving.'), { statusCode: 400, code: 'INVALID_WORKSPACE_REVISION' });
+  }
+  if (!state || typeof state !== 'object' || Array.isArray(state)) {
+    throw Object.assign(new Error('Workspace state must be an object.'), { statusCode: 400, code: 'INVALID_WORKSPACE_STATE' });
+  }
+  let serialized;
+  try { serialized = JSON.stringify(state); } catch {
+    throw Object.assign(new Error('Workspace state is invalid.'), { statusCode: 400, code: 'INVALID_WORKSPACE_STATE' });
+  }
+  if (serialized.length > 1_000_000 || Object.keys(state).length > 250) {
+    throw Object.assign(new Error('Workspace state is too large.'), { statusCode: 413, code: 'WORKSPACE_STATE_TOO_LARGE' });
+  }
+  if (expectedUpdatedAt === undefined) {
+    throw Object.assign(new Error('A cloud revision is required. Reload the latest workspace data before saving.'), { statusCode: 400, code: 'WORKSPACE_REVISION_REQUIRED' });
+  }
   await ensureSchema();
-  await queryDatabase(
-    `INSERT INTO workspace_data (user_id, state, updated_at) VALUES ($1, $2::jsonb, now())
-     ON CONFLICT (user_id) DO UPDATE SET state = EXCLUDED.state, updated_at = now()`,
-    [userId, JSON.stringify(state)],
+  const organizationId = await resolveWorkspaceOrganizationId(userId);
+  const result = await queryDatabase(
+    `INSERT INTO organization_workspace_data (organization_id, state, updated_at)
+     VALUES ($1, $2::jsonb, date_trunc('milliseconds', now()))
+     ON CONFLICT (organization_id) DO UPDATE
+     SET state = EXCLUDED.state, updated_at = date_trunc('milliseconds', now())
+     WHERE date_trunc('milliseconds', organization_workspace_data.updated_at) IS NOT DISTINCT FROM $3::timestamptz
+     RETURNING updated_at`,
+    [organizationId, serialized, expectedUpdatedAt],
   );
-  return { saved: true };
+  if (!result.rows[0]) {
+    throw Object.assign(new Error('This workspace changed on another device. Refresh the latest data before saving again.'), {
+      statusCode: 409,
+      code: 'WORKSPACE_REVISION_CONFLICT',
+    });
+  }
+  return { saved: true, updatedAt: result.rows[0].updated_at || null };
 }
