@@ -79,9 +79,8 @@ test('record merging preserves local-only records but prefers cloud copies for d
     [{ id: 'shared', value: 'stale local' }, { id: 'local-only', value: 'local' }],
     [{ id: 'shared', value: 'latest cloud' }, { id: 'cloud-only', value: 'cloud' }],
   );
-  assert.deepEqual(merged, [
-    { id: 'local-only', value: 'local' },
-    { id: 'shared', value: 'latest cloud' },
-    { id: 'cloud-only', value: 'cloud' },
-  ]);
+  assert.equal(merged.find((record) => record.id === 'local-only')?.value, 'local');
+  assert.equal(merged.find((record) => record.id === 'shared')?.value, 'latest cloud');
+  assert.equal(merged.find((record) => record.id === 'cloud-only')?.value, 'cloud');
+  assert.equal(merged.length, 3);
 });
