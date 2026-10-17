@@ -239,6 +239,13 @@ test('workspace state is upserted and read back for its account only', async () 
   assert.match(db.calls.find((call) => call.text.includes('FROM organization_workspace_data d')).text, /JOIN organization_memberships m ON m\.organization_id = d\.organization_id/);
   assert.match(db.calls.find((call) => call.text.includes('SELECT organization_id')).text, /WHERE user_id = \$1/);
   assert.equal(db.organizationStates.get('org-' + USER_ID).state['agencyos:business-profile:v1'].name, 'North Star Cafe');
+
+  // A complete snapshot must preserve intentional deletions instead of
+  // merging removed keys back from an older server-side copy.
+  await writeWorkspaceState(USER_ID, { employees: [{ name: 'Example Worker', salary: 0 }] }, firstSave.updatedAt.toISOString());
+  const afterDeletion = await readWorkspaceState(USER_ID);
+  assert.deepEqual(afterDeletion.state, { employees: [{ name: 'Example Worker', salary: 0 }] });
+  assert.equal('agencyos:business-profile:v1' in afterDeletion.state, false);
 });
 
 test('workspace registration rolls back a newly-created account when organization provisioning fails', async () => {
