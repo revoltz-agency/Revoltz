@@ -19,6 +19,9 @@ test('business workspace records are included in account sync and backup', async
   for (const key of backupKeys) {
     assert.ok(WORKSPACE_STORAGE_KEYS.includes(key), `${key} is backed up but must also be synchronized to the account`);
   }
+  for (const key of WORKSPACE_STORAGE_KEYS) {
+    assert.ok(backupKeys.includes(key), `${key} must be included in backup/restore as well as account sync`);
+  }
   for (const key of requiredKeys) {
     assert.ok(WORKSPACE_STORAGE_KEYS.includes(key), `${key} must be synchronized to the account`);
     assert.ok(backup.includes(`'${key}'`), `${key} must be included in a backup`);
