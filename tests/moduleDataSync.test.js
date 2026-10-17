@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { saveOrganizationModulePatch } from '../src/lib/moduleDataSync.js';
+import { mergeRecordsById, saveOrganizationModulePatch } from '../src/lib/moduleDataSync.js';
 
 function jsonResponse(status, body) {
   return { status, ok: status >= 200 && status < 300, json: async () => body };
@@ -72,4 +72,16 @@ test('module patch refuses to overwrite a concurrently changed key', async () =>
 
 test('module patch rejects unknown module keys', async () => {
   await assert.rejects(saveOrganizationModulePatch('not-a-module', {}, { fetchImpl: async () => { throw new Error('should not fetch'); } }));
+});
+
+test('record merging preserves local-only records but prefers cloud copies for duplicate IDs', () => {
+  const merged = mergeRecordsById(
+    [{ id: 'shared', value: 'stale local' }, { id: 'local-only', value: 'local' }],
+    [{ id: 'shared', value: 'latest cloud' }, { id: 'cloud-only', value: 'cloud' }],
+  );
+  assert.deepEqual(merged, [
+    { id: 'local-only', value: 'local' },
+    { id: 'shared', value: 'latest cloud' },
+    { id: 'cloud-only', value: 'cloud' },
+  ]);
 });
