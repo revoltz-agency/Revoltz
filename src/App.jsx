@@ -42,6 +42,7 @@ import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/g
 import { markLeadContacted, stripLegacyCrmEmail, updateCrmRecord, validateOutreachContact } from './lib/crm.js';
 import { getOrCreateCachedRequest } from './lib/placeDetailsCache.js';
 import { mergeGrowthSalesState } from './lib/growthSalesSync.js';
+import { saveOrganizationModulePatch } from './lib/moduleDataSync.js';
 import { workspaceModuleFailureState } from './lib/workspaceAccess.js';
 import {
   applyManualLeadOverride, applyManualLeadUpdate, createManualLead, findManualLeadDuplicate,
@@ -476,34 +477,15 @@ function AgencyOSApp() {
         .then(async () => {
           if (!growthSalesCloudReady.current) return;
           setGrowthSalesSyncStatus('saving');
-          const csrfEntry = document.cookie.split('; ').find((part) => part.startsWith('agencyos_workspace_csrf='));
-          const csrfToken = csrfEntry ? decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)) : '';
-          const response = await fetch('/api/workspace/modules/growth_sales/data', {
-            method: 'PUT',
-            credentials: 'include',
-            cache: 'no-store',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(csrfToken ? { 'X-Workspace-CSRF': csrfToken } : {}),
-            },
-            body: JSON.stringify({ state, expectedUpdatedAt: growthSalesRevision.current }),
-          });
-          if (!response.ok) {
-            const payload = await response.json().catch(() => ({}));
-            if (response.status === 409 || payload.code === 'WORKSPACE_REVISION_CONFLICT') {
-              growthSalesCloudReady.current = false;
-              growthSalesConflict.current = true;
-              setGrowthSalesSyncStatus('conflict');
-              showToast('Cloud data changed elsewhere. Retry cloud sync to load the latest version; unsaved local changes on this device will be replaced.');
-              throw new Error('Workspace changed on another device.');
-            }
-            throw new Error(payload.error || 'Cloud save failed.');
-          }
-          const savedPayload = await response.json().catch(() => ({}));
+          const savedPayload = await saveOrganizationModulePatch('growth_sales', state);
           growthSalesRevision.current = savedPayload.updatedAt || growthSalesRevision.current;
           setGrowthSalesSyncStatus('synced');
         })
         .catch((error) => {
+          if (error?.code === 'WORKSPACE_REVISION_CONFLICT') {
+            growthSalesCloudReady.current = false;
+            growthSalesConflict.current = true;
+          }
           setGrowthSalesSyncStatus(growthSalesConflict.current ? 'conflict' : 'failed');
           console.warn('[AgencyOS] Growth & Sales cloud save failed:', error?.message || error);
         });
