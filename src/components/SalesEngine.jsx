@@ -3,6 +3,7 @@ import { ArrowRight, Check, ClipboardCheck, Copy, Download, FileText, LoaderCirc
 import { generateAgencyJson } from '../lib/agencyAi.js';
 import { mergeSalesPackagesState } from '../lib/financeReportsSync.js';
 
+import { saveOrganizationModulePatch } from '../lib/moduleDataSync.js';
 const STORAGE_KEY = 'agencyos:sales-packages:v1';
 const input = { width: '100%', border: '1px solid var(--viz-border, #333)', borderRadius: 10, background: 'var(--viz-card, #151515)', color: 'var(--viz-text, #f5f5f5)', padding: '11px 12px', font: 'inherit', boxSizing: 'border-box' };
 const muted = { color: 'var(--viz-muted, #a1a1aa)', fontSize: 13, lineHeight: 1.6 };
@@ -74,11 +75,8 @@ export default function SalesEngine({ leads = [], getCrm, apiKey = '' }) {
       const state = { salesPackages: packages.slice(0, 100) };
       saveQueue.current = saveQueue.current.catch(() => {}).then(async () => {
         if (!cloudReady.current) return;
-        const csrfEntry = document.cookie.split('; ').find(part => part.startsWith('agencyos_workspace_csrf='));
-        const csrfToken = csrfEntry ? decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)) : '';
         setSyncStatus('saving');
-        const response = await fetch('/api/workspace/modules/growth_sales/data', { method: 'PUT', credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-Workspace-CSRF': csrfToken } : {}) }, body: JSON.stringify({ state }) });
-        if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.error || 'Cloud save failed'); }
+        await saveOrganizationModulePatch('growth_sales', state);
         setSyncStatus('synced');
       }).catch(error => { setSyncStatus('failed'); console.warn('[AgencyOS] Sales packages cloud save failed:', error?.message || error); });
     }, 800);
