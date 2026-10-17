@@ -84,10 +84,12 @@ export async function saveOrganizationModulePatch(moduleKey, patch, {
 /** Merge cloud records with browser-local records without dropping either side. */
 export function mergeRecordsById(localRecords, cloudRecords, limit = 1000) {
   const merged = new Map();
-  for (const record of Array.isArray(cloudRecords) ? cloudRecords : []) {
+  // Browser-local copies can be stale after another device updates a record.
+  // Seed local-only records first, then let the latest cloud copy win ID conflicts.
+  for (const record of Array.isArray(localRecords) ? localRecords : []) {
     if (record && typeof record.id === 'string' && record.id) merged.set(record.id, record);
   }
-  for (const record of Array.isArray(localRecords) ? localRecords : []) {
+  for (const record of Array.isArray(cloudRecords) ? cloudRecords : []) {
     if (record && typeof record.id === 'string' && record.id) merged.set(record.id, record);
   }
   return [...merged.values()].slice(-limit);
