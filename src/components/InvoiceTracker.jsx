@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, CircleDollarSign, Copy, Download, Plus, ReceiptText, Trash2 } from 'lucide-react';
 import { mergeInvoiceTrackerState } from '../lib/financeReportsSync.js';
+import { saveOrganizationModulePatch } from '../lib/moduleDataSync.js';
 const PACKAGES_KEY='agencyos:sales-packages:v1';
 const DEALS_KEY='agencyos:deal-tracker:v1';
 const INVOICES_KEY='agencyos:invoice-tracker:v1';
@@ -40,12 +41,9 @@ export default function InvoiceTracker(){
    const state={invoiceTracker:invoices.slice(0,1000)};
    saveQueue.current=saveQueue.current.catch(()=>{}).then(async()=>{
     if(!cloudReady.current)return;
-    const csrfEntry=document.cookie.split('; ').find(part=>part.startsWith('agencyos_workspace_csrf='));
-    const csrfToken=csrfEntry?decodeURIComponent(csrfEntry.slice('agencyos_workspace_csrf='.length)):'';
     setSyncStatus('saving');
-    const response=await fetch('/api/workspace/modules/finance_reports/data',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...(csrfToken?{'X-Workspace-CSRF':csrfToken}:{})},body:JSON.stringify({state})});
-    if(!response.ok){const payload=await response.json().catch(()=>({}));throw new Error(payload.error||'Cloud save failed')}
-    setSyncStatus('synced');
+        await saveOrganizationModulePatch('finance_reports', state);
+        setSyncStatus('synced');
    }).catch(error=>{setSyncStatus('failed');console.warn('[AgencyOS] Invoice Tracker cloud save failed:',error?.message||error)});
   },800);
   return()=>window.clearTimeout(timer);
