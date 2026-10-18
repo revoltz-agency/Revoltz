@@ -4,6 +4,17 @@ REVOLTZ AI is the public marketing site. AgencyOS is the signed-in workspace for
 
 ## AgencyOS lead sources
 
+Find Leads offers three explicit choices:
+
+- **Gemini AI + Google Maps grounding** is the default. The operator adds a Google AI Studio API key in Settings. The key stays in that browser's `sessionStorage` and is sent directly to Google's Gemini API when a search or AI action is run. Google controls model availability, quotas, and billing eligibility. No Gemini request runs automatically.
+- **Google Places** is available only when `GOOGLE_MAPS_API_KEY` is configured on the server. The credential is never returned to the browser. Select Google Places and submit a search to call the Places API. Requests are rate-limited; Google Maps Platform charges may apply.
+- **Demo sample** uses fictional records and makes no provider calls.
+
+Manual lead creation and CSV import are available independently of provider configuration and do not make Google Places or Gemini requests. Imports are parsed and previewed locally before the operator confirms changes.
+
+AgencyOS does not scrape Google Maps webpages or send messages. WhatsApp drafts and follow-up dates require explicit operator actions; the operator reviews and sends every message.
+
+
 ## Optional Google Maps Scraper
 
 Find Leads can connect to a self-hosted `gosom/google-maps-scraper` web service. This runs separately from the Node app because the scraper requires a browser runtime and its own job storage.
@@ -15,17 +26,6 @@ Find Leads can connect to a self-hosted `gosom/google-maps-scraper` web service.
 - This is an optional integration. If `GOOGLE_MAPS_SCRAPER_URL` is unset, the option stays disabled and no scraper request is made.
 
 The scraper project is MIT-licensed: https://github.com/gosom/google-maps-scraper. Review its upstream documentation for its runtime, browser dependencies, and current API schema before deploying it.
-
-
-Find Leads offers three explicit choices:
-
-- **Gemini AI + Google Maps grounding** is the default. The operator adds a Google AI Studio API key in Settings. The key stays in that browser's `sessionStorage` and is sent directly to Google's Gemini API when a search or AI action is run. Google controls model availability, quotas, and billing eligibility. No Gemini request runs automatically.
-- **Google Places** is available only when `GOOGLE_MAPS_API_KEY` is configured on the server. The credential is never returned to the browser. Select Google Places and submit a search to call the Places API. Requests are rate-limited; Google Maps Platform charges may apply.
-- **Demo sample** uses fictional records and makes no provider calls.
-
-Manual lead creation and CSV import are available independently of provider configuration and do not make Google Places or Gemini requests. Imports are parsed and previewed locally before the operator confirms changes.
-
-AgencyOS does not scrape Google Maps webpages or send messages. WhatsApp drafts and follow-up dates require explicit operator actions; the operator reviews and sends every message.
 
 ## Routes and builds
 
