@@ -42,6 +42,7 @@ export async function runDeploymentSmokeCheck({
 
   await request('/api/config', 200, (payload) =>
     payload && typeof payload.googlePlacesConfigured === 'boolean' &&
+    typeof payload.freeSearchEnabled === 'boolean' &&
     typeof payload.auditInboxConfigured === 'boolean' &&
     typeof payload.auditPublicIntakeEnabled === 'boolean' &&
     typeof payload.telegramNotificationsConfigured === 'boolean' &&
