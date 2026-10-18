@@ -484,9 +484,9 @@ app.get('/api/config', (_req, res) => {
 
 app.post('/api/places/search', async (req, res) => {
   if (!await allowPlacesRequest(req, res, 'places-search')) return;
-  if (!googleApiKey) {
-    return res.status(503).json({ error: 'Google Places API is not configured on this server.' });
-  }
+  const requestApiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim().slice(0, 300) : '';
+  const apiKey = googleApiKey || requestApiKey;
+  if (!apiKey) return res.status(503).json({ error: 'Google Places is optional. Add a key in Settings or choose Gemini text search.' });
 
   const category = typeof req.body?.category === 'string' ? req.body.category.trim() : '';
   const location = typeof req.body?.location === 'string' ? req.body.location.trim() : '';
@@ -504,7 +504,7 @@ app.post('/api/places/search', async (req, res) => {
   }
 
   try {
-    const { results, warnings, requests, geocodingRequests } = await searchGooglePlaces({ category, location, radiusKm, maxResults, apiKey: googleApiKey });
+    const { results, warnings, requests, geocodingRequests } = await searchGooglePlaces({ category, location, radiusKm, maxResults, apiKey });
     res.setHeader('Cache-Control', 'no-store');
     return res.json({ results, warnings, requests, geocodingRequests, attribution: 'Google Maps' });
   } catch (error) {
