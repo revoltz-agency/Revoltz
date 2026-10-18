@@ -312,7 +312,7 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
       method: 'POST',
       headers: mapsScraperHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
       body: JSON.stringify({
-        keyword: `${category} in `${location}`,
+        keyword: `${category} in ${location}`,
         lang: 'en',
         max_depth: 5,
         radius: Math.round(radiusKm * 1000),
