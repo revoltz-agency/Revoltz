@@ -4,9 +4,9 @@ REVOLTZ AI is the public marketing site. AgencyOS is the signed-in workspace for
 
 ## AgencyOS lead sources
 
-Find Leads offers three explicit choices:
+Find Leads offers several explicit choices. **Free web research is the default for every workspace**, so a new user can start without adding an API key or triggering provider charges. It opens public search links and provides a verification checklist; it does not scrape those pages or auto-populate business records.
 
-- **Gemini AI + Google Maps grounding** is the default. The operator adds a Google AI Studio API key in Settings. The key stays in that browser's `sessionStorage` and is sent directly to Google's Gemini API when a search or AI action is run. Google controls model availability, quotas, and billing eligibility. No Gemini request runs automatically.
+- **Gemini AI + Google Maps grounding** is optional. The operator adds a Google AI Studio API key in Settings. The key stays in that browser's `sessionStorage` and is sent directly to Google's Gemini API when a search or AI action is run. Google controls model availability, quotas, and billing eligibility. No Gemini request runs automatically.
 - **Google Places** is available only when `GOOGLE_MAPS_API_KEY` is configured on the server. The credential is never returned to the browser. Select Google Places and submit a search to call the Places API. Requests are rate-limited; Google Maps Platform charges may apply.
 - **Demo sample** uses fictional records and makes no provider calls.
 
