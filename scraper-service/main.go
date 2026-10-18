@@ -20,7 +20,7 @@ func main() {
 
 	// The scraper's own REST API has no authentication in web mode. Keep it on
 	// loopback and expose only this bearer-token gateway on the public port.
-	cmd := exec.Command("/usr/bin/google-maps-scraper", "-web", "-addr", "127.0.0.1:8080", "-data-folder", "/gmapsdata")
+	cmd := exec.Command("/usr/bin/google-maps-scraper", "-web", "-addr", "127.0.0.1:8080", "-data-folder", "/gmapsdata", "-c", "1", "-browser-pool-size", "1")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
