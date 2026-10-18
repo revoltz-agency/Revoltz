@@ -306,19 +306,18 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
     return res.status(400).json({ error: 'Search radius must be between 1 and 50 km.' });
   }
   try {
-    // gosom/google-maps-scraper exposes job creation at /api/v1/jobs.
-    // /api/v1/scrape is not a supported REST endpoint.
-    const upstream = await fetch(`${mapsScraperUrl}/api/v1/jobs`, {
+    // The current gosom REST API creates jobs with POST /api/v1/scrape
+    // and accepts a singular keyword plus timeout in seconds.
+    const upstream = await fetch(`${mapsScraperUrl}/api/v1/scrape`, {
       method: 'POST',
       headers: mapsScraperHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
       body: JSON.stringify({
-        name: `${category} in ${location}`,
-        keywords: [`${category} in ${location}`],
+        keyword: `${category} in `${location}`,
         lang: 'en',
-        depth: 5,
+        max_depth: 5,
         radius: Math.round(radiusKm * 1000),
         zoom: 15,
-        max_time: 240_000_000_000, // Go time.Duration: 4 minutes in nanoseconds.
+        timeout: 240,
       }),
       signal: AbortSignal.timeout(12_000),
     });
