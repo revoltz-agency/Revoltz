@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  AlertTriangle, CheckCircle2, Clock3, Inbox, LoaderCircle, RefreshCw, ShieldCheck, Trash2,
+  AlertTriangle, CheckCircle2, Clock3, Inbox, LoaderCircle, LogOut, RefreshCw, ShieldCheck, Trash2,
 } from 'lucide-react';
 
-// Passwordless Audit Inbox.
+// Owner-only Audit Inbox.
 //
 // This component lives inside the AgencyOS workspace, so it is automatically
 // excluded from the public GitHub Pages marketing build (VITE_PUBLIC_SITE_ONLY).
 //
-// Passwordless mode: anyone who can reach this service can view and manage enquiries.
-// Keep the service private if contact details must remain confidential.
+// Authentication: the browser never stores a password, session token or CSRF
+// token. Signing in creates a server-side session returned as an HttpOnly cookie
+// this code cannot read. State-changing calls echo the readable CSRF cookie in
+// the X-Audit-CSRF header. Every request is sent with credentials: 'include'.
 
 const STATUS_OPTIONS = [
   { value: 'new', label: 'New' },
@@ -36,6 +38,16 @@ function formatDate(value) {
   return date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+// The CSRF cookie is deliberately readable (it is the double-submit half), so
+// the SPA can echo it straight from document.cookie. Nothing is persisted in
+// localStorage or sessionStorage: the session token stays in its HttpOnly cookie.
+function csrfFromCookie() {
+  if (typeof document === 'undefined' || !document.cookie) return '';
+  const name = 'agencyos_audit_csrf';
+  const match = document.cookie.split('; ').find((part) => part.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : '';
+}
+
 function daysLeft(value) {
   if (!value) return null;
   const target = new Date(value).getTime();
@@ -56,6 +68,7 @@ export default function AuditInbox({ onAddToLeads }) {
   const [config, setConfig] = useState(null);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [authed, setAuthed] = useState(false);
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -76,9 +89,8 @@ export default function AuditInbox({ onAddToLeads }) {
     setLoadingConfig(true);
     try {
       const response = await fetch('/api/audit/config', { credentials: 'include' });
-      const body = await response.json();
-      setConfig(body);
-      setAuthed(Boolean(body?.configured));
+      setConfig(await response.json());
+      setAuthed(response.status === 200);
     } catch {
       setConfig(null);
       setError('Could not reach the Audit Inbox service.');
@@ -89,6 +101,11 @@ export default function AuditInbox({ onAddToLeads }) {
 
   const loadInbox = useCallback(async () => {
     const response = await fetch('/api/audit/requests', { credentials: 'include' });
+    if (response.status === 401) {
+      setAuthed(false);
+      setRequests([]);
+      return;
+    }
     if (!response.ok) throw new Error(await readError(response, 'Could not load audit requests.'));
     const body = await response.json();
     setRequests(body.requests || []);
@@ -117,13 +134,57 @@ export default function AuditInbox({ onAddToLeads }) {
     Promise.all([loadInbox(), loadRetention()]).catch((loadError) => setError(loadError.message));
   }, [authed, loadInbox, loadRetention]);
 
+  async function signIn(event) {
+    event.preventDefault();
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const response = await fetch('/api/audit/session', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      if (!response.ok) throw new Error(await readError(response, 'Sign-in failed.'));
+      await response.json();
+      // No credential is persisted. The CSRF value is read from the readable
+      // cookie on each state-changing call instead.
+      setPassword('');
+      setAuthed(true);
+      setNotice('Signed in. This session expires automatically and can be ended with Sign out.');
+    } catch (submitError) {
+      setError(submitError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function signOut() {
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await fetch('/api/audit/session/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-Audit-CSRF': csrfFromCookie() },
+        body: '{}',
+      });
+      setAuthed(false);
+      setRequests([]);
+      setRetention(null);
+      setNotice('Signed out. The server-side session was revoked.');
+    } catch (submitError) {
+      setError('Sign-out failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function changeStatus(id, status) {
     setBusy(true); setError(''); setNotice('');
     try {
       const response = await fetch(`/api/audit/requests/${id}`, {
         method: 'PATCH',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Audit-CSRF': csrfFromCookie() },
         body: JSON.stringify({ status }),
       });
       if (!response.ok) throw new Error(await readError(response, 'Could not update this request.'));
@@ -143,6 +204,7 @@ export default function AuditInbox({ onAddToLeads }) {
       const response = await fetch(`/api/audit/requests/${id}`, {
         method: 'DELETE',
         credentials: 'include',
+        headers: { 'X-Audit-CSRF': csrfFromCookie() },
       });
       if (!response.ok) throw new Error(await readError(response, 'Could not delete this request.'));
       await loadInbox();
@@ -189,7 +251,7 @@ export default function AuditInbox({ onAddToLeads }) {
           <div>
             <h2 style={{ margin: '0 0 6px', fontSize: 20 }}>Audit Inbox unavailable</h2>
             <p style={{ ...muted, margin: '0 0 10px', lineHeight: 1.6, maxWidth: 640 }}>
-              The inbox is unavailable until <code>DATABASE_URL</code> is configured on the server.
+              The inbox is intentionally disabled until both <code>DATABASE_URL</code> and <code>AUDIT_OWNER_PASSWORD_HASH</code> are configured on the server. It never falls back to weaker authentication.
             </p>
             <p style={{ ...muted, margin: 0, lineHeight: 1.6, maxWidth: 640 }}>
               Public intake is configured separately through <code>AUDIT_PUBLIC_INTAKE_ENABLED</code>. The current Render Blueprint enables it, but the live service must be verified independently.
@@ -200,18 +262,55 @@ export default function AuditInbox({ onAddToLeads }) {
     );
   }
 
+  if (!authed) {
+    return (
+      <div style={{ ...card, maxWidth: 460 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 14 }}>
+          <div style={{ padding: 12, borderRadius: 10, background: '#2a3a4d', display: 'grid', placeItems: 'center' }}><Inbox size={22} /></div>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 20 }}>Audit Inbox sign in</h2>
+            <p style={{ ...muted, margin: 0 }}>Owner access only.</p>
+          </div>
+        </div>
+        <form onSubmit={signIn} style={{ display: 'grid', gap: 12 }}>
+          <label style={{ display: 'grid', gap: 6, fontSize: 13, fontWeight: 650 }}>
+            Owner password
+            <input
+              type="password"
+              value={password}
+              autoComplete="current-password"
+              onChange={(event) => setPassword(event.target.value)}
+              style={{ padding: 10, borderRadius: 8, border: '1px solid var(--line, #333)', background: 'transparent', color: 'inherit', font: 'inherit' }}
+              required
+            />
+          </label>
+          <button type="submit" disabled={busy || !password} style={{ padding: '10px 14px', borderRadius: 9, border: 0, background: '#3f6ea8', color: '#fff', font: 'inherit', fontWeight: 650, cursor: 'pointer', opacity: busy || !password ? 0.5 : 1 }}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+        <p style={{ ...muted, marginTop: 12, marginBottom: 0, lineHeight: 1.6 }}>
+          Your password is sent over HTTPS and never stored in the browser. The session lives on the server in an HttpOnly cookie and is revocable.
+        </p>
+        {error && <p style={{ color: '#ff9aa3', fontSize: 12, marginTop: 12, marginBottom: 0 }}>{error}</p>}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div>
           <h1 style={{ margin: '0 0 6px', fontSize: 26 }}>Audit Inbox</h1>
           <p style={{ ...muted, margin: 0, maxWidth: 700, lineHeight: 1.6 }}>
-            Warning: passwordless access is enabled; anyone who can reach this service can view and manage these enquiries. Requests submitted through the public “Claim Your Free Audit” form are stored in Postgres. Use “Add to Leads” to copy the business and request notes into your browser-based CRM; the contact email is not copied. No automatic email or WhatsApp message is ever sent.
+            Requests submitted through the public “Claim Your Free Audit” form are stored in Postgres. Use “Add to Leads” to copy the business and request notes into your browser-based CRM; the contact email is not copied. No automatic email or WhatsApp message is ever sent.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" onClick={() => Promise.all([loadInbox(), loadRetention()]).catch((e) => setError(e.message))} disabled={busy} style={{ padding: '8px 12px', borderRadius: 9, border: '1px solid var(--line, #333)', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <RefreshCw size={14} /> Refresh
+          </button>
+          <button type="button" onClick={signOut} disabled={busy} style={{ padding: '8px 12px', borderRadius: 9, border: '1px solid var(--line, #333)', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <LogOut size={14} /> Sign out
           </button>
         </div>
       </div>
