@@ -16,6 +16,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Test protected scraper gateway
+        working-directory: scraper-service
+        run: GO111MODULE=off go test ./...
       - run: npm test
       - run: npm run build
       - name: Verify the public GitHub Pages build
