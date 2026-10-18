@@ -434,6 +434,36 @@ function AgencyOSApp() {
         setFinderRequests(0);
         setFinderGeocodingRequests(0);
         if (!results.length) showToast('No sample matches found. Try another category.');
+      } else if (searchForm.source === 'maps-scraper') {
+        const startedResponse = await fetch('/api/maps-scraper/jobs', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category, location: city, radiusKm: Number(searchForm.radiusKm) }),
+        });
+        const started = await startedResponse.json();
+        if (!startedResponse.ok) throw new Error(started.error || 'Could not start the Maps scraper.');
+        let completed = false;
+        for (let attempt = 0; attempt < 110; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          const params = new URLSearchParams({ category, location: city, maxResults: String(Number(searchForm.maxResults) || 10) });
+          const statusResponse = await fetch(`/api/maps-scraper/jobs/${encodeURIComponent(started.jobId)}?${params.toString()}`, { cache: 'no-store' });
+          const statusData = await statusResponse.json();
+          if (!statusResponse.ok) throw new Error(statusData.error || 'Could not read Maps scraper progress.');
+          if (statusData.status === 'failed') throw new Error(statusData.error || 'The Maps scraper job failed.');
+          if (statusData.status === 'completed') {
+            const results = dedupeLeads(statusData.results || []).map((lead) => applyManualLeadOverride({ ...lead, source: 'maps-scraper' }, manualOverrides));
+            setFinderResults(results);
+            setFinderWarnings(statusData.warnings || []);
+            setFinderRequests(1);
+            setFinderGeocodingRequests(0);
+            setFinderSource('maps-scraper');
+            completed = true;
+            if (!results.length) showToast('The Maps scraper completed but returned no businesses. Try another category or location.');
+            break;
+          }
+          setSearchError(`Maps scraper is ${statusData.status === 'pending' ? 'queued' : 'running'}… This can take several minutes.`);
+        }
+        if (!completed) throw new Error('The Maps scraper is taking longer than expected. Try checking the scraper service and run the search again.');
+        setSearchError('');
       } else if (searchForm.source === 'google') {
         const response = await fetch('/api/places/search', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -876,6 +906,7 @@ function ModeBadge({ lead, demo = false }) {
   const source = typeof lead === 'string' ? lead : lead?.source || (demo ? 'demo' : 'google');
   if (source === 'manual') return <span className="manual-badge"><span className="manual-dot" /> {manualLeadSourceLabel(source).toUpperCase()}</span>;
   if (source === 'demo') return <span className="sample-badge"><span className="sample-dot" /> DEMO</span>;
+  if (source === 'maps-scraper') return <span className="google-badge"><Globe2 size={12} /> GOOGLE MAPS SCRAPER</span>;
   if (source === 'gemini') return <span className="google-badge"><Sparkles size={12} /> GEMINI + GOOGLE MAPS</span>;
   if (source === 'openrouter') return <span className="google-badge"><Globe2 size={12} /> OPENROUTER WEB RESEARCH</span>;
   return <span className="google-badge"><Globe2 size={12} /> GOOGLE PLACES</span>;
@@ -965,6 +996,7 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
   const sourceChoice = searchForm.source || 'gemini';
   const sourceOptions = [
     { id: 'free-research', title: 'Free web research', detail: 'No API key · no usage charges', disabled: false },
+    { id: 'maps-scraper', title: 'Google Maps Scraper', detail: config.mapsScraperConfigured ? 'Self-hosted · no API key' : 'Scraper service not connected', disabled: !config.mapsScraperConfigured },
     { id: 'gemini', title: 'Gemini AI + Google Maps', detail: 'May require billing / quota', disabled: false },
     { id: 'google', title: 'Google Places', detail: config.googlePlacesConfigured ? 'API · billing may apply' : 'Server API key required', disabled: !config.googlePlacesConfigured },
     { id: 'openrouter', title: 'OpenRouter + live web', detail: 'Paid · not for zero-cost mode', disabled: true },
@@ -982,6 +1014,7 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
         </div>
       </div>
       {sourceChoice === 'free-research' && <div className="results-note free-hint"><Info size={14} />Zero-cost mode is selected by default. It opens public search pages in your browser instead of calling APIs or scraping search results. Verify each business before adding it to your CRM.</div>}
+      {sourceChoice === 'maps-scraper' && <div className="results-note free-hint"><Info size={14} />Runs the self-hosted Google Maps scraper. A search can take several minutes. It uses no Google API key, but it requires a separately hosted scraper service and may be blocked or return incomplete listings.</div>}
       {sourceChoice === 'gemini' && <div className="results-note free-hint"><Info size={14} />Uses the Gemini API key saved in Settings and Google Maps grounding. Google states grounding may be unavailable on free tiers for some models and can be billed on eligible paid tiers. Use Free web research to guarantee no API call from this search.</div>}
       {sourceChoice === 'google' && <div className="results-note request-cost-note"><Info size={14} />Uses the server-configured Google Places API key. Searches can incur Google Maps Platform charges; requests are rate-limited.</div>}
       {sourceChoice === 'openrouter' && <div className="results-note request-cost-note"><Info size={14} />Paid web research is disabled in this zero-cost build. Use Free web research or Manual Lead Import instead.</div>}
@@ -1026,7 +1059,7 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
         {lead.demo && <div className="demo-disclaimer"><Info size={13} /> Fictional demo business. Not contactable.</div>}
         <div className="result-card-actions"><button className={`button ${isAdded ? 'button-secondary' : 'button-primary'} button-small`} onClick={() => onAdd(lead)} type="button">{isAdded ? <><Check size={15} /> {leads.find((item) => getLeadKey(item) === getLeadKey(lead))?.needsRefresh ? 'Refresh from result' : 'In your leads'}</> : <><Plus size={15} /> Add to leads</>}</button>{isAdded && <button className="button button-quiet button-small" type="button" onClick={() => onOpenLead(lead)}>Details <ArrowRight size={14} /></button>}{safeHttpUrl(lead.mapsUrl) && <a className="maps-result-link" href={safeHttpUrl(lead.mapsUrl)} target="_blank" rel="noreferrer"><MapPin size={13} /> Maps <ExternalLink size={12} /></a>}</div>
       </article>; })}</div> : <EmptyState icon={Search} title="No businesses found" body={source === 'free-research' ? 'Use the search links above, then add verified businesses using Manual Lead Import.' : source === 'demo' ? 'The explicitly selected sample set contains fictional Pune businesses only. Try one of the example searches above.' : source === 'gemini' ? 'Gemini + Google Maps returned no matching businesses. Try a broader category, nearby city, or larger radius.' : 'Try a broader category or a nearby city.'} />}
-      {(source === 'google' || source === 'gemini') && <GoogleDisclosure />}{source === 'demo' && <div className="demo-result-footnote"><Info size={14} /> Fictional demo dataset · Search details are illustrative and are not Google Places results.</div>}
+      {(source === 'google' || source === 'gemini' || source === 'maps-scraper') && <GoogleDisclosure />}{source === 'demo' && <div className="demo-result-footnote"><Info size={14} /> Fictional demo dataset · Search details are illustrative and are not Google Places results.</div>}
       {source === 'gemini' && <div className="grounding-source-list"><strong>Google Maps sources</strong>{groundingSources.map((item) => <a key={`${item.name}-${item.url}`} href={safeHttpUrl(item.url)} target="_blank" rel="noreferrer">{item.name}<ExternalLink size={12} /></a>)}</div>}
       {source === 'openrouter' && <div className="grounding-source-list"><strong>Live web citations</strong>{groundingSources.map((item) => <a key={`${item.title}-${item.url}`} href={safeHttpUrl(item.url)} target="_blank" rel="noreferrer">{item.title}<ExternalLink size={12} /></a>)}</div>}
     </section> : <div className="finder-placeholder"><div className="placeholder-orbit"><Search size={22} /></div><h2>Start with a local search.</h2><p>Choose an industry and a city. AgencyOS will bring the business profile signals into one calm workspace.</p><div className="placeholder-points"><span><CheckCircle2 size={15} /> Evidence-based scoring</span><span><CheckCircle2 size={15} /> No automated outreach</span><span><CheckCircle2 size={15} /> Your choice, every time</span></div></div>}
