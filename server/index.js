@@ -308,19 +308,31 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
   try {
     // The current gosom REST API creates jobs with POST /api/v1/scrape
     // and accepts a singular keyword plus timeout in seconds.
-    const upstream = await fetch(`${mapsScraperUrl}/api/v1/scrape`, {
+    const scrapePayload = {
+      keyword: `${category} in ${location}`,
+      lang: 'en',
+      max_depth: 5,
+      radius: Math.round(radiusKm * 1000),
+      zoom: 15,
+      timeout: 240,
+    };
+    const requestScrape = (path, payload) => fetch(`${mapsScraperUrl}${path}`, {
       method: 'POST',
       headers: mapsScraperHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
-      body: JSON.stringify({
-        keyword: `${category} in ${location}`,
-        lang: 'en',
-        max_depth: 5,
-        radius: Math.round(radiusKm * 1000),
-        zoom: 15,
-        timeout: 240,
-      }),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(12_000),
     });
+    let upstream = await requestScrape('/api/v1/scrape', scrapePayload);
+    // Some published Docker tags still expose the legacy job-creation route.
+    // Fall back only on 405 (route/method mismatch), not on real scrape errors.
+    if (upstream.status === 405) {
+      await upstream.body?.cancel().catch(() => {});
+      upstream = await requestScrape('/api/v1/jobs', {
+        ...scrapePayload,
+        keywords: [scrapePayload.keyword],
+        max_time: 240,
+      });
+    }
     const responseText = await upstream.text().catch(() => '');
     let data = {};
     try { data = responseText ? JSON.parse(responseText) : {}; } catch { /* gateway may return plain-text errors */ }
