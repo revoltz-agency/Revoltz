@@ -611,28 +611,13 @@ function AgencyOSApp() {
           setFinderSource('gemini');
           if (!results.length) showToast('No matching Google Maps sources were returned. Try a broader search or choose Google Places.');
         } catch (geminiError) {
-          const groundingUnavailable = /HTTP 429|quota|rate.?limit|resource.?exhausted|grounding|maps.*(unavailable|not available|not supported)|not available.*free tier/i.test(String(geminiError?.message || ''));
-          if (!groundingUnavailable) throw geminiError;
-          if (!apiConfig.googlePlacesConfigured && !googlePlacesApiKey.trim()) throw geminiError;
-          const response = await fetch('/api/places/search', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ category, location: city, radiusKm: Number(searchForm.radiusKm), maxResults: Number(searchForm.maxResults), apiKey: googlePlacesApiKey.trim() || undefined }),
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || 'Google Places fallback failed.');
-          const results = dedupeLeads(data.results || [])
-            .map((lead) => applyManualLeadOverride({ ...lead, source: 'google' }, manualOverrides));
-          setFinderResults(results);
-          setFinderGroundingSources([]);
-          setFinderWarnings([
-            'Gemini returned a quota or grounding error, so AgencyOS used Google Places because you had configured it. Google Places may incur charges.',
-            ...(Array.isArray(data.warnings) ? data.warnings : []),
-          ]);
-          setFinderRequests(data.requests || 0);
-          setFinderGeocodingRequests(data.geocodingRequests || 0);
-          setFinderSource('google');
-          if (!results.length) showToast('Google Places found no matching businesses. Try a broader category or nearby area.');
+          // Never silently switch to Google Places: the user may incur charges.
+          // Places can be selected explicitly in the source selector instead.
+          const message = String(geminiError?.message || '');
+          if (/HTTP 429|quota|rate.?limit|resource.?exhausted|limit exceeded|too many requests/i.test(message)) {
+            throw new Error('Gemini quota is currently exhausted or rate-limited for this Google project/model. Google Places was not called, to avoid unexpected charges. Wait for quota reset or try again later; you can explicitly select Google Places only if you choose to use that paid/possibly billed integration.');
+          }
+          throw geminiError;
         }
       }
     } catch (error) { setSearchError(error.message || 'Search failed. Please try again.'); }
