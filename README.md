@@ -12,7 +12,7 @@ Find Leads offers three explicit choices:
 
 Manual lead creation and CSV import are available independently of provider configuration and do not make Google Places or Gemini requests. Imports are parsed and previewed locally before the operator confirms changes.
 
-AgencyOS does not scrape Google Maps webpages or send messages. WhatsApp drafts and follow-up dates require explicit operator actions; the operator reviews and sends every message.
+Google Maps scraping is available only through the optional self-hosted scraper integration described below; it is not active unless configured. AgencyOS does not send messages. WhatsApp drafts and follow-up dates require explicit operator actions; the operator reviews and sends every message.
 
 
 ## Optional Google Maps Scraper
