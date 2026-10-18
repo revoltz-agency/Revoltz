@@ -321,9 +321,13 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
       }),
       signal: AbortSignal.timeout(12_000),
     });
-    const data = await upstream.json().catch(() => ({}));
+    const responseText = await upstream.text().catch(() => '');
+    let data = {};
+    try { data = responseText ? JSON.parse(responseText) : {}; } catch { /* gateway may return plain-text errors */ }
     if (!upstream.ok) {
-      const message = typeof data.message === 'string' ? data.message : 'The Maps scraper rejected the search.';
+      const message = [data.message, data.error, typeof responseText === 'string' ? responseText.trim() : '']
+        .find((value) => typeof value === 'string' && value.length > 0)?.slice(0, 240)
+        || 'The Maps scraper rejected the search.';
       console.warn('[maps-scraper] job creation rejected', { status: upstream.status, message });
       return res.status(502).json({ error: `Maps scraper error (${upstream.status}): ${message}` });
     }
