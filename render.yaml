@@ -66,6 +66,9 @@ services:
       # Google Places. No key -> /api/places/* return 503.
       - key: GOOGLE_MAPS_API_KEY
         sync: false
+      # Optional self-hosted gosom/google-maps-scraper service URL. Keep the scraper private.
+      - key: GOOGLE_MAPS_SCRAPER_URL
+        sync: false
       # Per-client Places cap, per route. Omit -> 20/min. Set to 0 only to
       # disable. Not a global spending cap: set a Google Cloud quota too.
       - key: PLACES_RATE_LIMIT_PER_MIN
