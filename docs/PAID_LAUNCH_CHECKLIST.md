@@ -73,7 +73,7 @@ Do not use real customer records during these tests.
 - [ ] Confirm the public config endpoints expose only non-secret flags and the private workspace endpoints reject anonymous requests.
 - [ ] Verify Render logs show a healthy process and no repeated database, auth, webhook, or rate-limit errors.
 - [ ] Verify a database backup exists and its restore procedure has been rehearsed.
-- [ ] Confirm no OpenStreetMap/Overpass references remain and Gemini + Google Places remain wired.
+- [ ] Confirm retired map-provider integrations are absent and Gemini + Google Places remain wired.
 - [ ] Record the exact tested commit, CI URL, smoke-test result, payment mode, and outstanding limitations.
 
 **Release rule:** keep PR #46 in draft and do not accept paid customers if any isolation, authentication, data durability, billing, or live deployment check is unverified. A successful build or configuration preflight does not establish production readiness.
