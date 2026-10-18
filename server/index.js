@@ -374,9 +374,8 @@ app.get('/api/maps-scraper/jobs/:jobId', async (req, res) => {
     if (['failed', 'cancelled', 'discarded'].includes(rawStatus)) {
       return res.json({ jobId, status: 'failed', error: job.error || 'The Maps scraper job failed.' });
     }
-    if (!['completed', 'complete'].includes(rawStatus)) {
-      return res.json({ jobId, status: rawStatus === 'pending' ? 'pending' : 'working' });
-    }
+    // Some scraper builds expose results before the job reaches a terminal state.
+    // Normalize available rows so the UI can show partial progress.
     const rawResults = Array.isArray(job.results) ? job.results : [];
     const seen = new Set();
     const results = [];
@@ -413,9 +412,9 @@ app.get('/api/maps-scraper/jobs/:jobId', async (req, res) => {
     }
     return res.json({
       jobId,
-      status: 'completed',
+      status: ['completed', 'complete'].includes(rawStatus) ? 'completed' : (rawStatus === 'pending' ? 'pending' : 'working'),
       results,
-      warnings: ['Results were extracted by the self-hosted Google Maps scraper. Listing availability and contact details can change; check before outreach.'],
+      warnings: ['Results are extracted by the self-hosted Google Maps scraper. Listings and contact details can change; verify before outreach.'],
       requests: 1,
       geocodingRequests: 0,
     });
