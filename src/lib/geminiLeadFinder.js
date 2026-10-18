@@ -4,7 +4,7 @@
 export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 // Keep requests on the configured free-tier model. Trying other models after a
 // quota response can create extra failed requests without restoring project quota.
-const GEMINI_MODELS = ['gemini-3.5-flash-lite'];
+export const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
 export const GEMINI_KEY_STORAGE = 'agencyos:gemini-api-key:v1';
 
 const LEAD_SCHEMA = {
