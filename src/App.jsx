@@ -299,8 +299,9 @@ function AgencyOSApp() {
         setApiConfig({ loading: false, reachable: true, ...data });
         if (!initialConfigLoaded.current) {
           initialConfigLoaded.current = true;
-          // Gemini is the default source; Google Places is optional and selectable when configured.
-          setSearchForm((current) => ({ ...current, source: 'gemini' }));
+          // Free web research is the default for every workspace: no personal API key, no paid calls.
+          // Users can explicitly choose Gemini or Google Places when they have access to those providers.
+          setSearchForm((current) => ({ ...current, source: 'free-research' }));
           const savedReferences = savedPlaceIds.map((id) => savedLeadPlaceholder(id));
           const savedGeminiReferences = savedGeminiPlaceIds.map((id) => savedGeminiLeadPlaceholder(id));
           setLeads((current) => {
@@ -314,7 +315,7 @@ function AgencyOSApp() {
         setApiConfig({ loading: false, reachable: false, googlePlacesConfigured: false });
         if (!initialConfigLoaded.current) {
           initialConfigLoaded.current = true;
-          setSearchForm((current) => ({ ...current, source: 'gemini' }));
+          setSearchForm((current) => ({ ...current, source: 'free-research' }));
           setLeads((current) => dedupeLeads([...manualLeads, ...current.filter((lead) => lead.source === 'manual')].map((lead) => applyManualLeadOverride(lead, manualOverrides))));
         }
       }
