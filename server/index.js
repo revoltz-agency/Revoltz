@@ -306,18 +306,19 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
     return res.status(400).json({ error: 'Search radius must be between 1 and 50 km.' });
   }
   try {
-    const upstream = await fetch(`${mapsScraperUrl}/api/v1/scrape`, {
+    // gosom/google-maps-scraper exposes job creation at /api/v1/jobs.
+    // /api/v1/scrape is not a supported REST endpoint.
+    const upstream = await fetch(`${mapsScraperUrl}/api/v1/jobs`, {
       method: 'POST',
       headers: mapsScraperHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
       body: JSON.stringify({
-        keyword: `${category} in ${location}`,
+        name: `${category} in ${location}`,
+        keywords: [`${category} in ${location}`],
         lang: 'en',
-        max_depth: 5,
-        radius: radiusKm,
+        depth: 5,
+        radius: Math.round(radiusKm * 1000),
         zoom: 15,
-        email: false,
-        fast_mode: false,
-        timeout: 240,
+        max_time: '4m',
       }),
       signal: AbortSignal.timeout(12_000),
     });
@@ -331,7 +332,7 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
       console.warn('[maps-scraper] job creation rejected', { status: upstream.status, message });
       return res.status(502).json({ error: `Maps scraper error (${upstream.status}): ${message}` });
     }
-    const jobId = data.job_id || data.jobId;
+    const jobId = data.job_id || data.jobId || data.id;
     if (!isMapsScraperJobId(jobId)) {
       console.warn('[maps-scraper] invalid job response', { fields: Object.keys(data || {}) });
       return res.status(502).json({ error: 'The Maps scraper returned an invalid job ID. Check the scraper API version.' });
