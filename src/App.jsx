@@ -437,6 +437,23 @@ function AgencyOSApp() {
         setFinderGeocodingRequests(data.geocodingRequests || 0);
         setFinderSource('google');
         if (!results.length) showToast('Google Places found no matching businesses. Try a broader category or nearby area.');
+      } else if (searchForm.source === 'openrouter') {
+        const { leads: discovered, groundingSources, webSearchRequests } = await searchOpenRouterLeads({
+          apiKey: openrouterApiKey, model: openrouterModel, category, location: city,
+          radiusKm: Number(searchForm.radiusKm), maxResults: Number(searchForm.maxResults),
+          enablePaidWebSearch: searchForm.enablePaidWebSearch === true,
+        });
+        const results = dedupeLeads(discovered.filter((lead) => lead?.name)).map((lead) => applyManualLeadOverride(lead, manualOverrides));
+        setFinderResults(results);
+        setFinderGroundingSources(groundingSources);
+        setFinderWarnings([
+          'OpenRouter live-web results are preliminary. Only records with matching source citations are shown; verify the source and business identity before outreach. Phone numbers, addresses, ratings, and review counts are not fetched.',
+          'Live web research may incur search-engine charges in addition to model usage. AgencyOS requests at most one web-search use for this query; provider pricing and actual charges are controlled by OpenRouter.',
+        ]);
+        setFinderRequests(webSearchRequests);
+        setFinderGeocodingRequests(0);
+        setFinderSource('openrouter');
+        if (!results.length) showToast('No source-backed businesses were returned. Try a broader category or location.');
       } else {
         const { leads: discovered, groundingSources } = await searchGeminiLeads({
           apiKey: geminiApiKey,
