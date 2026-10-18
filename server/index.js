@@ -329,6 +329,7 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
       await upstream.body?.cancel().catch(() => {});
       upstream = await requestScrape('/api/v1/jobs', {
         ...scrapePayload,
+        name: scrapePayload.keyword,
         keywords: [scrapePayload.keyword],
         max_time: 240,
       });
