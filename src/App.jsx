@@ -784,7 +784,7 @@ function AgencyOSApp() {
             setSettingsNotice('');
             try {
               await testGeminiApiKey(geminiApiKey);
-              setSettingsNotice('Gemini API key works. Google Maps grounding is ready.');
+              setSettingsNotice('Gemini API key and model access verified. This test does not confirm Google Maps grounding availability or remaining quota.');
             } catch (error) {
               setSettingsNotice(error?.message || 'Gemini API key test failed.');
             } finally { setGeminiTesting(false); }
