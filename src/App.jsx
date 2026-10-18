@@ -359,8 +359,8 @@ function AgencyOSApp() {
         setApiConfig({ loading: false, reachable: true, ...data });
         if (!initialConfigLoaded.current) {
           initialConfigLoaded.current = true;
-          // Gemini is the default source; Google Places is optional and selectable when configured.
-          setSearchForm((current) => ({ ...current, source: 'gemini' }));
+          // Prefer real Places listings when the server key is configured; otherwise keep Gemini selectable.
+          setSearchForm((current) => ({ ...current, source: data.googlePlacesConfigured ? 'google' : 'gemini' }));
           const savedReferences = savedPlaceIds.map((id) => savedLeadPlaceholder(id));
           const savedGeminiReferences = savedGeminiPlaceIds.map((id) => savedGeminiLeadPlaceholder(id));
           setLeads((current) => {
@@ -541,7 +541,7 @@ function AgencyOSApp() {
       const response = await fetch('/api/config', { cache: 'no-store' });
       const data = await response.json();
       setApiConfig({ loading: false, reachable: true, ...data });
-      setSearchForm((current) => ({ ...current, source: 'gemini' }));
+      setSearchForm((current) => ({ ...current, source: data.googlePlacesConfigured ? 'google' : 'gemini' }));
       const savedReferences = savedPlaceIds.map((id) => savedLeadPlaceholder(id));
       const savedGeminiReferences = savedGeminiPlaceIds.map((id) => savedGeminiLeadPlaceholder(id));
       setLeads((current) => {
@@ -611,7 +611,10 @@ function AgencyOSApp() {
           if (!results.length) showToast('No matching Google Maps sources were returned. Try a broader search or choose Google Places.');
         } catch (geminiError) {
           const groundingUnavailable = /HTTP 429|quota|rate.?limit|resource.?exhausted|grounding|maps.*(unavailable|not available|not supported)|not available.*free tier/i.test(String(geminiError?.message || ''));
-          if (!apiConfig.googlePlacesConfigured || !groundingUnavailable) throw geminiError;
+          if (!groundingUnavailable) throw geminiError;
+          if (!apiConfig.googlePlacesConfigured) {
+            throw new Error('Gemini text requests can work while Gemini Maps grounding is blocked by your API project tier. To keep finding real businesses, configure GOOGLE_MAPS_API_KEY on the AgencyOS server (Google Places API (New) enabled with billing). AgencyOS will then fall back to verified Google Places listings automatically; it will not invent business data.');
+          }
           const response = await fetch('/api/places/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
