@@ -450,18 +450,25 @@ function AgencyOSApp() {
           const statusData = await statusResponse.json();
           if (!statusResponse.ok) throw new Error(statusData.error || 'Could not read Maps scraper progress.');
           if (statusData.status === 'failed') throw new Error(statusData.error || 'The Maps scraper job failed.');
+          const partialResults = dedupeLeads(statusData.results || []).map((lead) => applyManualLeadOverride({ ...lead, source: 'maps-scraper' }, manualOverrides));
+          if (partialResults.length) {
+            setFinderResults(partialResults);
+            setFinderSource('maps-scraper');
+            setFinderWarnings(statusData.warnings || ['Showing businesses returned so far; the scraper may still be working.']);
+            setFinderRequests(1);
+            setFinderGeocodingRequests(0);
+          }
           if (statusData.status === 'completed') {
-            const results = dedupeLeads(statusData.results || []).map((lead) => applyManualLeadOverride({ ...lead, source: 'maps-scraper' }, manualOverrides));
-            setFinderResults(results);
+            setFinderResults(partialResults);
             setFinderWarnings(statusData.warnings || []);
             setFinderRequests(1);
             setFinderGeocodingRequests(0);
             setFinderSource('maps-scraper');
             completed = true;
-            if (!results.length) showToast('The Maps scraper completed but returned no businesses. Try another category or location.');
+            if (!partialResults.length) showToast('The Maps scraper completed but returned no businesses. Try another category or location.');
             break;
           }
-          setSearchError(`Maps scraper is ${statusData.status === 'pending' ? 'queued' : 'running'}… This can take several minutes.`);
+          setSearchError(`Maps scraper is ${statusData.status === 'pending' ? 'queued' : 'running'}… ${partialResults.length ? `${partialResults.length} businesses found so far.` : 'Waiting for the first businesses…'}`);
         }
         if (!completed) throw new Error('The Maps scraper is taking longer than expected. Try checking the scraper service and run the search again.');
         setSearchError('');
