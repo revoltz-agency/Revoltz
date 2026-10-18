@@ -8,4 +8,4 @@ FROM gosom/google-maps-scraper:latest
 COPY --from=gateway-build /gateway /usr/local/bin/scraper-gateway
 ENV PORT=10000
 EXPOSE 10000
-CMD ["/usr/local/bin/scraper-gateway"]
+ENTRYPOINT ["/usr/local/bin/scraper-gateway"]
