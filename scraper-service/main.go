@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -50,7 +51,12 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true}`))
+		if cmd.Process == nil || cmd.ProcessState != nil || cmd.Process.Signal(syscall.Signal(0)) != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"ok":false,"scraper":"stopped"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"scraper":"running"}`))
 	})
 	mux.Handle("/api/v1/scrape", auth(token, proxy))
 	mux.Handle("/api/v1/jobs", auth(token, proxy))
