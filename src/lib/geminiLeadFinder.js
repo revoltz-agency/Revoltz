@@ -180,28 +180,35 @@ export async function searchGeminiLeads({ apiKey, category, location, radiusKm =
 
   const normalizeName = (value) => clean(value, 160).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   const sourceByName = new Map(groundingSources.map((source) => [normalizeName(source.name), source]));
-  const leads = parseResponse(data).flatMap((lead) => {
+  // Prefer model-enriched records when their names match a grounded Maps
+  // source. Gemini can sometimes format or slightly alter a grounded name;
+  // do not turn a valid Maps-grounded response into an empty result just
+  // because that text did not match exactly. Fallback records use only names,
+  // URLs, and place IDs returned by Google Maps grounding.
+  const groundedLeads = (records) => records.map((source) => ({
+    id: source.placeId ? `gemini-${source.placeId}` : `gemini-${normalizeName(source.name).replaceAll(' ', '-')}`,
+    placeId: source.placeId,
+    name: source.name,
+    category: safeCategory,
+    city: safeLocation,
+    address: '',
+    phone: '',
+    internationalPhoneNumber: '',
+    website: '',
+    rating: null,
+    reviews: null,
+    businessStatus: 'UNKNOWN',
+    mapsUrl: source.url,
+    source: 'gemini',
+    demo: false,
+  }));
+  const matchedSources = parseResponse(data).flatMap((lead) => {
     const source = sourceByName.get(normalizeName(lead.name));
-    if (!source) return [];
-    const placeId = source.placeId;
-    return [{
-      id: placeId ? `gemini-${placeId}` : `gemini-${normalizeName(source.name).replaceAll(' ', '-')}`,
-      placeId,
-      name: source.name,
-      category: safeCategory,
-      city: safeLocation,
-      address: '',
-      phone: '',
-      internationalPhoneNumber: '',
-      website: '',
-      rating: null,
-      reviews: 0,
-      businessStatus: 'UNKNOWN',
-      mapsUrl: source.url,
-      source: 'gemini',
-      demo: false,
-    }];
-  }).slice(0, count);
+    return source ? [source] : [];
+  });
+  const uniqueSources = (records) => [...new Map(records.map((source) => [source.placeId || source.url, source])).values()];
+  const matched = uniqueSources(matchedSources);
+  const leads = groundedLeads(matched.length ? matched : groundingSources).slice(0, count);
   return { leads, groundingSources, groundingMetadata };
 }
 
