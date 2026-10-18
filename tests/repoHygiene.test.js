@@ -119,6 +119,8 @@ test('Audit Inbox cannot regress to passwordless read or management access', () 
   assert.match(server, /app\.delete\('\/api\/audit\/requests\/:id',[\s\S]*?passesCsrfCheck\(req, session\)/);
   assert.match(inbox, /Owner-only Audit Inbox/);
   assert.match(inbox, /api\/audit\/session\/logout/);
+  assert.match(inbox, /const sessionCheck = await fetch\('\/api\/audit\/requests'/);
+  assert.doesNotMatch(inbox, /setAuthed\(response\.status === 200\)/, 'public config success must not be treated as authentication');
   assert.doesNotMatch(server, /return \{ passwordless: true \}/);
   assert.doesNotMatch(inbox, /passwordless access is enabled/i);
 });
