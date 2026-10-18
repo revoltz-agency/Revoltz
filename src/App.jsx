@@ -906,6 +906,7 @@ function ModeBadge({ lead, demo = false }) {
   const source = typeof lead === 'string' ? lead : lead?.source || (demo ? 'demo' : 'google');
   if (source === 'manual') return <span className="manual-badge"><span className="manual-dot" /> {manualLeadSourceLabel(source).toUpperCase()}</span>;
   if (source === 'demo') return <span className="sample-badge"><span className="sample-dot" /> DEMO</span>;
+  if (source === 'free-research') return <span className="manual-badge"><span className="manual-dot" /> FREE WEB RESEARCH</span>;
   if (source === 'maps-scraper') return <span className="google-badge"><Globe2 size={12} /> GOOGLE MAPS SCRAPER</span>;
   if (source === 'gemini') return <span className="google-badge"><Sparkles size={12} /> GEMINI + GOOGLE MAPS</span>;
   if (source === 'openrouter') return <span className="google-badge"><Globe2 size={12} /> OPENROUTER WEB RESEARCH</span>;
