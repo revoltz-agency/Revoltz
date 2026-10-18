@@ -306,28 +306,35 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
     return res.status(400).json({ error: 'Search radius must be between 1 and 50 km.' });
   }
   try {
-    const upstream = await fetch(`${mapsScraperUrl}/api/v1/jobs`, {
+    const upstream = await fetch(`${mapsScraperUrl}/api/v1/scrape`, {
       method: 'POST',
       headers: mapsScraperHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
       body: JSON.stringify({
-        name: `${category} in ${location}`,
-        keywords: [`${category} in ${location}`],
+        keyword: `${category} in ${location}`,
         lang: 'en',
+        max_depth: 5,
+        radius: radiusKm,
         zoom: 15,
-        depth: 5,
-        radius: Math.round(radiusKm * 1000),
         email: false,
         fast_mode: false,
-        max_time: 240,
+        timeout: 240,
       }),
       signal: AbortSignal.timeout(12_000),
     });
     const data = await upstream.json().catch(() => ({}));
-    if (!upstream.ok) return res.status(502).json({ error: data.message || data.error || 'The Maps scraper rejected the search.' });
-    const jobId = data.id || data.ID || data.jobId;
-    if (!isMapsScraperJobId(jobId)) return res.status(502).json({ error: 'The Maps scraper returned an invalid job ID.' });
-    return res.status(202).json({ jobId, status: 'pending' });
+    if (!upstream.ok) {
+      const message = typeof data.message === 'string' ? data.message : 'The Maps scraper rejected the search.';
+      console.warn('[maps-scraper] job creation rejected', { status: upstream.status, message });
+      return res.status(502).json({ error: `Maps scraper error (${upstream.status}): ${message}` });
+    }
+    const jobId = data.job_id || data.jobId;
+    if (!isMapsScraperJobId(jobId)) {
+      console.warn('[maps-scraper] invalid job response', { fields: Object.keys(data || {}) });
+      return res.status(502).json({ error: 'The Maps scraper returned an invalid job ID. Check the scraper API version.' });
+    }
+    return res.status(202).json({ jobId, status: data.status || 'pending' });
   } catch (error) {
+    console.warn('[maps-scraper] job creation request failed', { name: error?.name || 'Error', message: error?.message || 'unknown error' });
     return res.status(502).json({ error: 'Could not reach the Maps scraper service. Check its deployment and internal URL.' });
   }
 });
@@ -344,24 +351,57 @@ app.get('/api/maps-scraper/jobs/:jobId', async (req, res) => {
     return res.status(400).json({ error: 'Search context is missing or invalid.' });
   }
   try {
-    const upstream = await fetch(`${mapsScraperUrl}/api/v1/jobs/${jobId}`, {
+    const upstream = await fetch(`${mapsScraperUrl}/api/v1/jobs/${encodeURIComponent(jobId)}`, {
       headers: mapsScraperHeaders({ Accept: 'application/json' }),
       signal: AbortSignal.timeout(12_000),
     });
     const job = await upstream.json().catch(() => ({}));
-    if (!upstream.ok) return res.status(502).json({ error: job.message || job.error || 'Could not read scraper job status.' });
-    const rawStatus = String(job.status || job.Status || 'pending').toLowerCase();
-    if (rawStatus === 'failed') return res.json({ jobId, status: 'failed', error: job.error || job.Error || 'The Maps scraper job failed.' });
-    if (rawStatus !== 'ok' && rawStatus !== 'completed' && rawStatus !== 'complete') {
+    if (!upstream.ok) {
+      const message = typeof job.message === 'string' ? job.message : 'Could not read scraper job status.';
+      console.warn('[maps-scraper] status request rejected', { status: upstream.status, message });
+      return res.status(502).json({ error: `Maps scraper status error (${upstream.status}): ${message}` });
+    }
+    const rawStatus = String(job.status || 'pending').toLowerCase();
+    if (['failed', 'cancelled', 'discarded'].includes(rawStatus)) {
+      return res.json({ jobId, status: 'failed', error: job.error || 'The Maps scraper job failed.' });
+    }
+    if (!['completed', 'complete'].includes(rawStatus)) {
       return res.json({ jobId, status: rawStatus === 'pending' ? 'pending' : 'working' });
     }
-    const download = await fetch(`${mapsScraperUrl}/api/v1/jobs/${jobId}/download`, {
-      headers: mapsScraperHeaders({ Accept: 'text/csv' }),
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!download.ok) return res.status(502).json({ error: 'The scraper completed but its CSV results could not be downloaded.' });
-    const csv = await download.text();
-    const results = normalizeMapsScraperCsv(csv, { category, location, maxResults });
+    const rawResults = Array.isArray(job.results) ? job.results : [];
+    const seen = new Set();
+    const results = [];
+    for (const item of rawResults) {
+      if (!item || typeof item !== 'object') continue;
+      const name = String(item.title || item.name || item.place_name || '').trim();
+      if (!name) continue;
+      const mapsUrl = String(item.link || item.maps_url || item.google_maps_url || '').trim();
+      const placeId = String(item.place_id || item.cid || item.data_id || '').trim();
+      const address = String(item.address || '').trim();
+      const key = (placeId || mapsUrl || `${name}|${address}`).toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const numeric = (value) => {
+        if (value == null || String(value).trim() === '') return null;
+        const parsed = Number(String(value).replace(/,/g, '').trim());
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+      results.push({
+        id: `maps-scraper-${key.replace(/[^a-z0-9_-]/gi, '-').slice(0, 180)}`,
+        source: 'maps-scraper',
+        name,
+        category: String(item.category || category).trim(),
+        city: location,
+        address,
+        phone: String(item.phone || '').trim(),
+        website: String(item.website || item.web_site || '').trim(),
+        mapsUrl,
+        placeId,
+        rating: numeric(item.review_rating ?? item.rating),
+        reviews: numeric(item.review_count ?? item.reviews ?? item.reviews_count),
+      });
+      if (results.length >= maxResults) break;
+    }
     return res.json({
       jobId,
       status: 'completed',
@@ -371,6 +411,7 @@ app.get('/api/maps-scraper/jobs/:jobId', async (req, res) => {
       geocodingRequests: 0,
     });
   } catch (error) {
+    console.warn('[maps-scraper] status request failed', { name: error?.name || 'Error', message: error?.message || 'unknown error' });
     return res.status(502).json({ error: 'Could not read results from the Maps scraper service.' });
   }
 });
