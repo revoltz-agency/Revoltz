@@ -124,3 +124,18 @@ test('Audit Inbox cannot regress to passwordless read or management access', () 
   assert.doesNotMatch(server, /return \{ passwordless: true \}/);
   assert.doesNotMatch(inbox, /passwordless access is enabled/i);
 });
+
+
+test('proposal and website demo builders persist to organization-scoped tools storage', () => {
+  for (const [file, key, saveLabel] of [
+    ['ProposalBuilder.jsx', 'proposalBuilder', 'Proposal draft synced to your organization cloud.'],
+    ['WebsiteDemoBuilder.jsx', 'websiteDemoBuilder', 'Website demo synced to your organization cloud.'],
+  ]) {
+    const source = readFileSync(path.join(rootDir, 'src', 'components', file), 'utf8');
+    assert.match(source, /saveOrganizationModulePatch/);
+    assert.match(source, /api\/workspace\/modules\/tools\/data/);
+    assert.match(source, new RegExp(key));
+    assert.match(source, new RegExp(saveLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(source, /Cloud sync unavailable/);
+  }
+});
