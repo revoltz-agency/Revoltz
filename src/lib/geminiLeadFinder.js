@@ -156,9 +156,9 @@ export async function searchGeminiLeads({ apiKey, category, location, radiusKm =
     `Location: ${safeLocation}`,
     `Prefer businesses within approximately ${radius} km of the requested location.`,
     '',
-    'Use your knowledge and any available model context to identify likely real businesses. Do not claim to have checked live Google Maps or live websites.',
+    'Suggest businesses that may match the request using your available knowledge. Do not claim to have checked live Google Maps or live websites. If you cannot confidently name any businesses, return an empty leads array.',
     'Output only valid JSON with exactly this top-level shape: {"leads":[{"name":"","category":"","city":"","address":"","phone":"","website":"","mapsUrl":"","rating":null,"reviews":null,"placeId":""}]}. Do not use markdown fences or add explanatory text outside the JSON.',
-    'Do not invent, infer, or guess missing phone numbers, websites, ratings, review counts, addresses, or place IDs. Use an empty string or null when the grounded data does not provide a field.',
+    'Do not invent phone numbers, websites, ratings, review counts, addresses, or place IDs. Use empty strings or null for details you do not know.',
     'Prefer distinct businesses located in the requested city/location. Exclude duplicates, closed/clearly nonexistent businesses, and generic category descriptions.',
     'Return business names and any details you can confidently provide. Do not invent phone numbers, websites, addresses, ratings, review counts, or place IDs; leave unavailable fields empty or null.',
   ].join('\\n');
