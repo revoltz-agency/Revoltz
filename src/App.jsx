@@ -259,7 +259,7 @@ function AgencyOSApp() {
   const [finderRequests, setFinderRequests] = useState(0);
   const [finderGeocodingRequests, setFinderGeocodingRequests] = useState(0);
   const [refreshingDetailsIds, setRefreshingDetailsIds] = useState({});
-  const [searchForm, setSearchForm] = useState({ category: '', city: 'Pune', radiusKm: '10', maxResults: '10', source: 'gemini', enablePaidWebSearch: false });
+  const [searchForm, setSearchForm] = useState({ category: '', city: 'Pune', radiusKm: '10', maxResults: '10', source: 'free-research', enablePaidWebSearch: false });
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [searchHasRun, setSearchHasRun] = useState(false);
@@ -419,7 +419,14 @@ function AgencyOSApp() {
     setSearchHistory((current) => [query, ...current.filter((item) => normalizeSearch(`${item.category} ${item.city}`) !== normalizeSearch(`${category} ${city}`))].slice(0, 8));
     setSearchError(''); setFinderWarnings([]); setFinderGroundingSources([]); setFinderResults([]); setFinderRequests(0); setFinderGeocodingRequests(0); setSearchHasRun(true); setFinderQuery(`${category} in ${city}`); setSearching(true);
     try {
-      if (searchForm.source === 'demo') {
+      if (searchForm.source === 'free-research') {
+        setFinderResults([]);
+        setFinderGroundingSources([]);
+        setFinderWarnings(['Zero-cost research mode: AgencyOS did not call an AI, Maps, or paid search API. Open a search source below, verify each business on its own public page, then add it with Manual Lead Import.']);
+        setFinderRequests(0);
+        setFinderGeocodingRequests(0);
+        setFinderSource('free-research');
+      } else if (searchForm.source === 'demo') {
         const results = demoSearch(category, city).slice(0, Number(searchForm.maxResults) || 10);
         setFinderResults(dedupeLeads(results).map((lead) => applyManualLeadOverride(lead, manualOverrides)));
         setFinderSource('demo');
@@ -957,9 +964,10 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
   const added = (lead) => leads.some((item) => getLeadKey(item) === getLeadKey(lead));
   const sourceChoice = searchForm.source || 'gemini';
   const sourceOptions = [
-    { id: 'gemini', title: 'Gemini AI + Google Maps', detail: 'Grounded business discovery', disabled: false },
-    { id: 'google', title: 'Google Places', detail: config.googlePlacesConfigured ? 'Official Places API' : 'Server API key required', disabled: !config.googlePlacesConfigured },
-    { id: 'openrouter', title: 'OpenRouter + live web', detail: 'Web research · paid search opt-in', disabled: false },
+    { id: 'free-research', title: 'Free web research', detail: 'No API key · no usage charges', disabled: false },
+    { id: 'gemini', title: 'Gemini AI + Google Maps', detail: 'May require billing / quota', disabled: false },
+    { id: 'google', title: 'Google Places', detail: config.googlePlacesConfigured ? 'API · billing may apply' : 'Server API key required', disabled: !config.googlePlacesConfigured },
+    { id: 'openrouter', title: 'OpenRouter + live web', detail: 'Paid · not for zero-cost mode', disabled: true },
     { id: 'demo', title: 'Demo sample', detail: 'Fictional records · no API calls', disabled: false },
   ];
   return <div className="page-stack">
@@ -973,10 +981,11 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
           </button>)}
         </div>
       </div>
-      {sourceChoice === 'gemini' && <div className="results-note free-hint"><Info size={14} />Uses the Gemini API key saved in Settings and Google Maps grounding. Free-tier eligibility, rate limits, and any billing requirements are controlled by Google for your project.</div>}
+      {sourceChoice === 'free-research' && <div className="results-note free-hint"><Info size={14} />Zero-cost mode is selected by default. It opens public search pages in your browser instead of calling APIs or scraping search results. Verify each business before adding it to your CRM.</div>}
+      {sourceChoice === 'gemini' && <div className="results-note free-hint"><Info size={14} />Uses the Gemini API key saved in Settings and Google Maps grounding. Google states grounding may be unavailable on free tiers for some models and can be billed on eligible paid tiers. Use Free web research to guarantee no API call from this search.</div>}
       {sourceChoice === 'google' && <div className="results-note request-cost-note"><Info size={14} />Uses the server-configured Google Places API key. Searches can incur Google Maps Platform charges; requests are rate-limited.</div>}
-      {sourceChoice === 'openrouter' && <div className="results-note request-cost-note"><Info size={14} />OpenRouter live research is opt-in. Exa currently charges $0.007 per web-search request (up to 10 results), plus any model usage. AgencyOS limits the request to one web-search use. <a href="https://openrouter.ai/tool/web-search/" target="_blank" rel="noreferrer">View pricing</a>.</div>}
-      {sourceChoice === 'openrouter' && <label className="results-note" style={{display:'flex',alignItems:'flex-start',gap:10,cursor:'pointer'}}><input type="checkbox" checked={searchForm.enablePaidWebSearch === true} onChange={(event) => updateField('enablePaidWebSearch', event.target.checked)} style={{marginTop:3}} /><span><strong>Enable paid live web research for this search</strong><br />Unchecked by default. Checking this authorizes the app to request web search when you submit this query. The connection test never runs web search.</span></label>}
+      {sourceChoice === 'openrouter' && <div className="results-note request-cost-note"><Info size={14} />Paid web research is disabled in this zero-cost build. Use Free web research or Manual Lead Import instead.</div>}
+      {sourceChoice === 'openrouter' && <label className="results-note" style={{display:'flex',alignItems:'flex-start',gap:10,cursor:'not-allowed',opacity:0.7}}><input type="checkbox" checked={false} disabled style={{marginTop:3}} /><span><strong>Paid live web research disabled</strong><br />Disabled in zero-cost mode to prevent unexpected search charges.</span></label>}
       <form className="finder-form" onSubmit={(event) => { event.preventDefault(); onSearch(); }}>
         <label className="field-group"><span>Industry or category</span><div className="input-with-icon"><Building2 size={16} /><input value={searchForm.category} onChange={(event) => updateField('category', event.target.value)} placeholder="e.g. Dental clinics" maxLength={100} /></div></label>
         <label className="field-group"><span>City or location</span><div className="input-with-icon"><MapPin size={16} /><input value={searchForm.city} onChange={(event) => updateField('city', event.target.value)} placeholder="e.g. Pune" maxLength={160} /></div></label>
@@ -993,6 +1002,17 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
     {hasRun ? <section className={`finder-results-section ${source === 'google' ? 'google-results-container' : ''}`}><div className="results-heading"><div><div className="card-kicker">SEARCH RESULTS</div><h2>{results.length} {results.length === 1 ? 'business' : 'businesses'} <span>for “{query}”</span></h2></div><ModeBadge lead={source} /></div>
       {warnings.map((warning) => <div className="results-note" key={warning}><Info size={14} />{warning}</div>)}
       {source === 'google' && <div className="results-note request-cost-note"><Info size={14} />{requests} Text Search {requests === 1 ? 'request' : 'requests'} used{geocodingRequests ? ` + ${geocodingRequests} Geocoding request for radius bias` : ''}. Place Details are requested only when you manually refresh a saved place, at most once per place per app session.</div>}
+      {source === 'free-research' && <div className="free-research-panel">
+        <div className="free-research-panel-head"><div className="card-kicker">NO API CALLS · NO SEARCH BILL</div><h3>Research real businesses for free</h3><p>These links open normal public search pages. AgencyOS does not scrape them; you choose which businesses to verify and save.</p></div>
+        <div className="free-research-link-grid">
+          <a href={`https://www.google.com/maps/search/${encodeURIComponent(`${searchForm.category} in ${searchForm.city}`)}`} target="_blank" rel="noreferrer"><strong>Google Maps</strong><span>Local businesses, listings, reviews and websites</span><ExternalLink size={15} /></a>
+          <a href={`https://www.google.com/search?q=${encodeURIComponent(`${searchForm.category} in ${searchForm.city} official website contact`)}`} target="_blank" rel="noreferrer"><strong>Google Search</strong><span>Official websites and contact pages</span><ExternalLink size={15} /></a>
+          <a href={`https://www.bing.com/search?q=${encodeURIComponent(`${searchForm.category} in ${searchForm.city} official website contact`)}`} target="_blank" rel="noreferrer"><strong>Bing Search</strong><span>Cross-check results and discover alternate sources</span><ExternalLink size={15} /></a>
+          <a href={`https://duckduckgo.com/?q=${encodeURIComponent(`${searchForm.category} in ${searchForm.city} official website contact`)}`} target="_blank" rel="noreferrer"><strong>DuckDuckGo</strong><span>Another independent search index</span><ExternalLink size={15} /></a>
+        </div>
+        <ol className="free-research-steps"><li>Open Google Maps and identify businesses that match the target industry and location.</li><li>Open the business’s own website or verified social profile to confirm the name and public contact channel.</li><li>Use <strong>Manual Lead Import</strong> below to save only verified details. Record the source URL and leave unknown fields blank.</li></ol>
+        <div className="results-note"><Info size={14} />Reliability rule: a listing is a prospect, not proof of need. Prioritize businesses with a working official site, recent activity, and a specific visible problem your service can solve. Never guess a phone number or email.</div>
+      </div>}
       {results.length ? <div className="finder-results-grid">{results.map((lead) => { const isAdded = added(lead); const ratingText = [Number(lead.rating) > 0 ? `${Number(lead.rating).toFixed(1)} rating${isUserProvidedManualField(lead, 'rating') ? ' · user-provided' : ''}` : '', Number(lead.reviews) > 0 ? `${Number(lead.reviews).toLocaleString()} reviews${isUserProvidedManualField(lead, 'reviews') ? ' · user-provided' : ''}` : ''].filter(Boolean).join(' · ') || 'Rating and review count not available'; const reasons = whyThisLead(lead).slice(0, 3); const recommendations = recommendService(lead).slice(0, 2); return <article className="finder-result-card" key={getLeadKey(lead)}>
         <div className="result-card-head"><div className="business-avatar business-avatar-large">{initials(lead.name)}</div><div className="result-title"><h3>{lead.name}</h3><span>{lead.category || 'Category not returned'}</span></div><ScorePill lead={lead} compact /></div>
         <div className="result-detail"><MapPin size={14} /><span>{lead.address || lead.city || 'Address not returned'}</span></div>
@@ -1003,7 +1023,7 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
         {lead.placeId && !lead.demo && <div className="place-id-line"><span>Google Place ID</span><code title={lead.placeId}>{lead.placeId}</code></div>}
         {lead.demo && <div className="demo-disclaimer"><Info size={13} /> Fictional demo business. Not contactable.</div>}
         <div className="result-card-actions"><button className={`button ${isAdded ? 'button-secondary' : 'button-primary'} button-small`} onClick={() => onAdd(lead)} type="button">{isAdded ? <><Check size={15} /> {leads.find((item) => getLeadKey(item) === getLeadKey(lead))?.needsRefresh ? 'Refresh from result' : 'In your leads'}</> : <><Plus size={15} /> Add to leads</>}</button>{isAdded && <button className="button button-quiet button-small" type="button" onClick={() => onOpenLead(lead)}>Details <ArrowRight size={14} /></button>}{safeHttpUrl(lead.mapsUrl) && <a className="maps-result-link" href={safeHttpUrl(lead.mapsUrl)} target="_blank" rel="noreferrer"><MapPin size={13} /> Maps <ExternalLink size={12} /></a>}</div>
-      </article>; })}</div> : <EmptyState icon={Search} title="No businesses found" body={source === 'demo' ? 'The explicitly selected sample set contains fictional Pune businesses only. Try one of the example searches above.' : source === 'gemini' ? 'Gemini + Google Maps returned no matching businesses. Try a broader category, nearby city, or larger radius.' : 'Try a broader category or a nearby city.'} />}
+      </article>; })}</div> : <EmptyState icon={Search} title="No businesses found" body={source === 'free-research' ? 'Use the search links above, then add verified businesses using Manual Lead Import.' : source === 'demo' ? 'The explicitly selected sample set contains fictional Pune businesses only. Try one of the example searches above.' : source === 'gemini' ? 'Gemini + Google Maps returned no matching businesses. Try a broader category, nearby city, or larger radius.' : 'Try a broader category or a nearby city.'} />}
       {(source === 'google' || source === 'gemini') && <GoogleDisclosure />}{source === 'demo' && <div className="demo-result-footnote"><Info size={14} /> Fictional demo dataset · Search details are illustrative and are not Google Places results.</div>}
       {source === 'gemini' && <div className="grounding-source-list"><strong>Google Maps sources</strong>{groundingSources.map((item) => <a key={`${item.name}-${item.url}`} href={safeHttpUrl(item.url)} target="_blank" rel="noreferrer">{item.name}<ExternalLink size={12} /></a>)}</div>}
       {source === 'openrouter' && <div className="grounding-source-list"><strong>Live web citations</strong>{groundingSources.map((item) => <a key={`${item.title}-${item.url}`} href={safeHttpUrl(item.url)} target="_blank" rel="noreferrer">{item.title}<ExternalLink size={12} /></a>)}</div>}
