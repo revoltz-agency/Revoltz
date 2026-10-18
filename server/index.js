@@ -37,6 +37,7 @@ import {
   verifyOwnerPassword,
 } from './session.js';
 import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed } from './security.js';
+import { isMapsScraperJobId, normalizeMapsScraperCsv } from './mapsScraper.js';
 import { notifyTelegramAuditRequest } from './telegram.js';
 import {
   authenticateWorkspaceUser,
@@ -217,7 +218,7 @@ app.put('/api/workspace/state', async (req, res) => {
 // The internal lead-research APIs are available only to signed-in workspace users.
 // Public marketing/audit-intake endpoints and the separate owner-only Audit Inbox
 // retain their existing access rules.
-app.use(['/api/places', '/api/website'], async (req, res, next) => {
+app.use(['/api/places', '/api/website', '/api/maps-scraper'], async (req, res, next) => {
   const session = await requireWorkspaceUser(req, res);
   if (!session) return;
   req.workspaceUser = session.user;
@@ -225,6 +226,8 @@ app.use(['/api/places', '/api/website'], async (req, res, next) => {
 });
 
 const googleApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
+const mapsScraperUrl = (process.env.GOOGLE_MAPS_SCRAPER_URL || '').trim().replace(/\/+$/, '');
+const mapsScraperLimiter = createRateLimiter({ windowMs: 60_000, limit: 3 });
 
 // --- Audit Inbox configuration ---------------------------------------------
 // Public intake remains opt-in via AUDIT_PUBLIC_INTAKE_ENABLED. It is only
@@ -265,6 +268,7 @@ app.get('/api/config', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     googlePlacesConfigured: Boolean(googleApiKey),
+    mapsScraperConfigured: Boolean(mapsScraperUrl),
     // Booleans only: never a connection string, token, or password hash.
     auditInboxConfigured: auditInboxConfigured(),
     auditPublicIntakeEnabled,
@@ -273,6 +277,99 @@ app.get('/api/config', (_req, res) => {
     // Non-secret: lets an operator confirm the Places backstop is active.
     placesRateLimitPerMinute: placesLimiter.limit,
   });
+});
+
+
+/**
+ * The Maps scraper is an optional self-hosted gosom/google-maps-scraper service.
+ * Keep its URL server-side; the browser never receives or calls the scraper host.
+ * The upstream service must be private/internal, not exposed as an unauthenticated public API.
+ */
+app.post('/api/maps-scraper/jobs', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!mapsScraperUrl) return res.status(503).json({ error: 'Google Maps Scraper is not connected. Configure GOOGLE_MAPS_SCRAPER_URL on the AgencyOS server.' });
+  const rate = mapsScraperLimiter.check(`maps-scraper:${clientKey(req)}`);
+  if (!rate.allowed) {
+    res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+    return res.status(429).json({ error: 'Scraper job limit reached. Wait before starting another search.' });
+  }
+  const category = typeof req.body?.category === 'string' ? req.body.category.trim() : '';
+  const location = typeof req.body?.location === 'string' ? req.body.location.trim() : '';
+  const radiusKm = Number(req.body?.radiusKm);
+  if (!category || category.length > 100 || !location || location.length > 160) {
+    return res.status(400).json({ error: 'Add an industry/category and a city or location to search.' });
+  }
+  if (!Number.isFinite(radiusKm) || radiusKm < 1 || radiusKm > 50) {
+    return res.status(400).json({ error: 'Search radius must be between 1 and 50 km.' });
+  }
+  try {
+    const upstream = await fetch(`${mapsScraperUrl}/api/v1/jobs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        name: `${category} in ${location}`,
+        keywords: [`${category} in ${location}`],
+        lang: 'en',
+        zoom: 15,
+        depth: 5,
+        radius: Math.round(radiusKm * 1000),
+        email: false,
+        fast_mode: false,
+        max_time: 240,
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+    const data = await upstream.json().catch(() => ({}));
+    if (!upstream.ok) return res.status(502).json({ error: data.message || data.error || 'The Maps scraper rejected the search.' });
+    const jobId = data.id || data.ID || data.jobId;
+    if (!isMapsScraperJobId(jobId)) return res.status(502).json({ error: 'The Maps scraper returned an invalid job ID.' });
+    return res.status(202).json({ jobId, status: 'pending' });
+  } catch (error) {
+    return res.status(502).json({ error: 'Could not reach the Maps scraper service. Check its deployment and internal URL.' });
+  }
+});
+
+app.get('/api/maps-scraper/jobs/:jobId', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!mapsScraperUrl) return res.status(503).json({ error: 'Google Maps Scraper is not connected.' });
+  const jobId = req.params.jobId;
+  if (!isMapsScraperJobId(jobId)) return res.status(400).json({ error: 'Invalid scraper job ID.' });
+  const category = typeof req.query.category === 'string' ? req.query.category.slice(0, 100) : '';
+  const location = typeof req.query.location === 'string' ? req.query.location.slice(0, 160) : '';
+  const maxResults = Number(req.query.maxResults);
+  if (!category || !location || !Number.isInteger(maxResults) || maxResults < 1 || maxResults > 50) {
+    return res.status(400).json({ error: 'Search context is missing or invalid.' });
+  }
+  try {
+    const upstream = await fetch(`${mapsScraperUrl}/api/v1/jobs/${jobId}`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(12_000),
+    });
+    const job = await upstream.json().catch(() => ({}));
+    if (!upstream.ok) return res.status(502).json({ error: job.message || job.error || 'Could not read scraper job status.' });
+    const rawStatus = String(job.status || job.Status || 'pending').toLowerCase();
+    if (rawStatus === 'failed') return res.json({ jobId, status: 'failed', error: job.error || job.Error || 'The Maps scraper job failed.' });
+    if (rawStatus !== 'ok' && rawStatus !== 'completed' && rawStatus !== 'complete') {
+      return res.json({ jobId, status: rawStatus === 'pending' ? 'pending' : 'working' });
+    }
+    const download = await fetch(`${mapsScraperUrl}/api/v1/jobs/${jobId}/download`, {
+      headers: { Accept: 'text/csv' },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!download.ok) return res.status(502).json({ error: 'The scraper completed but its CSV results could not be downloaded.' });
+    const csv = await download.text();
+    const results = normalizeMapsScraperCsv(csv, { category, location, maxResults });
+    return res.json({
+      jobId,
+      status: 'completed',
+      results,
+      warnings: ['Results were extracted by the self-hosted Google Maps scraper. Listing availability and contact details can change; check before outreach.'],
+      requests: 1,
+      geocodingRequests: 0,
+    });
+  } catch (error) {
+    return res.status(502).json({ error: 'Could not read results from the Maps scraper service.' });
+  }
 });
 
 app.post('/api/places/search', async (req, res) => {

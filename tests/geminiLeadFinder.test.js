@@ -36,7 +36,7 @@ test('Gemini leads must match a Maps grounding result and use its canonical iden
     assert.equal(result.leads[0].phone, '');
     assert.equal(result.leads[0].website, '');
     assert.equal(result.leads[0].rating, null);
-    assert.equal(result.leads[0].reviews, 0);
+    assert.equal(result.leads[0].reviews, null);
     assert.equal(result.groundingSources[0].name, 'Café Aurora');
   } finally { stub.restore(); }
 });

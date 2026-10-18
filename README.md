@@ -12,7 +12,20 @@ Find Leads offers three explicit choices:
 
 Manual lead creation and CSV import are available independently of provider configuration and do not make Google Places or Gemini requests. Imports are parsed and previewed locally before the operator confirms changes.
 
-AgencyOS does not scrape Google Maps webpages or send messages. WhatsApp drafts and follow-up dates require explicit operator actions; the operator reviews and sends every message.
+Google Maps scraping is available only through the optional self-hosted scraper integration described below; it is not active unless configured. AgencyOS does not send messages. WhatsApp drafts and follow-up dates require explicit operator actions; the operator reviews and sends every message.
+
+
+## Optional Google Maps Scraper
+
+Find Leads can connect to a self-hosted `gosom/google-maps-scraper` web service. This runs separately from the Node app because the scraper requires a browser runtime and its own job storage.
+
+- Set `GOOGLE_MAPS_SCRAPER_URL` in the AgencyOS server environment to the scraper service's **private/internal base URL** (no trailing slash).
+- Do not expose the scraper's unauthenticated REST API to the public internet. The AgencyOS proxy requires a signed-in workspace user and rate-limits job creation, but the upstream scraper service itself does not provide authentication in its web mode.
+- Choose **Google Maps Scraper** in Find Leads. Jobs can take several minutes; the UI polls job status and imports the available business name, category, address, phone, website, rating, reviews, and Maps link.
+- This integration uses no Google API key, but results can be incomplete or blocked. Scraped listings are not proof of consent to contact, and this feature does not bypass CAPTCHA, access controls, or anti-bot challenges.
+- This is an optional integration. If `GOOGLE_MAPS_SCRAPER_URL` is unset, the option stays disabled and no scraper request is made.
+
+The scraper project is MIT-licensed: https://github.com/gosom/google-maps-scraper. Review its upstream documentation for its runtime, browser dependencies, and current API schema before deploying it.
 
 ## Routes and builds
 
@@ -59,6 +72,7 @@ The `npm start` script sets production mode in a cross-platform Node script and 
 | Variable | Purpose |
 | --- | --- |
 | `GOOGLE_MAPS_API_KEY` | Optional, server-only Google Places API (New) key. Never use a `VITE_` variable for this credential. |
+| `GOOGLE_MAPS_SCRAPER_URL` | Optional base URL for a trusted private/internal `gosom/google-maps-scraper` web service. Do not expose its unauthenticated API publicly. |
 | `PLACES_RATE_LIMIT_PER_MIN` | Per-client limit for each Places route; defaults to 20 requests/minute. This is an instance-level backstop, not a global spend cap. Configure Google Cloud quotas and budget alerts as well. |
 | `PORT` | Express port; defaults to `5173`. |
 | `DATABASE_URL` | PostgreSQL connection for accounts, workspace snapshots, sessions, and the Audit Inbox. |
