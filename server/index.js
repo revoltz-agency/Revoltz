@@ -227,6 +227,9 @@ app.use(['/api/places', '/api/website', '/api/maps-scraper'], async (req, res, n
 
 const googleApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
 const mapsScraperUrl = (process.env.GOOGLE_MAPS_SCRAPER_URL || '').trim().replace(/\/+$/, '');
+const mapsScraperToken = (process.env.GOOGLE_MAPS_SCRAPER_TOKEN || '').trim();
+const mapsScraperConfigured = () => Boolean(mapsScraperUrl && mapsScraperToken.length >= 32);
+const mapsScraperHeaders = (headers = {}) => ({ ...headers, Authorization: `Bearer ${mapsScraperToken}` });
 const mapsScraperLimiter = createRateLimiter({ windowMs: 60_000, limit: 3 });
 
 // --- Audit Inbox configuration ---------------------------------------------
@@ -268,7 +271,7 @@ app.get('/api/config', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     googlePlacesConfigured: Boolean(googleApiKey),
-    mapsScraperConfigured: Boolean(mapsScraperUrl),
+    mapsScraperConfigured: mapsScraperConfigured(),
     // Booleans only: never a connection string, token, or password hash.
     auditInboxConfigured: auditInboxConfigured(),
     auditPublicIntakeEnabled,
@@ -282,12 +285,12 @@ app.get('/api/config', (_req, res) => {
 
 /**
  * The Maps scraper is an optional self-hosted gosom/google-maps-scraper service.
- * Keep its URL server-side; the browser never receives or calls the scraper host.
- * The upstream service must be private/internal, not exposed as an unauthenticated public API.
+ * Keep its URL and bearer token server-side; the browser never receives either.
+ * The scraper gateway requires a token because Render free web services cannot receive private traffic.
  */
 app.post('/api/maps-scraper/jobs', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  if (!mapsScraperUrl) return res.status(503).json({ error: 'Google Maps Scraper is not connected. Configure GOOGLE_MAPS_SCRAPER_URL on the AgencyOS server.' });
+  if (!mapsScraperConfigured()) return res.status(503).json({ error: 'Google Maps Scraper is not connected. Configure GOOGLE_MAPS_SCRAPER_URL and GOOGLE_MAPS_SCRAPER_TOKEN on the AgencyOS server.' });
   const rate = mapsScraperLimiter.check(`maps-scraper:${clientKey(req)}`);
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retryAfterSeconds));
@@ -305,7 +308,7 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
   try {
     const upstream = await fetch(`${mapsScraperUrl}/api/v1/jobs`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: mapsScraperHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
       body: JSON.stringify({
         name: `${category} in ${location}`,
         keywords: [`${category} in ${location}`],
@@ -331,7 +334,7 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
 
 app.get('/api/maps-scraper/jobs/:jobId', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  if (!mapsScraperUrl) return res.status(503).json({ error: 'Google Maps Scraper is not connected.' });
+  if (!mapsScraperConfigured()) return res.status(503).json({ error: 'Google Maps Scraper is not connected.' });
   const jobId = req.params.jobId;
   if (!isMapsScraperJobId(jobId)) return res.status(400).json({ error: 'Invalid scraper job ID.' });
   const category = typeof req.query.category === 'string' ? req.query.category.slice(0, 100) : '';
@@ -342,7 +345,7 @@ app.get('/api/maps-scraper/jobs/:jobId', async (req, res) => {
   }
   try {
     const upstream = await fetch(`${mapsScraperUrl}/api/v1/jobs/${jobId}`, {
-      headers: { Accept: 'application/json' },
+      headers: mapsScraperHeaders({ Accept: 'application/json' }),
       signal: AbortSignal.timeout(12_000),
     });
     const job = await upstream.json().catch(() => ({}));
@@ -353,7 +356,7 @@ app.get('/api/maps-scraper/jobs/:jobId', async (req, res) => {
       return res.json({ jobId, status: rawStatus === 'pending' ? 'pending' : 'working' });
     }
     const download = await fetch(`${mapsScraperUrl}/api/v1/jobs/${jobId}/download`, {
-      headers: { Accept: 'text/csv' },
+      headers: mapsScraperHeaders({ Accept: 'text/csv' }),
       signal: AbortSignal.timeout(20_000),
     });
     if (!download.ok) return res.status(502).json({ error: 'The scraper completed but its CSV results could not be downloaded.' });
