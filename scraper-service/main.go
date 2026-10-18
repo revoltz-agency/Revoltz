@@ -35,6 +35,14 @@ func main() {
 
 	target, _ := url.Parse("http://127.0.0.1:8080")
 	proxy := httputil.NewSingleHostReverseProxy(target)
+	// The gateway validates the public bearer token itself. Do not forward that
+	// gateway-only credential to the scraper process, which may interpret it as
+	// an upstream API key and return 401.
+	originalDirector := proxy.Director
+	proxy.Director = func(r *http.Request) {
+		originalDirector(r)
+		r.Header.Del("Authorization")
+	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		http.Error(w, "scraper is starting or unavailable", http.StatusBadGateway)
 	}
@@ -67,7 +75,7 @@ func auth(token string, next http.Handler) http.Handler {
 		}
 		got := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 		if got == r.Header.Get("Authorization") || len(got) != len(token) || subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			http.Error(w, "scraper gateway unauthorized: check matching AgencyOS and scraper tokens", http.StatusUnauthorized)
 			return
 		}
 		next.ServeHTTP(w, r)
