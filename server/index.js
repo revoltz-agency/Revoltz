@@ -318,7 +318,7 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
         depth: 5,
         radius: Math.round(radiusKm * 1000),
         zoom: 15,
-        max_time: '4m',
+        max_time: 240_000_000_000, // Go time.Duration: 4 minutes in nanoseconds.
       }),
       signal: AbortSignal.timeout(12_000),
     });
