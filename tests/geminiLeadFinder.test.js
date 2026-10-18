@@ -44,3 +44,37 @@ test('Gemini text lead suggestions can return an empty list without fabricating 
     assert.deepEqual(result.leads, []);
   } finally { stub.restore(); }
 });
+
+
+test('Gemini switches to the stable fallback only when the primary model ID is unavailable', async () => {
+  const originalFetch = globalThis.fetch;
+  const requestedModels = [];
+  globalThis.fetch = async (url) => {
+    requestedModels.push(String(url).match(/models\/([^:]+):/)?.[1]);
+    if (requestedModels.length === 1) {
+      return { ok: false, status: 404, json: async () => ({ error: { message: 'Model not found: model unavailable' } }) };
+    }
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ leads: [] }) }] } }] }) };
+  };
+  try {
+    const result = await searchGeminiLeads({ apiKey: 'user-key', category: 'cafes', location: 'Pune' });
+    assert.deepEqual(requestedModels, ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']);
+    assert.deepEqual(result.leads, []);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('Gemini does not switch models after a quota response', async () => {
+  const originalFetch = globalThis.fetch;
+  const requestedModels = [];
+  globalThis.fetch = async (url) => {
+    requestedModels.push(String(url).match(/models\/([^:]+):/)?.[1]);
+    return { ok: false, status: 429, json: async () => ({ error: { message: 'Quota exceeded' } }) };
+  };
+  try {
+    await assert.rejects(
+      searchGeminiLeads({ apiKey: 'user-key', category: 'cafes', location: 'Pune' }),
+      /quota\/rate-limit response/i,
+    );
+    assert.deepEqual(requestedModels, ['gemini-3.5-flash-lite']);
+  } finally { globalThis.fetch = originalFetch; }
+});
