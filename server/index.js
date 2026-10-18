@@ -413,7 +413,7 @@ const auditRetentionDays = retentionDaysFromEnv(process.env.AUDIT_RETENTION_DAYS
 // Passwordless mode requested by the operator: the inbox only requires its database.
 // WARNING: audit request contact details and inbox controls are accessible to anyone
 // who can reach this service. Keep the service private if the data is confidential.
-const auditInboxConfigured = () => isDatabaseConfigured();
+const auditInboxConfigured = () => isDatabaseConfigured() && isOwnerAuthConfigured();
 
 const auditLoginLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 5 });
 const auditIntakeLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 5 });
@@ -573,9 +573,8 @@ app.post('/api/website/analyze', async (req, res) => {
 // Audit requests are stored in Postgres and are deliberately separate from
 // prospect CRM data, which never leaves the operator's browser.
 //
-// Passwordless access is intentionally enabled at the operator's request.
-// WARNING: anyone who can reach this service can read, update, and delete audit
-// enquiries. Origin checks remain as a browser safeguard, not authentication.
+// The inbox requires a server-side owner session. State-changing requests also
+// require exact-origin and session-bound CSRF checks.
 // Public intake is OFF unless AUDIT_PUBLIC_INTAKE_ENABLED === 'true'.
 //
 // No email or WhatsApp message is ever sent from these routes.
@@ -594,12 +593,24 @@ function auditNotConfigured(res) {
  * Always returns null after writing a response: an Express Response object is
  * truthy, and returning it would let the caller fall through and send twice.
  */
-async function requireAuditOwner(_req, res) {
-  if (!isDatabaseConfigured()) {
+async function requireAuditOwner(req, res) {
+  if (!auditInboxConfigured()) {
     auditNotConfigured(res);
     return null;
   }
-  return { passwordless: true };
+  try {
+    const session = await resolveOwnerSession(req);
+    if (!session) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(401).json({ error: 'Sign in to open the Audit Inbox.' });
+      return null;
+    }
+    return session;
+  } catch {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(503).json({ error: 'Audit Inbox storage is unavailable. Please try again.' });
+    return null;
+  }
 }
 
 /** Non-secret configuration the owner UI needs before it renders a login form. */
@@ -669,7 +680,9 @@ app.post('/api/audit/session/logout', async (req, res) => {
   if (!auditInboxConfigured()) return auditNotConfigured(res);
   if (!passesOriginCheck(req)) return res.status(403).json({ error: 'Origin not allowed.' });
   const session = await resolveOwnerSession(req, { renew: false }).catch(() => null);
-  // No authenticated session exists in passwordless mode.
+  if (session && !passesCsrfCheck(req, session)) {
+    return res.status(403).json({ error: 'CSRF check failed.' });
+  }
   await revokeOwnerSession(req).catch(() => false);
   for (const cookie of buildClearCookies(req)) res.append('Set-Cookie', cookie);
   return res.json({ ok: true });
@@ -782,7 +795,7 @@ app.patch('/api/audit/requests/:id', async (req, res) => {
   const session = await requireAuditOwner(req, res);
   if (!session) return;
   if (!passesOriginCheck(req)) return res.status(403).json({ error: 'Origin not allowed.' });
-  // Passwordless mode: Origin allowlisting is retained, but is not authentication.
+  if (!passesCsrfCheck(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
 
   const { id } = req.params;
   if (!isAuditRequestId(id)) return res.status(400).json({ error: 'A valid request id is required.' });
