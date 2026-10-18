@@ -12,6 +12,7 @@ function response(status, payload) {
 
 const publicConfig = {
   googlePlacesConfigured: true,
+  freeSearchEnabled: true,
   auditInboxConfigured: true,
   auditPublicIntakeEnabled: true,
   telegramNotificationsConfigured: true,
