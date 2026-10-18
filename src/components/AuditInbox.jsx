@@ -89,8 +89,15 @@ export default function AuditInbox({ onAddToLeads }) {
     setLoadingConfig(true);
     try {
       const response = await fetch('/api/audit/config', { credentials: 'include' });
-      setConfig(await response.json());
-      setAuthed(response.status === 200);
+      const body = await response.json();
+      setConfig(body);
+      // Public config is not proof of authentication. Probe the protected inbox
+      // endpoint so a valid owner session survives reload without flashing data.
+      const sessionCheck = await fetch('/api/audit/requests', { credentials: 'include' });
+      setAuthed(sessionCheck.ok);
+      if (!sessionCheck.ok && sessionCheck.status !== 401) {
+        setError(await readError(sessionCheck, 'Could not verify Audit Inbox access.'));
+      }
     } catch {
       setConfig(null);
       setError('Could not reach the Audit Inbox service.');
