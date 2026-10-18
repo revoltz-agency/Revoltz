@@ -108,3 +108,17 @@ test('retired map provider is absent while Gemini and Google Places remain wired
   assert.match(places, /places\.googleapis\.com\/v1\/places:searchText/, 'official Google Places API must remain configured');
   assert.match(gemini, /generativelanguage\.googleapis\.com/, 'Gemini lead discovery must remain available');
 });
+
+
+test('Audit Inbox cannot regress to passwordless read or management access', () => {
+  const server = readFileSync(path.join(rootDir, 'server', 'index.js'), 'utf8');
+  const inbox = readFileSync(path.join(rootDir, 'src', 'components', 'AuditInbox.jsx'), 'utf8');
+  assert.match(server, /const auditInboxConfigured = \(\) => isDatabaseConfigured\(\) && isOwnerAuthConfigured\(\)/);
+  assert.match(server, /async function requireAuditOwner\(req, res\)[\s\S]*?resolveOwnerSession\(req\)/);
+  assert.match(server, /app\.patch\('\/api\/audit\/requests\/:id',[\s\S]*?passesCsrfCheck\(req, session\)/);
+  assert.match(server, /app\.delete\('\/api\/audit\/requests\/:id',[\s\S]*?passesCsrfCheck\(req, session\)/);
+  assert.match(inbox, /Owner-only Audit Inbox/);
+  assert.match(inbox, /api\/audit\/session\/logout/);
+  assert.doesNotMatch(server, /return \{ passwordless: true \}/);
+  assert.doesNotMatch(inbox, /passwordless access is enabled/i);
+});
