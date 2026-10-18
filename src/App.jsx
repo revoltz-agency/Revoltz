@@ -294,6 +294,7 @@ function AgencyOSApp() {
     try { return window.sessionStorage.getItem(GEMINI_API_KEY_STORAGE) || ''; } catch { return ''; }
   });
   const [geminiTesting, setGeminiTesting] = useState(false);
+  const [googlePlacesApiKey, setGooglePlacesApiKey] = useState(() => { try { return window.sessionStorage.getItem('agencyos:google-places-api-key:v1') || ''; } catch { return ''; } });
   const [manualLeads, setManualLeads] = useState(readManualLeads);
   const [manualOverrides, setManualOverrides] = useState(readManualLeadOverrides);
   const [leads, setLeads] = useState(() => dedupeLeads(manualLeads.map((lead) => applyManualLeadOverride(lead, manualOverrides))));
@@ -575,7 +576,7 @@ function AgencyOSApp() {
       } else if (searchForm.source === 'google') {
         const response = await fetch('/api/places/search', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ category, location: city, radiusKm: Number(searchForm.radiusKm), maxResults: Number(searchForm.maxResults) }),
+          body: JSON.stringify({ category, location: city, radiusKm: Number(searchForm.radiusKm), maxResults: Number(searchForm.maxResults), apiKey: googlePlacesApiKey.trim() || undefined }),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Google Places search failed.');
@@ -612,9 +613,7 @@ function AgencyOSApp() {
         } catch (geminiError) {
           const groundingUnavailable = /HTTP 429|quota|rate.?limit|resource.?exhausted|grounding|maps.*(unavailable|not available|not supported)|not available.*free tier/i.test(String(geminiError?.message || ''));
           if (!groundingUnavailable) throw geminiError;
-          if (!apiConfig.googlePlacesConfigured) {
-            throw new Error('Gemini text requests can work while Gemini Maps grounding is blocked by your API project tier. To keep finding real businesses, configure GOOGLE_MAPS_API_KEY on the AgencyOS server (Google Places API (New) enabled with billing). AgencyOS will then fall back to verified Google Places listings automatically; it will not invent business data.');
-          }
+          if (!apiConfig.googlePlacesConfigured && !googlePlacesApiKey.trim()) throw geminiError;
           const response = await fetch('/api/places/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -958,12 +957,12 @@ function AgencyOSApp() {
           {activePage === 'Settings' && <SettingsPage config={apiConfig} notice={settingsNotice} onRefresh={refreshConfig} onNavigate={setActivePage} geminiApiKey={geminiApiKey} onGeminiApiKeyChange={(value) => {
             setGeminiApiKey(value);
             try { window.sessionStorage.setItem(GEMINI_API_KEY_STORAGE, value); } catch {}
-          }} geminiTesting={geminiTesting} onTestGemini={async () => {
+          }} googlePlacesApiKey={googlePlacesApiKey} onGooglePlacesApiKeyChange={(value) => { setGooglePlacesApiKey(value); try { window.sessionStorage.setItem('agencyos:google-places-api-key:v1', value); } catch {} }} geminiTesting={geminiTesting} onTestGemini={async () => {
             setGeminiTesting(true);
             setSettingsNotice('');
             try {
               await testGeminiApiKey(geminiApiKey);
-              setSettingsNotice('Gemini API key works. Google Maps grounding is ready.');
+              setSettingsNotice('Gemini API key works for text generation. Lead discovery uses Gemini text mode and does not require paid Maps grounding.');
             } catch (error) {
               setSettingsNotice(error?.message || 'Gemini API key test failed.');
             } finally { setGeminiTesting(false); }
@@ -1405,7 +1404,7 @@ function CampaignsPage({ leads, getCrm, onOpenLead, onPitch }) {
   </div>;
 }
 
-function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onGeminiApiKeyChange, geminiTesting, onTestGemini }) {
+function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onGeminiApiKeyChange, googlePlacesApiKey, onGooglePlacesApiKeyChange, geminiTesting, onTestGemini }) {
   const [organizationWorkspace, setOrganizationWorkspace] = useState(null);
   const [organizationLoading, setOrganizationLoading] = useState(true);
   const [organizationError, setOrganizationError] = useState('');
@@ -1525,7 +1524,8 @@ function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onG
         <button className="button button-secondary" type="button" onClick={saveOrganizationModules} disabled={organizationLoading || organizationSaving || !organizationWorkspace || !['owner', 'admin'].includes(organizationWorkspace?.organization?.role)}>{organizationSaving ? 'Saving…' : 'Save module access'}</button>
         {moduleNotice && <p className="settings-paragraph" role="status">{moduleNotice}</p>}
       </section>
-      <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">GEMINI AI ENGINE</div><h2>Connect Gemini</h2></div><Globe2 size={18} className="muted-icon" /></div><p className="settings-paragraph">All AgencyOS AI features use Gemini. Add your Google AI Studio API key here to power lead discovery and AI-assisted tools.</p><label className="field-group"><span>Gemini API key</span><input className="field-input" type="password" autoComplete="off" value={geminiApiKey} onChange={(event) => onGeminiApiKeyChange(event.target.value)} placeholder="Paste your Gemini API key" /></label><div className="settings-inline-actions"><button className="button button-secondary" type="button" onClick={onTestGemini} disabled={!geminiApiKey || geminiTesting}>{geminiTesting ? 'Testing…' : 'Test Gemini key'}</button>{geminiApiKey && <button className="text-button" type="button" onClick={() => onGeminiApiKeyChange('')}>Clear key</button>}</div><p className="settings-paragraph settings-small-note">The Gemini key stays in this browser session and is sent directly to Google for grounded lead discovery. Do not share it or commit it to GitHub.</p></section>
+      <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">GEMINI AI ENGINE</div><h2>Connect Gemini</h2></div><Globe2 size={18} className="muted-icon" /></div><p className="settings-paragraph">All AgencyOS AI features use Gemini. Add your Google AI Studio API key here to power lead discovery and AI-assisted tools. Lead discovery uses standard Gemini text generation, not paid Google Maps grounding.</p><label className="field-group"><span>Gemini API key</span><input className="field-input" type="password" autoComplete="off" value={geminiApiKey} onChange={(event) => onGeminiApiKeyChange(event.target.value)} placeholder="Paste your Gemini API key" /></label><div className="settings-inline-actions"><button className="button button-secondary" type="button" onClick={onTestGemini} disabled={!geminiApiKey || geminiTesting}>{geminiTesting ? 'Testing…' : 'Test Gemini key'}</button>{geminiApiKey && <button className="text-button" type="button" onClick={() => onGeminiApiKeyChange('')}>Clear key</button>}</div><p className="settings-paragraph settings-small-note">The Gemini key stays in this browser session and is sent directly to Google for text-based lead discovery. Results can be incomplete or inaccurate, so verify before outreach.</p></section>
+      <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">OPTIONAL · MAY INCUR CHARGES</div><h2>Google Places API key</h2></div><MapPin size={18} className="muted-icon" /></div><p className="settings-paragraph">Leave this empty to use Gemini only. Add your own Google Places API key only if you want verified Places listings. Google Maps Platform may charge for usage; set billing limits and API restrictions in Google Cloud first.</p><label className="field-group"><span>Google Places API key (optional)</span><input className="field-input" type="password" autoComplete="off" value={googlePlacesApiKey} onChange={(event) => onGooglePlacesApiKeyChange(event.target.value)} placeholder="Paste key only if you choose to use Places" /></label><div className="settings-inline-actions">{googlePlacesApiKey && <button className="text-button" type="button" onClick={() => onGooglePlacesApiKeyChange('')}>Clear Places key</button>}</div><p className="settings-paragraph settings-small-note">Stored only in this browser session and sent to your AgencyOS server when you explicitly choose Google Places. Never paste it into chat or commit it to GitHub.</p></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">EXPLAINABLE AI QUALIFICATION</div><h2>Evidence in, reason out</h2></div><div className="engine-icon"><Sparkles size={16} /></div></div><p className="settings-paragraph">Lead scoring and draft outreach remain deterministic and evidence-based; Gemini is used for grounded lead discovery and the AI Business Auditor, not for every button in the CRM.</p><div className="score-rule-list"><div><span>No website listed (Google only; manual missing = unknown)</span><strong>+30</strong></div><div><span>Weak website checks</span><strong>+20</strong></div><div><span>100+ reviews / 4.5+ rating</span><strong>+15 / +10</strong></div><div><span>Operational / contact gap / social link</span><strong>+10 / +10 / +5</strong></div></div><div className="settings-callout"><Info size={15} /><span>Priority bands: HOT 80–100, WARM 50–79, COLD 0–49. These are deterministic signals, not a forecast of conversion.</span></div><div className="settings-callout"><Info size={15} /><span>Mutually exclusive website signals cap the raw sum at 70. The app normalizes the observed raw score to 0–100 for the requested priority bands and shows both values in lead details.</span></div></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">DATA & RETENTION</div><h2>Minimal by default</h2></div><ShieldCheck size={18} className="muted-icon" /></div><div className="settings-feature-list"><div><CheckCircle2 size={16} /><span>Google Places business content stays in browser memory for this session only.</span></div><div><CheckCircle2 size={16} /><span>Local storage holds user-entered manual leads, their CRM fields, saved Google place IDs, and recent search terms. Google Places listing content is not cached.</span></div><div><CheckCircle2 size={16} /><span>Saved place details refresh only on request; the same place ID is not fetched twice in one app session.</span></div><div><CheckCircle2 size={16} /><span>CSV export includes user-entered manual lead details and CRM fields; Google Places business listing content remains excluded.</span></div></div><button className="text-button settings-link" type="button" onClick={() => onNavigate('Privacy Policy')}>Read the Privacy Policy <ArrowRight size={14} /></button></section>
       <section className="surface-card settings-card"><div className="card-heading-row"><div><div className="card-kicker">CONTACT SAFETY</div><h2>You stay in control</h2></div><MessageCircle size={18} className="muted-icon" /></div><div className="settings-feature-list"><div><CheckCircle2 size={16} /><span>No bulk email sending and no automated WhatsApp messaging.</span></div><div><CheckCircle2 size={16} /><span>AgencyOS no longer collects prospect email addresses. WhatsApp requires a public business phone and explicit per-lead opt-in.</span></div><div><CheckCircle2 size={16} /><span>“Do not contact” disables outreach, bulk selection is CRM-only, and closed/DNC leads leave follow-up suggestions.</span></div></div><button className="text-button settings-link" type="button" onClick={() => onNavigate('Terms')}>Review Terms <ArrowRight size={14} /></button></section>
