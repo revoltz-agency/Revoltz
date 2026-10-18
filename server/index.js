@@ -360,9 +360,13 @@ app.get('/api/maps-scraper/jobs/:jobId', async (req, res) => {
       headers: mapsScraperHeaders({ Accept: 'application/json' }),
       signal: AbortSignal.timeout(12_000),
     });
-    const job = await upstream.json().catch(() => ({}));
+    const responseText = await upstream.text().catch(() => '');
+    let job = {};
+    try { job = responseText ? JSON.parse(responseText) : {}; } catch { /* gateway may return plain-text errors */ }
     if (!upstream.ok) {
-      const message = typeof job.message === 'string' ? job.message : 'Could not read scraper job status.';
+      const message = [job.message, job.error, responseText.trim()]
+        .find((value) => typeof value === 'string' && value.length > 0)?.slice(0, 240)
+        || 'The scraper rejected the job-status request without an error message.';
       console.warn('[maps-scraper] status request rejected', { status: upstream.status, message });
       return res.status(502).json({ error: `Maps scraper status error (${upstream.status}): ${message}` });
     }
