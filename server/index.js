@@ -312,7 +312,7 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
       keyword: `${category} in ${location}`,
       lang: 'en',
       max_depth: 5,
-      radius: Math.round(radiusKm * 1000),
+      radius: radiusKm,
       zoom: 15,
       timeout: 240,
     };
@@ -381,6 +381,18 @@ app.get('/api/maps-scraper/jobs/:jobId', async (req, res) => {
         .find((value) => typeof value === 'string' && value.length > 0)?.slice(0, 240)
         || 'The scraper rejected the job-status request without an error message.';
       console.warn('[maps-scraper] status request rejected', { status: upstream.status, message });
+      // A 404 means the scraper no longer knows this job (for example, after
+      // a free-host restart). Return a terminal state so the UI stops polling
+      // instead of turning a lost job into a generic 502 loop.
+      if (upstream.status === 404) {
+        return res.json({
+          jobId,
+          status: 'failed',
+          results: [],
+          error: 'This scraper job is no longer available. Free hosting may have restarted the scraper; please run the search again.',
+          retryable: true,
+        });
+      }
       return res.status(502).json({ error: `Maps scraper status error (${upstream.status}): ${message}` });
     }
     const rawStatus = String(job.status || 'pending').toLowerCase();
