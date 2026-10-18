@@ -72,6 +72,7 @@ The `npm start` script sets production mode in a cross-platform Node script and 
 | Variable | Purpose |
 | --- | --- |
 | `GOOGLE_MAPS_API_KEY` | Optional, server-only Google Places API (New) key. Never use a `VITE_` variable for this credential. |
+| `GOOGLE_MAPS_SCRAPER_URL` | Optional base URL for a trusted private/internal `gosom/google-maps-scraper` web service. Do not expose its unauthenticated API publicly. |
 | `PLACES_RATE_LIMIT_PER_MIN` | Per-client limit for each Places route; defaults to 20 requests/minute. This is an instance-level backstop, not a global spend cap. Configure Google Cloud quotas and budget alerts as well. |
 | `PORT` | Express port; defaults to `5173`. |
 | `DATABASE_URL` | PostgreSQL connection for accounts, workspace snapshots, sessions, and the Audit Inbox. |
