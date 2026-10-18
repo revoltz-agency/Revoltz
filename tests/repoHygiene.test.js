@@ -84,3 +84,58 @@ test('source files contain no raw control bytes (keeps diffs reviewable and git 
   }
   assert.deepEqual(offenders, [], `literal control bytes found:\n${offenders.join('\n')}`);
 });
+
+
+test('retired map provider is absent while Gemini and Google Places remain wired', () => {
+  const files = walk(rootDir);
+  const retiredNames = [
+    ['OpenStreet', 'Map'].join(''),
+    ['Over', 'pass'].join(''),
+  ];
+  const matches = [];
+  for (const file of files) {
+    const source = readFileSync(file, 'utf8');
+    for (const name of retiredNames) {
+      if (source.toLowerCase().includes(name.toLowerCase())) {
+        matches.push(`${path.relative(rootDir, file)} contains retired provider reference ${name}`);
+      }
+    }
+  }
+  assert.deepEqual(matches, [], `retired map provider references remain:\n${matches.join('\n')}`);
+
+  const places = readFileSync(path.join(rootDir, 'server', 'googlePlaces.js'), 'utf8');
+  const gemini = readFileSync(path.join(rootDir, 'src', 'lib', 'geminiLeadFinder.js'), 'utf8');
+  assert.match(places, /places\.googleapis\.com\/v1\/places:searchText/, 'official Google Places API must remain configured');
+  assert.match(gemini, /generativelanguage\.googleapis\.com/, 'Gemini lead discovery must remain available');
+});
+
+
+test('Audit Inbox cannot regress to passwordless read or management access', () => {
+  const server = readFileSync(path.join(rootDir, 'server', 'index.js'), 'utf8');
+  const inbox = readFileSync(path.join(rootDir, 'src', 'components', 'AuditInbox.jsx'), 'utf8');
+  assert.match(server, /const auditInboxConfigured = \(\) => isDatabaseConfigured\(\) && isOwnerAuthConfigured\(\)/);
+  assert.match(server, /async function requireAuditOwner\(req, res\)[\s\S]*?resolveOwnerSession\(req\)/);
+  assert.match(server, /app\.patch\('\/api\/audit\/requests\/:id',[\s\S]*?passesCsrfCheck\(req, session\)/);
+  assert.match(server, /app\.delete\('\/api\/audit\/requests\/:id',[\s\S]*?passesCsrfCheck\(req, session\)/);
+  assert.match(inbox, /Owner-only Audit Inbox/);
+  assert.match(inbox, /api\/audit\/session\/logout/);
+  assert.match(inbox, /const sessionCheck = await fetch\('\/api\/audit\/requests'/);
+  assert.doesNotMatch(inbox, /setAuthed\(response\.status === 200\)/, 'public config success must not be treated as authentication');
+  assert.doesNotMatch(server, /return \{ passwordless: true \}/);
+  assert.doesNotMatch(inbox, /passwordless access is enabled/i);
+});
+
+
+test('proposal and website demo builders persist to organization-scoped tools storage', () => {
+  for (const [file, key, saveLabel] of [
+    ['ProposalBuilder.jsx', 'proposalBuilder', 'Proposal draft synced to your organization cloud.'],
+    ['WebsiteDemoBuilder.jsx', 'websiteDemoBuilder', 'Website demo synced to your organization cloud.'],
+  ]) {
+    const source = readFileSync(path.join(rootDir, 'src', 'components', file), 'utf8');
+    assert.match(source, /saveOrganizationModulePatch/);
+    assert.match(source, /api\/workspace\/modules\/tools\/data/);
+    assert.match(source, new RegExp(key));
+    assert.match(source, new RegExp(saveLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(source, /Cloud sync unavailable/);
+  }
+});

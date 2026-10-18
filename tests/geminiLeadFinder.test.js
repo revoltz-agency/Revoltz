@@ -18,35 +18,63 @@ function stubGemini(payload) {
   return { restore: () => { globalThis.fetch = originalFetch; }, get requestBody() { return requestBody; } };
 }
 
-test('Gemini leads must match a Maps grounding result and use its canonical identity and URL', async () => {
+test('Gemini text lead suggestions use standard generation without paid Maps grounding', async () => {
   const stub = stubGemini({ candidates: [{
-    content: { parts: [{ text: JSON.stringify({ leads: [generatedLead, { ...generatedLead, name: 'Invented Cafe' }] }) }] },
-    groundingMetadata: { groundingChunks: [{ maps: {
-      title: 'Café Aurora', uri: 'https://maps.google.com/?cid=123', placeId: 'places/ChIJverified',
-    } }] },
+    content: { parts: [{ text: JSON.stringify({ leads: [generatedLead] }) }] },
   }] });
   try {
     const result = await searchGeminiLeads({ apiKey: 'user-key', category: 'cafes', location: 'Pune', maxResults: 10 });
-    assert.equal(stub.requestBody.tools[0].googleMaps !== undefined, true);
+    assert.equal(stub.requestBody.tools, undefined);
+    assert.equal(stub.requestBody.generationConfig.responseMimeType, 'application/json');
     assert.equal(result.leads.length, 1);
-    assert.equal(result.leads[0].name, 'Café Aurora');
-    assert.equal(result.leads[0].placeId, 'ChIJverified');
-    assert.equal(result.leads[0].id, 'gemini-ChIJverified');
-    assert.equal(result.leads[0].mapsUrl, 'https://maps.google.com/?cid=123');
-    assert.equal(result.leads[0].phone, '');
-    assert.equal(result.leads[0].website, '');
-    assert.equal(result.leads[0].rating, null);
-    assert.equal(result.leads[0].reviews, 0);
-    assert.equal(result.groundingSources[0].name, 'Café Aurora');
+    assert.equal(result.leads[0].name, 'Cafe Aurora');
+    assert.equal(result.leads[0].source, 'gemini');
+    assert.equal(result.leads[0].verificationStatus, 'unverified');
+    assert.equal(result.leads[0].placeId, '');
+    assert.equal(result.leads[0].phone, '+91 99999 99999');
+    assert.equal(result.leads[0].mapsUrl, 'https://made-up.example/maps');
+    assert.equal(result.groundingSources.length, 1);
   } finally { stub.restore(); }
 });
 
-test('Gemini search refuses to return model-suggested businesses without Maps sources', async () => {
-  const stub = stubGemini({ candidates: [{ content: { parts: [{ text: JSON.stringify({ leads: [generatedLead] }) }] } }] });
+test('Gemini text lead suggestions can return an empty list without fabricating records', async () => {
+  const stub = stubGemini({ candidates: [{ content: { parts: [{ text: JSON.stringify({ leads: [] }) }] } }] });
+  try {
+    const result = await searchGeminiLeads({ apiKey: 'user-key', category: 'cafes', location: 'Pune' });
+    assert.deepEqual(result.leads, []);
+  } finally { stub.restore(); }
+});
+
+
+test('Gemini switches to the stable fallback only when the primary model ID is unavailable', async () => {
+  const originalFetch = globalThis.fetch;
+  const requestedModels = [];
+  globalThis.fetch = async (url) => {
+    requestedModels.push(String(url).match(/models\/([^:]+):/)?.[1]);
+    if (requestedModels.length === 1) {
+      return { ok: false, status: 404, json: async () => ({ error: { message: 'Model not found: model unavailable' } }) };
+    }
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ leads: [] }) }] } }] }) };
+  };
+  try {
+    const result = await searchGeminiLeads({ apiKey: 'user-key', category: 'cafes', location: 'Pune' });
+    assert.deepEqual(requestedModels, ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']);
+    assert.deepEqual(result.leads, []);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('Gemini does not switch models after a quota response', async () => {
+  const originalFetch = globalThis.fetch;
+  const requestedModels = [];
+  globalThis.fetch = async (url) => {
+    requestedModels.push(String(url).match(/models\/([^:]+):/)?.[1]);
+    return { ok: false, status: 429, json: async () => ({ error: { message: 'Quota exceeded' } }) };
+  };
   try {
     await assert.rejects(
       searchGeminiLeads({ apiKey: 'user-key', category: 'cafes', location: 'Pune' }),
-      /did not return any Google Maps business sources/,
+      /quota\/rate-limit response/i,
     );
-  } finally { stub.restore(); }
+    assert.deepEqual(requestedModels, ['gemini-3.5-flash-lite']);
+  } finally { globalThis.fetch = originalFetch; }
 });

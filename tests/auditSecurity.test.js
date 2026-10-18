@@ -278,6 +278,19 @@ test('the rate limiter enforces its window and then recovers', () => {
   assert.equal(limiter.check('client-2', 30).allowed, true);
 });
 
+test('the rate limiter can reset one account without clearing other accounts', () => {
+  const limiter = createRateLimiter({ windowMs: 1_000, limit: 2 });
+  assert.equal(limiter.check('account-a', 100).allowed, true);
+  assert.equal(limiter.check('account-a', 101).allowed, true);
+  assert.equal(limiter.check('account-a', 102).allowed, false);
+  assert.equal(limiter.check('account-b', 102).allowed, true);
+
+  limiter.reset('account-a');
+  assert.equal(limiter.check('account-a', 103).allowed, true);
+  assert.equal(limiter.check('account-b', 103).allowed, true);
+  assert.equal(limiter.check('account-b', 104).allowed, false);
+});
+
 test('the rate limiter fails closed once its key table is full', () => {
   const limiter = createRateLimiter({ windowMs: 60_000, limit: 5, maxKeys: 2 });
   assert.equal(limiter.check('a', 0).allowed, true);

@@ -1,86 +1,3 @@
-# REVOLTZ AI + AgencyOS
-
-REVOLTZ AI is the public marketing site. AgencyOS is the signed-in workspace for lead research and agency operations. The GitHub Pages build contains only the marketing site; the internal app is served by the Express deployment.
-
-## AgencyOS lead sources
-
-Find Leads offers three explicit choices:
-
-- **Gemini AI + Google Maps grounding** is the default. The operator adds a Google AI Studio API key in Settings. The key stays in that browser's `sessionStorage` and is sent directly to Google's Gemini API when a search or AI action is run. Google controls model availability, quotas, and billing eligibility. No Gemini request runs automatically.
-- **Google Places** is available only when `GOOGLE_MAPS_API_KEY` is configured on the server. The credential is never returned to the browser. Select Google Places and submit a search to call the Places API. Requests are rate-limited; Google Maps Platform charges may apply.
-- **Demo sample** uses fictional records and makes no provider calls.
-
-Manual lead creation and CSV import are available independently of provider configuration and do not make Google Places or Gemini requests. Imports are parsed and previewed locally before the operator confirms changes.
-
-AgencyOS does not scrape Google Maps webpages or send messages. WhatsApp drafts and follow-up dates require explicit operator actions; the operator reviews and sends every message.
-
-## Routes and builds
-
-| Route | Purpose |
-| --- | --- |
-| `/` | Public marketing site. |
-| `/agencyos` | Internal workspace in the Express deployment. Requires an AgencyOS account. |
-
-The marketing GitHub Pages build uses `src/site-main.jsx` and does not include the AgencyOS app. Public-site audit submissions are sent to the configured AgencyOS API. Intake requires the database, owner password hash, enabled intake setting, and an exact allowed-origin configuration.
-
-## Architecture and data
-
-- **Frontend:** React 19 and Vite. The internal app is a single-page workspace.
-- **Server:** Express 5 serves the workspace and its API routes. Workspace APIs require a signed-in user; state-changing workspace requests also check origin and CSRF tokens.
-- **Google Places:** `POST /api/places/search` uses the official Places API (New), explicit field masks, and up to 50 results. Search is made only when selected and submitted. Saved Google Place IDs can be refreshed after an explicit action. Google listing content remains session-only; only IDs and user-entered CRM workflow data are saved.
-- **Gemini:** Lead search uses Google Maps grounding. Other AI-assisted tools use Gemini JSON generation. The API key is user-provided and held in the current browser session.
-- **Website check:** `POST /api/website/analyze` inspects bounded public HTML for observable signals. It applies SSRF protections, redirect checks, timeouts, content-type checks, and response-size limits. It is not a visual, accessibility, security, or full conversion audit.
-- **Workspace persistence:** Each account has a separate PostgreSQL-backed workspace snapshot. The browser syncs its namespaced local storage to that account when online. Sync is best-effort; simultaneous edits to the same account from multiple devices can conflict.
-- **Audit Inbox:** Public audit requests are stored separately from prospect CRM data. Owner access uses server-side sessions and CSRF protection. Expired requests are purged opportunistically when the inbox is opened; no scheduled production cleanup is claimed here.
-
-## Local setup
-
-Requirements: Node.js `^22.22.0` or `^24.0.0` (the repository pins 22.22.3), npm, and PostgreSQL if you want account/workspace persistence or the Audit Inbox.
-
-```bash
-npm ci
-cp .env.example .env
-npm run dev
-```
-
-Open the URL printed by the server (default `http://localhost:5173`). Set `DATABASE_URL` to enable accounts. Without it, workspace registration and sign-in return an unavailable response. Gemini search requires a user-entered key in Settings. Google Places is optional and stays unavailable until a server-side key is configured.
-
-To build and run the production server:
-
-```bash
-npm run build
-npm start
-```
-
-The `npm start` script sets production mode in a cross-platform Node script and works from Windows and POSIX shells.
-
-## Environment variables
-
-| Variable | Purpose |
-| --- | --- |
-| `GOOGLE_MAPS_API_KEY` | Optional, server-only Google Places API (New) key. Never use a `VITE_` variable for this credential. |
-| `PLACES_RATE_LIMIT_PER_MIN` | Per-client limit for each Places route; defaults to 20 requests/minute. This is an instance-level backstop, not a global spend cap. Configure Google Cloud quotas and budget alerts as well. |
-| `PORT` | Express port; defaults to `5173`. |
-| `DATABASE_URL` | PostgreSQL connection for accounts, workspace snapshots, sessions, and the Audit Inbox. |
-| `DATABASE_SSL` | Optional database TLS override. Remote hosts require TLS by default. |
-| `AUDIT_OWNER_PASSWORD_HASH` | Scrypt hash for the Audit Inbox owner login. Generate locally with `npm run audit:hash-password`; never commit a real hash. |
-| `AUDIT_PUBLIC_INTAKE_ENABLED` | Enables public audit submissions only when set to `true`; default is `false`. |
-| `AUDIT_ALLOWED_ORIGINS` | Exact comma-separated origins allowed to submit public audit requests and make owner writes. |
-| `AUDIT_RETENTION_DAYS` | Audit request retention interval; defaults to 89 days. |
-| `AUDIT_SESSION_IDLE_MINUTES` / `AUDIT_SESSION_ABSOLUTE_MINUTES` | Audit owner session limits; defaults are 480 and 1440 minutes. |
-| `TRUST_PROXY_HOPS` | Number of trusted reverse-proxy hops, for correct client IP rate limiting. |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Optional private Telegram notifications for accepted audit requests. Notifications do not replace database storage. |
-| `VITE_AUDIT_API_BASE_URL` | Optional marketing-site build-time override for the AgencyOS audit intake API. |
-
-Never commit credentials, database URLs, password hashes, or a populated `.env` file.
-
-## Audit Inbox setup
-
-The inbox returns unavailable until both `DATABASE_URL` and `AUDIT_OWNER_PASSWORD_HASH` are configured. Local `.env.example` keeps public intake disabled by default. The Render Blueprint sets public intake to `true`; it also configures an exact origin allowlist. Review those values in the hosting dashboard before deployment. Audit requests are never emailed or messaged automatically.
-
-Retention expiry is set on insert and enforced opportunistically when an owner opens the inbox. The repository includes suggested scheduled-cleanup mechanisms, but no scheduled job or production execution is verified here.
-
-## Checks
 
 ```bash
 npm test
@@ -88,7 +5,19 @@ npm run build
 VITE_PUBLIC_SITE_ONLY=true npm run build -- --base=/Revoltz/
 ```
 
-GitHub Actions runs these three checks on pull requests and pushes to `main`.
+GitHub Actions runs these three checks on pull requests and pushes to `main`. CI also starts a disposable PostgreSQL 16 service and runs the organization-isolation, shared-rate-limit, and out-of-order Razorpay webhook integration tests against it, so those database checks are not silently skipped in CI.
+
+For local runs of the opt-in PostgreSQL integration tests (concurrent rate limiting, organization module-data isolation, and out-of-order Razorpay webhook handling), set `AGENCYOS_TEST_DATABASE_URL` to a **disposable test database** before running `npm test`. The tests create the app schema and clean up only their own rows; they do not drop tables.
+
+## Cloud workspace sync safety
+
+Organization module-data writes require an `expectedUpdatedAt` revision from the latest cloud read. Send the returned `updatedAt` value with each save; send `null` only when the module has no cloud record yet. Writes with a stale revision return HTTP 409 (`WORKSPACE_REVISION_CONFLICT`), and writes that omit the revision return HTTP 400 (`WORKSPACE_REVISION_REQUIRED`). On conflict, reload the latest cloud state before saving; do not blindly retry an old full-state snapshot, because it could restore records another device deleted. The account-sync shell currently uses the full-workspace state endpoint; it follows the same revision requirement, rejects oversized or invalid snapshots, and is restricted to owners/admins. Browser edits are marked pending before the debounce so unsynced account-scoped data can be recovered after reload. If another device changed the cloud snapshot, AgencyOS stops syncing and offers an explicit “Discard local edits & reload cloud” action; use it only when you want to discard the unsynced local snapshot. All keys included in a data backup must also be included in the central workspace-sync key list.
+
+## Paid-launch preflight
+
+Before accepting subscriptions, run `npm run check:launch` with the intended production environment variables loaded. It checks that PostgreSQL, Razorpay credentials/plan/webhook secret, Google Places, billing enforcement, Audit Inbox intake/origins, and trusted proxy configuration are present and syntactically plausible. It never prints secret values. A pass is **not** an end-to-end health check: separately verify the live database connection, Google Places request, Razorpay checkout, signed webhook delivery, cancellation, and a real test subscription before taking payment.
+
+After deploying a candidate release, run `npm run smoke:deployment` (or set `AGENCYOS_BASE_URL` to the exact HTTPS service origin). This read-only smoke check verifies public configuration contracts and that workspace session/organization/state endpoints reject anonymous access. It does not sign in, write data, make a payment, or replace provider-specific acceptance tests.
 
 ## Deployment
 
@@ -97,10 +26,3 @@ GitHub Actions runs these three checks on pull requests and pushes to `main`.
 The GitHub Pages workflow builds the public marketing-only site at `/Revoltz/`. Its status is visible in the repository's Actions tab; a local build alone does not verify deployment.
 
 ## Important limitations
-
-- Workspace sync is best-effort and does not resolve concurrent edits across devices.
-- Account email verification, password reset, MFA, team sharing, billing, and account-deletion UI are not included.
-- Gemini and Google Places access, pricing, quotas, and terms are controlled by Google. Calls happen only after the operator chooses an action, but a configured key may incur charges.
-- Google Places use must follow current Maps Platform attribution, display, retention, and export requirements.
-- Scores are explainable decision support, not guarantees. Demo data is fictional. Website checks inspect limited HTML and do not establish a business's actual needs.
-- Review privacy, terms, and retention requirements for the jurisdictions where the service operates.

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { saveOrganizationModulePatch } from '../lib/moduleDataSync.js';
 import { Download, Eye, Monitor, Smartphone, Sparkles, RotateCcw } from 'lucide-react';
 
 const KEY = 'agencyos:website-demo-builder:v1';
@@ -15,7 +16,38 @@ export default function WebsiteDemoBuilder() {
   const [view, setView] = useState('desktop');
   const [showDetails, setShowDetails] = useState(true);
   const [notice, setNotice] = useState('');
+  const [cloudReady, setCloudReady] = useState(false);
+  const formRef = useRef(form); formRef.current = form;
+  const initialForm = useRef(JSON.stringify(form));
+  const saveQueue = useRef(Promise.resolve());
   useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(form)); } catch {} }, [form]);
+  useEffect(() => {
+    let active = true;
+    fetch('/api/workspace/modules/tools/data', { credentials: 'include', cache: 'no-store' })
+      .then(async response => { const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.error || 'Cloud sync unavailable'); return payload; })
+      .then(payload => {
+        if (!active) return;
+        const remote = payload.state?.websiteDemoBuilder;
+        if (remote && typeof remote === 'object' && !Array.isArray(remote) && JSON.stringify(formRef.current) === initialForm.current) {
+          setForm({ ...initial, ...remote });
+        }
+        setCloudReady(true);
+        setNotice('Connected to organization cloud storage.');
+      })
+      .catch(error => { if (active) setNotice('Cloud sync unavailable; this demo remains saved in this browser. ' + (error?.message || '')); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (!cloudReady) return;
+    const snapshot = form;
+    const timer = window.setTimeout(() => {
+      saveQueue.current = saveQueue.current.catch(() => {})
+        .then(() => saveOrganizationModulePatch('tools', { websiteDemoBuilder: snapshot }))
+        .then(() => setNotice('Website demo synced to your organization cloud.'))
+        .catch(error => setNotice('Cloud save failed; this demo remains in this browser. ' + (error?.message || '')));
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [form, cloudReady]);
   function update(key, value) { setForm(old => ({ ...old, [key]: value })); setNotice(''); }
   const services = form.services.split('\n').map(s => s.trim()).filter(Boolean).slice(0,6);
   function buildHtml() {

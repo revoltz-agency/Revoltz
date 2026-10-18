@@ -4,7 +4,7 @@
 export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 // Keep requests on the configured free-tier model. Trying other models after a
 // quota response can create extra failed requests without restoring project quota.
-const GEMINI_MODELS = ['gemini-3.5-flash-lite'];
+export const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
 export const GEMINI_KEY_STORAGE = 'agencyos:gemini-api-key:v1';
 
 const LEAD_SCHEMA = {
@@ -156,53 +156,38 @@ export async function searchGeminiLeads({ apiKey, category, location, radiusKm =
     `Location: ${safeLocation}`,
     `Prefer businesses within approximately ${radius} km of the requested location.`,
     '',
-    'Use Google Maps grounding for the business discovery. Return only businesses that are actually present in the grounded Maps results.',
+    'Suggest businesses that may match the request using your available knowledge. Do not claim to have checked live Google Maps or live websites. If you cannot confidently name any businesses, return an empty leads array.',
     'Output only valid JSON with exactly this top-level shape: {"leads":[{"name":"","category":"","city":"","address":"","phone":"","website":"","mapsUrl":"","rating":null,"reviews":null,"placeId":""}]}. Do not use markdown fences or add explanatory text outside the JSON.',
-    'Do not invent, infer, or guess missing phone numbers, websites, ratings, review counts, addresses, or place IDs. Use an empty string or null when the grounded data does not provide a field.',
+    'Do not invent phone numbers, websites, ratings, review counts, addresses, or place IDs. Use empty strings or null for details you do not know.',
     'Prefer distinct businesses located in the requested city/location. Exclude duplicates, closed/clearly nonexistent businesses, and generic category descriptions.',
-    'Return the business name, category, city, full address, public phone if available, public website if available, Google Maps URL if available, rating, review count, and Google Maps place ID when available.',
+    'Return business names and any details you can confidently provide. Do not invent phone numbers, websites, addresses, ratings, review counts, or place IDs; leave unavailable fields empty or null.',
   ].join('\\n');
 
-  const data = await callGemini(apiKey, prompt);
-  const groundingMetadata = data?.candidates?.[0]?.groundingMetadata || null;
-  const groundingSources = (Array.isArray(groundingMetadata?.groundingChunks) ? groundingMetadata.groundingChunks : [])
-    .map((chunk) => chunk?.maps)
-    .filter((maps) => typeof maps?.title === 'string' && typeof maps?.uri === 'string')
-    .map((maps) => ({
-      name: clean(maps.title, 160),
-      url: safeUrl(maps.uri),
-      placeId: clean(maps.placeId, 300).replace(/^places\//, ''),
-    }))
-    .filter((source) => source.name && source.url && source.placeId);
-  if (!groundingSources.length) {
-    throw new Error('Gemini did not return any Google Maps business sources, so AgencyOS could not verify the lead names. Try again or choose Google Places.');
-  }
-
-  const normalizeName = (value) => clean(value, 160).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const sourceByName = new Map(groundingSources.map((source) => [normalizeName(source.name), source]));
-  const leads = parseResponse(data).flatMap((lead) => {
-    const source = sourceByName.get(normalizeName(lead.name));
-    if (!source) return [];
-    const placeId = source.placeId;
-    return [{
-      id: placeId ? `gemini-${placeId}` : `gemini-${normalizeName(source.name).replaceAll(' ', '-')}`,
-      placeId,
-      name: source.name,
-      category: safeCategory,
-      city: safeLocation,
-      address: '',
-      phone: '',
-      internationalPhoneNumber: '',
-      website: '',
-      rating: null,
-      reviews: 0,
-      businessStatus: 'UNKNOWN',
-      mapsUrl: source.url,
-      source: 'gemini',
-      demo: false,
-    }];
-  }).slice(0, count);
-  return { leads, groundingSources, groundingMetadata };
+  const data = await callGemini(apiKey, prompt, { mapsGrounding: false, responseSchema: LEAD_SCHEMA });
+  const leads = parseResponse(data).map((lead, index) => ({
+    ...lead,
+    id: `gemini-text-${Date.now()}-${index}`,
+    placeId: '',
+    name: lead.name,
+    category: lead.category || safeCategory,
+    city: lead.city || safeLocation,
+    address: lead.address || '',
+    phone: lead.phone || '',
+    internationalPhoneNumber: lead.phone || '',
+    website: lead.website || '',
+    rating: lead.rating ?? null,
+    reviews: lead.reviews ?? null,
+    businessStatus: 'UNKNOWN',
+    mapsUrl: lead.mapsUrl || '',
+    source: 'gemini',
+    demo: false,
+    verificationStatus: 'unverified',
+  })).slice(0, count);
+  return {
+    leads,
+    groundingSources: leads.filter((lead) => lead.mapsUrl).map((lead) => ({ name: lead.name, url: lead.mapsUrl, placeId: '' })),
+    groundingMetadata: null,
+  };
 }
 
 export async function generateGeminiJson({ apiKey, prompt }) {

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { mergeRecordsById, saveOrganizationModulePatch } from '../lib/moduleDataSync.js';
 import { Download, Plus, Receipt, Trash2, Wallet } from 'lucide-react';
 
 const KEY = 'agencyos:expense-tracker:v1';
@@ -16,17 +17,47 @@ export default function ExpenseTracker(){
  const [filter,setFilter]=useState('All');
  const [month,setMonth]=useState(today().slice(0,7));
  const [notice,setNotice]=useState('');
+ const [syncAttempt,setSyncAttempt]=useState(0);
+ const [syncStatus,setSyncStatus]=useState('checking');
+ const cloudReady=useRef(false);
+ const expensesRef=useRef(expenses);expensesRef.current=expenses;
+ const saveQueue=useRef(Promise.resolve());
  useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(expenses))}catch{setNotice('Browser storage is full; expense changes may not persist.')}},[expenses]);
+ useEffect(()=>{
+  let active=true;cloudReady.current=false;setSyncStatus('checking');
+  (async()=>{try{
+   const response=await fetch('/api/workspace/modules/finance_reports/data',{credentials:'include',cache:'no-store'});
+   if(!response.ok)throw new Error('Cloud sync unavailable');
+   const payload=await response.json();
+   if(!active||!payload.state||typeof payload.state!=='object'||Array.isArray(payload.state))throw new Error('Invalid cloud state');
+   const merged=mergeRecordsById(expensesRef.current,payload.state.expenseTracker);
+   setExpenses(merged);cloudReady.current=true;setSyncStatus('connected');
+  }catch(error){if(active){setSyncStatus('unavailable');console.warn('[AgencyOS] Expense Tracker cloud sync unavailable:',error?.message||error)}}})();
+  return()=>{active=false;cloudReady.current=false};
+ },[syncAttempt]);
+ useEffect(()=>{
+  if(!cloudReady.current)return undefined;
+  const timer=window.setTimeout(()=>{
+   const state={expenseTracker:expenses.slice(0,1000)};
+   saveQueue.current=saveQueue.current.catch(()=>{}).then(async()=>{
+    if(!cloudReady.current)return;
+    setSyncStatus('saving');
+    await saveOrganizationModulePatch('finance_reports',state);
+    setSyncStatus('synced');
+   }).catch(error=>{setSyncStatus('failed');console.warn('[AgencyOS] Expense Tracker cloud save failed:',error?.message||error)});
+  },800);
+  return()=>window.clearTimeout(timer);
+ },[expenses]);
  const visible=useMemo(()=>expenses.filter(x=>(filter==='All'||x.category===filter)&&(month==='All'||String(x.date||'').startsWith(month))).sort((a,b)=>(b.date||'').localeCompare(a.date||'')),[expenses,filter,month]);
  const monthTotal=visible.filter(x=>x.type==='Business').reduce((s,x)=>s+Number(x.amount||0),0);
  const personalTotal=visible.filter(x=>x.type==='Personal').reduce((s,x)=>s+Number(x.amount||0),0);
  const categories=['Software','Marketing','Equipment','Travel','Internet & phone','Contractor','Office','Bank fees','Other'];
- function add(e){e.preventDefault();const amount=Number(form.amount);if(!form.title.trim()||!Number.isFinite(amount)||amount<=0){setNotice('Enter an expense name and a positive amount.');return}setExpenses(prev=>[{...form,id:globalThis.crypto?.randomUUID?.()||String(Date.now()),title:form.title.trim(),amount:Math.round(amount*100)/100,createdAt:new Date().toISOString()},...prev]);setForm({...blank,date:today()});setNotice('Expense saved in this browser.');}
+ function add(e){e.preventDefault();const amount=Number(form.amount);if(!form.title.trim()||!Number.isFinite(amount)||amount<=0){setNotice('Enter an expense name and a positive amount.');return}setExpenses(prev=>[{...form,id:globalThis.crypto?.randomUUID?.()||String(Date.now()),title:form.title.trim(),amount:Math.round(amount*100)/100,createdAt:new Date().toISOString()},...prev]);setForm({...blank,date:today()});setNotice('Expense record added.');}
  function exportCsv(){const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const rows=[['Expense','Category','Type','Amount INR','Date','Payment method','Notes'],...expenses.map(x=>[x.title,x.category,x.type,x.amount,x.date,x.paymentMethod,x.notes])];const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(esc).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='agencyos-expenses.csv';a.click();URL.revokeObjectURL(url);}
  return <section style={{display:'grid',gap:16,maxWidth:1100,color:'var(--viz-text, #f5f5f5)'}}>
   <header style={{display:'flex',gap:12,alignItems:'flex-start'}}><div style={{...card,padding:12}}><Wallet size={23}/></div><div><div style={{...muted,letterSpacing:'.13em',fontWeight:700}}>REVOLTZ AI · BUSINESS ADMIN</div><h1 style={{fontSize:30,margin:'4px 0 6px'}}>Expense Tracker</h1><p style={{...muted,margin:0}}>Log operating costs, separate business and personal spending, and export records for your own bookkeeping.</p></div></header>
   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{[['Expenses logged',visible.length],['Business expenses',money(monthTotal)],['Personal expenses',money(personalTotal)],['Combined total',money(monthTotal+personalTotal)]].map(([label,value])=><div key={label} style={card}><div style={muted}>{label}</div><div style={{fontSize:22,fontWeight:750,marginTop:6}}>{value}</div></div>)}</div>
-  {notice&&<p role="status" style={{...muted,...card,margin:0}}>{notice}</p>}
+  <button type="button" aria-live="polite" onClick={()=>{if(['unavailable','failed'].includes(syncStatus)){setSyncStatus('checking');setSyncAttempt(v=>v+1)}}} style={{...muted,...card,margin:0,textAlign:'left',cursor:['unavailable','failed'].includes(syncStatus)?'pointer':'default'}}>{({checking:'CLOUD SYNC · CHECKING',connected:'CLOUD SYNC · CONNECTED',saving:'CLOUD SYNC · SAVING',synced:'CLOUD SYNC · SAVED',unavailable:'CLOUD SYNC · LOCAL ONLY · RETRY',failed:'CLOUD SYNC · SAVE FAILED · RETRY'})[syncStatus]}</button>\n  {notice&&<p role="status" style={{...muted,...card,margin:0}}>{notice}</p>}
   <form onSubmit={add} style={{...card,display:'grid',gap:12}}><h2 style={{fontSize:19,margin:0}}>Add expense</h2><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,190px),1fr))',gap:10}}>
    <label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Expense name<input required maxLength={120} style={field} value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="e.g. Domain renewal"/></label>
    <label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Amount (₹)<input required type="number" min="0.01" max="100000000" step="0.01" style={field} value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} placeholder="0.00"/></label>
@@ -37,6 +68,6 @@ export default function ExpenseTracker(){
   </div><label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Notes<textarea rows={2} maxLength={1000} style={{...field,resize:'vertical'}} value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="Optional reference or details"/></label><button type="submit" style={{justifySelf:'start',display:'inline-flex',gap:7,alignItems:'center',border:0,borderRadius:9,padding:'10px 13px',background:'var(--viz-accent, #3977dc)',color:'#fff',cursor:'pointer'}}><Plus size={16}/> Save expense</button></form>
   <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}><label style={{display:'grid',gap:5,fontSize:13}}>Month<select style={{...field,width:'auto',minWidth:160}} value={month} onChange={e=>setMonth(e.target.value)}><option value={today().slice(0,7)}>{new Date(today().slice(0,7)+'-01T12:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</option><option value="All">All time</option>{[...new Set(expenses.map(x=>String(x.date||'').slice(0,7)).filter(x=>x&&x!==today().slice(0,7)))].sort().reverse().map(m=><option key={m} value={m}>{new Date(m+'-01T12:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</option>)}</select></label><label style={{display:'grid',gap:5,fontSize:13}}>Category<select style={{...field,width:'auto',minWidth:160}} value={filter} onChange={e=>setFilter(e.target.value)}><option>All</option>{categories.map(x=><option key={x}>{x}</option>)}</select></label><button type="button" onClick={exportCsv} disabled={!expenses.length} style={{...field,width:'auto',display:'inline-flex',gap:7,alignItems:'center',cursor:'pointer',marginLeft:'auto'}}><Download size={15}/> Export CSV</button></div>
   {!visible.length?<div style={{...card,textAlign:'center',padding:24}}><Receipt size={26}/><h2 style={{fontSize:19}}>No expenses for this filter</h2><p style={{...muted,margin:0}}>Add your first record above. Example: domain, hosting, software, or internet.</p></div>:<div style={{display:'grid',gap:10}}>{visible.map(x=><article key={x.id} style={{...card,display:'grid',gap:9}}><div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',flexWrap:'wrap'}}><div><strong style={{fontSize:16}}>{x.title}</strong><div style={muted}>{x.category} · {x.type} · {x.date} · {x.paymentMethod}</div>{x.notes&&<p style={{...muted,margin:'5px 0 0'}}>{x.notes}</p>}</div><div style={{display:'flex',gap:10,alignItems:'center'}}><strong style={{fontSize:18}}>{money(x.amount)}</strong><button type="button" aria-label={'Delete '+x.title} title="Delete expense" onClick={()=>{if(confirm('Delete this expense record?'))setExpenses(prev=>prev.filter(y=>y.id!==x.id))}} style={{...field,width:'auto',padding:9,cursor:'pointer'}}><Trash2 size={15}/></button></div></div></article>)}</div>}
-  <p style={muted}>Records are stored only in this browser and are not shared across devices. This is an internal tracker, not accounting or tax advice; keep receipts and confirm tax treatment with a qualified professional.</p>
+  <p style={muted}>Records are saved to your signed-in AgencyOS workspace when cloud sync is connected. If sync is unavailable, changes remain in this browser until you retry. This is an internal tracker, not accounting or tax advice; keep receipts and confirm tax treatment with a qualified professional.</p>
  </section>;
 }

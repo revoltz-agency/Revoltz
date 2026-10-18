@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { saveOrganizationModulePatch } from '../lib/moduleDataSync.js';
 import { FileSignature, Copy, Download, Trash2, Eye, Sparkles } from 'lucide-react';
 
 const KEY='agencyos:proposal-builder:v1';
@@ -9,7 +10,37 @@ const initial=()=>({client:'',business:'',service:'Website design and developmen
 function load(){try{const x=JSON.parse(localStorage.getItem(KEY)||'{}');return {...initial(),...(x&&typeof x==='object'?x:{})}}catch{return initial()}}
 export default function ProposalBuilder(){
  const [form,setForm]=useState(load);const [notice,setNotice]=useState('');const [previewMode,setPreviewMode]=useState('document');
+ const [cloudReady,setCloudReady]=useState(false);
+ const formRef=useRef(form);formRef.current=form;
+ const initialForm=useRef(JSON.stringify(form));
+ const saveQueue=useRef(Promise.resolve());
  useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(form))}catch{setNotice('Browser storage is full; changes may not save.')}},[form]);
+ useEffect(()=>{
+  let active=true;
+  fetch('/api/workspace/modules/tools/data',{credentials:'include',cache:'no-store'})
+   .then(async response=>{const payload=await response.json().catch(()=>({}));if(!response.ok)throw new Error(payload.error||'Cloud sync unavailable');return payload})
+   .then(payload=>{
+    if(!active)return;
+    const remote=payload.state?.proposalBuilder;
+    if(remote&&typeof remote==='object'&&!Array.isArray(remote)&&JSON.stringify(formRef.current)===initialForm.current){
+     setForm({...initial(),...remote});
+    }
+    setCloudReady(true);
+    setNotice('Connected to organization cloud storage.');
+   })
+   .catch(error=>{if(active)setNotice('Cloud sync unavailable; this proposal remains saved in this browser. '+(error?.message||''))});
+  return()=>{active=false};
+ },[]);
+ useEffect(()=>{
+  if(!cloudReady)return;
+  const snapshot=form;
+  const timer=window.setTimeout(()=>{
+   saveQueue.current=saveQueue.current.catch(()=>{}).then(()=>saveOrganizationModulePatch('tools',{proposalBuilder:snapshot}))
+    .then(()=>setNotice('Proposal draft synced to your organization cloud.'))
+    .catch(error=>setNotice('Cloud save failed; this draft remains in this browser. '+(error?.message||'')));
+  },500);
+  return()=>window.clearTimeout(timer);
+ },[form,cloudReady]);
  const set=(k,v)=>setForm(old=>({...old,[k]:v}));
  const money=form.price?new Intl.NumberFormat('en-IN',{style:'currency',currency:form.currency,maximumFractionDigits:0}).format(Number(form.price)||0):'To be agreed';
  const lines=(value)=>String(value||'').split('\n').map(x=>x.trim()).filter(Boolean);
