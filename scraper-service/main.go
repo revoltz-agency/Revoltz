@@ -44,6 +44,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
+	mux.Handle("/api/v1/scrape", auth(token, proxy))
 	mux.Handle("/api/v1/jobs", auth(token, proxy))
 	mux.Handle("/api/v1/jobs/", auth(token, proxy))
 	server := &http.Server{
