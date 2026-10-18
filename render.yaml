@@ -66,7 +66,7 @@ services:
       # Google Places. No key -> /api/places/* return 503.
       - key: GOOGLE_MAPS_API_KEY
         sync: false
-      # Optional self-hosted gosom/google-maps-scraper service URL. Keep the scraper private.
+      # Optional HTTPS URL of the token-protected gosom/google-maps-scraper gateway.
       - key: GOOGLE_MAPS_SCRAPER_URL
         sync: false
       - key: GOOGLE_MAPS_SCRAPER_TOKEN
