@@ -331,6 +331,7 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
         ...scrapePayload,
         name: scrapePayload.keyword,
         keywords: [scrapePayload.keyword],
+        depth: scrapePayload.max_depth,
         max_time: 240,
       });
     }
