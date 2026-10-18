@@ -587,24 +587,51 @@ function AgencyOSApp() {
         setFinderSource('google');
         if (!results.length) showToast('Google Places found no matching businesses. Try a broader category or nearby area.');
       } else {
-        const { leads: discovered, groundingSources } = await searchGeminiLeads({
-          apiKey: geminiApiKey,
-          category,
-          location: city,
-          radiusKm: Number(searchForm.radiusKm),
-          maxResults: Number(searchForm.maxResults),
-        });
-        const results = dedupeLeads(discovered.filter((lead) => lead?.name))
-          .map((lead) => applyManualLeadOverride(lead, manualOverrides));
-        setFinderResults(results);
-        setFinderGroundingSources(groundingSources);
-        setFinderWarnings([
-          'Only businesses whose names match a Google Maps grounding source are shown. Gemini provides the business link and identity here; phone, website, address, rating, and review details are not fetched. Verify the listing before outreach, or choose Google Places for structured listing details.',
-        ]);
-        setFinderRequests(1);
-        setFinderGeocodingRequests(0);
-        setFinderSource('gemini');
-        if (!results.length) showToast('No matching Google Maps sources were returned. Try a broader search or choose Google Places.');
+        try {
+          // Gemini Maps grounding can be unavailable to API projects on the
+          // free tier even when ordinary Gemini text requests work. Never
+          // substitute guessed business records: fall back to verified Places.
+          const { leads: discovered, groundingSources } = await searchGeminiLeads({
+            apiKey: geminiApiKey,
+            category,
+            location: city,
+            radiusKm: Number(searchForm.radiusKm),
+            maxResults: Number(searchForm.maxResults),
+          });
+          const results = dedupeLeads(discovered.filter((lead) => lead?.name))
+            .map((lead) => applyManualLeadOverride(lead, manualOverrides));
+          setFinderResults(results);
+          setFinderGroundingSources(groundingSources);
+          setFinderWarnings([
+            'Gemini found these businesses through Google Maps grounding. Phone, website, address, rating, and review details are not fetched in this mode; verify each listing before outreach.',
+          ]);
+          setFinderRequests(1);
+          setFinderGeocodingRequests(0);
+          setFinderSource('gemini');
+          if (!results.length) showToast('No matching Google Maps sources were returned. Try a broader search or choose Google Places.');
+        } catch (geminiError) {
+          const groundingUnavailable = /HTTP 429|quota|rate.?limit|resource.?exhausted|grounding|maps.*(unavailable|not available|not supported)|not available.*free tier/i.test(String(geminiError?.message || ''));
+          if (!apiConfig.googlePlacesConfigured || !groundingUnavailable) throw geminiError;
+          const response = await fetch('/api/places/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category, location: city, radiusKm: Number(searchForm.radiusKm), maxResults: Number(searchForm.maxResults) }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Google Places fallback failed.');
+          const results = dedupeLeads(data.results || [])
+            .map((lead) => applyManualLeadOverride({ ...lead, source: 'google' }, manualOverrides));
+          setFinderResults(results);
+          setFinderGroundingSources([]);
+          setFinderWarnings([
+            'Gemini Maps grounding was unavailable for this API project, so AgencyOS switched to Google Places for real business listings and listing details. Gemini remains available for AI writing and analysis.',
+            ...(Array.isArray(data.warnings) ? data.warnings : []),
+          ]);
+          setFinderRequests(data.requests || 0);
+          setFinderGeocodingRequests(data.geocodingRequests || 0);
+          setFinderSource('google');
+          if (!results.length) showToast('Google Places found no matching businesses. Try a broader category or nearby area.');
+        }
       }
     } catch (error) { setSearchError(error.message || 'Search failed. Please try again.'); }
     finally { setSearching(false); }
