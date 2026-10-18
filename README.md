@@ -4,6 +4,19 @@ REVOLTZ AI is the public marketing site. AgencyOS is the signed-in workspace for
 
 ## AgencyOS lead sources
 
+## Optional Google Maps Scraper
+
+Find Leads can connect to a self-hosted `gosom/google-maps-scraper` web service. This runs separately from the Node app because the scraper requires a browser runtime and its own job storage.
+
+- Set `GOOGLE_MAPS_SCRAPER_URL` in the AgencyOS server environment to the scraper service's **private/internal base URL** (no trailing slash).
+- Do not expose the scraper's unauthenticated REST API to the public internet. The AgencyOS proxy requires a signed-in workspace user and rate-limits job creation, but the upstream scraper service itself does not provide authentication in its web mode.
+- Choose **Google Maps Scraper** in Find Leads. Jobs can take several minutes; the UI polls job status and imports the available business name, category, address, phone, website, rating, reviews, and Maps link.
+- This integration uses no Google API key, but results can be incomplete or blocked. Scraped listings are not proof of consent to contact, and this feature does not bypass CAPTCHA, access controls, or anti-bot challenges.
+- This is an optional integration. If `GOOGLE_MAPS_SCRAPER_URL` is unset, the option stays disabled and no scraper request is made.
+
+The scraper project is MIT-licensed: https://github.com/gosom/google-maps-scraper. Review its upstream documentation for its runtime, browser dependencies, and current API schema before deploying it.
+
+
 Find Leads offers three explicit choices:
 
 - **Gemini AI + Google Maps grounding** is the default. The operator adds a Google AI Studio API key in Settings. The key stays in that browser's `sessionStorage` and is sent directly to Google's Gemini API when a search or AI action is run. Google controls model availability, quotas, and billing eligibility. No Gemini request runs automatically.
