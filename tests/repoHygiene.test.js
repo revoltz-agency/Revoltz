@@ -84,3 +84,27 @@ test('source files contain no raw control bytes (keeps diffs reviewable and git 
   }
   assert.deepEqual(offenders, [], `literal control bytes found:\n${offenders.join('\n')}`);
 });
+
+
+test('retired map provider is absent while Gemini and Google Places remain wired', () => {
+  const files = walk(rootDir);
+  const retiredNames = [
+    ['OpenStreet', 'Map'].join(''),
+    ['Over', 'pass'].join(''),
+  ];
+  const matches = [];
+  for (const file of files) {
+    const source = readFileSync(file, 'utf8');
+    for (const name of retiredNames) {
+      if (source.toLowerCase().includes(name.toLowerCase())) {
+        matches.push(`${path.relative(rootDir, file)} contains retired provider reference ${name}`);
+      }
+    }
+  }
+  assert.deepEqual(matches, [], `retired map provider references remain:\n${matches.join('\n')}`);
+
+  const places = readFileSync(path.join(rootDir, 'server', 'googlePlaces.js'), 'utf8');
+  const gemini = readFileSync(path.join(rootDir, 'src', 'lib', 'geminiLeadFinder.js'), 'utf8');
+  assert.match(places, /places\.googleapis\.com\/v1\/places:searchText/, 'official Google Places API must remain configured');
+  assert.match(gemini, /generativelanguage\.googleapis\.com/, 'Gemini lead discovery must remain available');
+});
