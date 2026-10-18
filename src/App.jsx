@@ -447,8 +447,15 @@ function AgencyOSApp() {
           await new Promise((resolve) => setTimeout(resolve, 3000));
           const params = new URLSearchParams({ category, location: city, maxResults: String(Number(searchForm.maxResults) || 10) });
           const statusResponse = await fetch(`/api/maps-scraper/jobs/${encodeURIComponent(started.jobId)}?${params.toString()}`, { cache: 'no-store' });
-          const statusData = await statusResponse.json();
-          if (!statusResponse.ok) throw new Error(statusData.error || 'Could not read Maps scraper progress.');
+          let statusData = {};
+          try { statusData = await statusResponse.json(); } catch { /* Render may return HTML during a temporary gateway failure. */ }
+          if (!statusResponse.ok) {
+            if ([502, 503, 504].includes(statusResponse.status) && attempt < 109) {
+              setSearchError(`Maps scraper service is temporarily unavailable (HTTP ${statusResponse.status}). Retrying…`);
+              continue;
+            }
+            throw new Error(statusData.error || `Could not read Maps scraper progress (HTTP ${statusResponse.status}).`);
+          }
           if (statusData.status === 'failed') throw new Error(statusData.error || 'The Maps scraper job failed.');
           const partialResults = dedupeLeads(statusData.results || []).map((lead) => applyManualLeadOverride({ ...lead, source: 'maps-scraper' }, manualOverrides));
           if (partialResults.length) {
