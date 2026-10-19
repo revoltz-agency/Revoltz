@@ -50,7 +50,7 @@ function mergeLegacyValue(key, cloudValue, legacyValue) {
   return cloudValue;
 }
 
-function installWorkspaceStorage(userId, remoteState) {
+function installWorkspaceStorage(userId, remoteState, initialRevision = null) {
   const prefix = `agencyos:account:${userId}:`;
   const proto = Storage.prototype;
   const native = {
@@ -65,6 +65,7 @@ function installWorkspaceStorage(userId, remoteState) {
   let syncTimer = null;
   let inFlight = Promise.resolve();
   let syncVersion = 0;
+  let serverRevision = initialRevision;
 
   // Migrate the older, un-namespaced browser cache without discarding it.
   // The cloud wins conflicts, while distinct legacy leads/CRM entries are merged.
@@ -116,9 +117,15 @@ function installWorkspaceStorage(userId, remoteState) {
           method: 'PUT',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json', 'X-Workspace-CSRF': csrfFromCookie() },
-          body: JSON.stringify({ state }),
+          body: JSON.stringify({ state, expectedRevision: serverRevision }),
         });
+        const result = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          reportSyncStatus('conflict');
+          return;
+        }
         if (!response.ok) throw new Error('Workspace cloud sync failed.');
+        if (Number.isSafeInteger(result.revision)) serverRevision = result.revision;
         if (version === syncVersion) reportSyncStatus('saved');
         if (migrationPending) {
           for (const key of Object.keys(legacyState)) native.removeItem.call(window.localStorage, key);
@@ -210,7 +217,7 @@ export default function WorkspaceAuthGate() {
     const response = await fetch('/api/workspace/state', { credentials: 'include', cache: 'no-store' });
     if (!response.ok) throw new Error('Could not load your saved workspace. Please sign in again.');
     const result = await response.json();
-    const cleanup = installWorkspaceStorage(account.id, result.state || {});
+    const cleanup = installWorkspaceStorage(account.id, result.state || {}, Number.isSafeInteger(result.revision) ? result.revision : null);
     setSyncStatus('saved');
     window.__agencyOSUser = account;
     setCleanupStorage(() => cleanup);
@@ -313,8 +320,9 @@ export default function WorkspaceAuthGate() {
       saving: 'Saving changes to your account…',
       offline: 'Not synced — changes are saved only in this browser. Sync will retry when you are online.',
       preview: 'Preview only — data stays in this browser',
+      conflict: 'Sync paused — workspace changed elsewhere. Reload before making more changes to avoid overwriting newer data.',
     };
-    const warning = syncStatus === 'offline' || syncStatus === 'preview';
+    const warning = syncStatus === 'offline' || syncStatus === 'preview' || syncStatus === 'conflict';
     return <>
       <div role="status" aria-live="polite" style={{ position: 'fixed', zIndex: 1100, top: 10, right: 12, maxWidth: 'min(420px, calc(100vw - 24px))', padding: '8px 11px', border: `1px solid ${warning ? '#84683b' : '#375b48'}`, borderRadius: 9, background: warning ? '#282319' : '#14221c', color: warning ? '#e5d2a4' : '#a9d9b8', fontSize: 12, lineHeight: 1.4, boxShadow: '0 4px 18px #0005' }}>
         {syncLabels[syncStatus] || syncLabels.saved}
