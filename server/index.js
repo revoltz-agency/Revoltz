@@ -180,6 +180,7 @@ app.post('/api/billing/webhook', async (req, res) => {
     'subscription.resumed': 'active',
     'subscription.cancelled': 'cancelled',
     'subscription.completed': 'completed',
+    'subscription.expired': 'expired',
   };
   const nextStatus = statusByEvent[eventType];
   if (!nextStatus) return res.status(200).json({ received: true, ignored: true });
