@@ -14,7 +14,7 @@ test('PostgreSQL webhook processing ignores an older subscription event delivere
   __setPoolForTests(null);
   const suffix = randomUUID();
   const email = `webhook-order-${suffix}@example.test`;
-  const eventIds = [`evt-newer-${suffix}`, `evt-older-${suffix}`, `evt-cancel-${suffix}`, `evt-reactivate-${suffix}`, `evt-same-second-${suffix}`];
+  const eventIds = [`evt-newer-${suffix}`, `evt-older-${suffix}`, `evt-cancel-${suffix}`, `evt-reactivate-${suffix}`, `evt-same-second-${suffix}`, `evt-duplicate-${suffix}`];
   let userId;
   let organizationId;
   const subscriptionId = `sub-${suffix}`;
@@ -62,6 +62,9 @@ test('PostgreSQL webhook processing ignores an older subscription event delivere
     await sendEvent(eventIds[3], 'subscription.activated', 1_780_000_002);
     // Same-second events are deterministic: the first applied state wins.
     await sendEvent(eventIds[4], 'subscription.created', 1_780_000_002);
+    // Re-delivery of the same event ID must be acknowledged as duplicate.
+    const duplicate = await sendEvent(eventIds[2], 'subscription.activated', 1_780_000_003);
+    assert.equal(duplicate.duplicate, true);
 
     const saved = await queryDatabase(
       'SELECT status, last_provider_event_created FROM organization_subscriptions WHERE organization_id = $1',
