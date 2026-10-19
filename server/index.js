@@ -228,7 +228,8 @@ app.post('/api/workspace/subscription/checkout', async (req, res) => {
   if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
   if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
   try {
-    return res.json(await createRazorpaySubscription(session.user.id));
+    const planKey = typeof req.body?.planKey === 'string' ? req.body.planKey : 'starter';
+    return res.json(await createRazorpaySubscription(session.user.id, planKey));
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     return workspaceUnavailable(res);
