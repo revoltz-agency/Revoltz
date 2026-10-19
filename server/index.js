@@ -185,13 +185,24 @@ app.post('/api/billing/webhook', async (req, res) => {
   if (!nextStatus) return res.status(200).json({ received: true, ignored: true });
   try {
     await ensureSchema();
-    const eventInsert = await queryDatabase('INSERT INTO razorpay_webhook_events (event_id, event_type) VALUES ($1, $2) ON CONFLICT (event_id) DO NOTHING', [eventId, eventType]);
-    if (eventInsert.rowCount === 0) return res.json({ received: true, duplicate: true });
-    // Only the first delivery of a provider event can update the subscription.
-    await queryDatabase(
+    // Apply the signed event only after its subscription row exists. If checkout
+    // creation and webhook delivery race, return a retryable error instead of
+    // permanently recording an event that updated zero rows.
+    const updated = await queryDatabase(
       'UPDATE workspace_subscriptions SET status = $2, current_start = COALESCE($3, current_start), current_end = COALESCE($4, current_end), updated_at = now() WHERE razorpay_subscription_id = $1',
       [entity.id, nextStatus, entity.current_start ?? null, entity.current_end ?? null],
     );
+    if (updated.rowCount === 0) {
+      console.warn('[billing] Webhook subscription row not found; requesting provider retry.');
+      return res.status(503).json({ error: 'Subscription is not available yet. Please retry this webhook.' });
+    }
+    // Re-delivery may repeat the same status update safely. Record the event
+    // only after a subscription row was actually updated.
+    const eventInsert = await queryDatabase(
+      'INSERT INTO razorpay_webhook_events (event_id, event_type) VALUES ($1, $2) ON CONFLICT (event_id) DO NOTHING',
+      [eventId, eventType],
+    );
+    if (eventInsert.rowCount === 0) return res.json({ received: true, duplicate: true });
     return res.json({ received: true, processed: true, eventId });
   } catch {
     return workspaceUnavailable(res);
