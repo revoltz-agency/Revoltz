@@ -130,8 +130,11 @@ const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS workspace_data (
      user_id    uuid PRIMARY KEY REFERENCES workspace_users(id),
      state      jsonb       NOT NULL DEFAULT '{}'::jsonb,
-     updated_at timestamptz NOT NULL DEFAULT now()
+     updated_at timestamptz NOT NULL DEFAULT now(),
+     revision   bigint      NOT NULL DEFAULT 1
    )`,
+  // Additive migration for installations created before revision-aware saves.
+  `ALTER TABLE workspace_data ADD COLUMN IF NOT EXISTS revision bigint NOT NULL DEFAULT 1`,
 ];
 
 /**
