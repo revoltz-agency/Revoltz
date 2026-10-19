@@ -14,7 +14,7 @@ test('PostgreSQL webhook processing ignores an older subscription event delivere
   __setPoolForTests(null);
   const suffix = randomUUID();
   const email = `webhook-order-${suffix}@example.test`;
-  const eventIds = [`evt-newer-${suffix}`, `evt-older-${suffix}`];
+  const eventIds = [`evt-newer-${suffix}`, `evt-older-${suffix}`, `evt-cancel-${suffix}`, `evt-reactivate-${suffix}`, `evt-same-second-${suffix}`];
   let userId;
   let organizationId;
   const subscriptionId = `sub-${suffix}`;
@@ -56,13 +56,19 @@ test('PostgreSQL webhook processing ignores an older subscription event delivere
 
     await sendEvent(eventIds[0], 'subscription.activated', 1_780_000_000);
     await sendEvent(eventIds[1], 'subscription.created', 1_779_999_999);
+    // A terminal provider state is sticky: even a later-timestamp activation
+    // for the same subscription must not resurrect it.
+    await sendEvent(eventIds[2], 'subscription.cancelled', 1_780_000_001);
+    await sendEvent(eventIds[3], 'subscription.activated', 1_780_000_002);
+    // Same-second events are deterministic: the first applied state wins.
+    await sendEvent(eventIds[4], 'subscription.created', 1_780_000_002);
 
     const saved = await queryDatabase(
       'SELECT status, last_provider_event_created FROM organization_subscriptions WHERE organization_id = $1',
       [organizationId],
     );
-    assert.equal(saved.rows[0].status, 'active');
-    assert.equal(Number(saved.rows[0].last_provider_event_created), 1_780_000_000);
+    assert.equal(saved.rows[0].status, 'cancelled');
+    assert.equal(Number(saved.rows[0].last_provider_event_created), 1_780_000_001);
   } finally {
     await queryDatabase('DELETE FROM payment_webhook_events WHERE event_id = ANY($1::text[])', [eventIds]).catch(() => {});
     if (organizationId) await queryDatabase('DELETE FROM organizations WHERE id = $1', [organizationId]).catch(() => {});
