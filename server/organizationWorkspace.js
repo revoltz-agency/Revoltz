@@ -21,14 +21,22 @@ async function getMembership(userId) {
      LEFT JOIN organization_subscriptions s ON s.organization_id = o.id
      WHERE m.user_id = $1
      ORDER BY CASE WHEN m.role = 'owner' THEN 0 ELSE 1 END, m.created_at ASC
-     LIMIT 1`,
+     LIMIT 2`,
     [userId],
   );
-  const row = result.rows[0];
-  if (!row) {
+  if (!result.rows[0]) {
     throw Object.assign(new Error('No organization is available for this workspace account.'), { statusCode: 403 });
   }
-  return row;
+  // Never silently choose an organization when one account belongs to more than
+  // one. Billing already rejects this ambiguous state; workspace reads/writes
+  // must fail closed too until an explicit organization selector is implemented.
+  if (result.rows.length > 1) {
+    throw Object.assign(new Error('This account belongs to multiple organizations. Select a workspace explicitly before continuing.'), {
+      statusCode: 409,
+      code: 'AMBIGUOUS_ORGANIZATION_MEMBERSHIP',
+    });
+  }
+  return result.rows[0];
 }
 
 export async function readOrganizationWorkspace(userId) {
