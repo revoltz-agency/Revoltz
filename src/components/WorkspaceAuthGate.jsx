@@ -244,6 +244,10 @@ export default function WorkspaceAuthGate() {
   const [cleanupStorage, setCleanupStorage] = useState(null);
   const [recoveringConflict, setRecoveringConflict] = useState(false);
   const [recoveryError, setRecoveryError] = useState('');
+  const [billingConfigured, setBillingConfigured] = useState(false);
+  const [billingStatus, setBillingStatus] = useState('');
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState('');
 
   const loadWorkspace = useCallback(async (account) => {
     const response = await fetch('/api/workspace/state', { credentials: 'include', cache: 'no-store' });
@@ -289,6 +293,45 @@ export default function WorkspaceAuthGate() {
     window.addEventListener(SYNC_EVENT, handleSyncStatus);
     return () => window.removeEventListener(SYNC_EVENT, handleSyncStatus);
   }, []);
+
+  useEffect(() => {
+    if (!user || !storageReady || VERCEL_PREVIEW) return;
+    let alive = true;
+    (async () => {
+      try {
+        const [configResponse, statusResponse] = await Promise.all([
+          fetch('/api/billing/config', { cache: 'no-store' }),
+          fetch('/api/billing/status', { credentials: 'include', cache: 'no-store' }),
+        ]);
+        const config = await configResponse.json().catch(() => ({}));
+        const status = await statusResponse.json().catch(() => ({}));
+        if (!alive) return;
+        setBillingConfigured(config.configured === true);
+        setBillingStatus(status.subscription?.status || '');
+      } catch { /* Billing is optional until the owner configures Razorpay. */ }
+    })();
+    return () => { alive = false; };
+  }, [user, storageReady]);
+
+  async function startSubscription() {
+    setBillingLoading(true);
+    setBillingError('');
+    try {
+      const response = await fetch('/api/billing/subscribe', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-Workspace-CSRF': csrfFromCookie() },
+        body: JSON.stringify({}),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Could not start subscription.');
+      if (!result.shortUrl) throw new Error('Razorpay did not return a checkout link.');
+      window.location.assign(result.shortUrl);
+    } catch (error) {
+      setBillingError(error?.message || 'Could not start subscription.');
+      setBillingLoading(false);
+    }
+  }
 
   useEffect(() => () => {
     cleanupStorage?.();
@@ -372,6 +415,13 @@ export default function WorkspaceAuthGate() {
           {recoveryError && <div role="alert" style={{ marginTop: 6 }}>{recoveryError}</div>}
         </div>}
       </div>
+      {billingConfigured && billingStatus !== 'active' && <div style={{ position: 'fixed', zIndex: 1099, top: 66, right: 12, maxWidth: 'min(420px, calc(100vw - 24px))', padding: '10px 12px', border: '1px solid #654b7d', borderRadius: 9, background: '#21192a', color: '#eadcf7', fontSize: 12, lineHeight: 1.5, boxShadow: '0 4px 18px #0005' }}>
+        <strong>Revoltz AgencyOS subscription</strong>
+        <div style={{ margin: '4px 0 8px' }}>Continue to Razorpay to review the configured monthly plan and its price before you approve payment.</div>
+        <button type="button" disabled={billingLoading} onClick={startSubscription} style={{ border: '1px solid #9c7bc0', borderRadius: 6, padding: '7px 10px', background: '#382546', color: '#fff', cursor: billingLoading ? 'wait' : 'pointer' }}>{billingLoading ? 'Opening secure checkout…' : billingStatus === 'created' || billingStatus === 'authenticated' || billingStatus === 'pending' ? 'Continue subscription checkout' : 'View monthly subscription'}</button>
+        {billingError && <div role="alert" style={{ marginTop: 6 }}>{billingError}</div>}
+      </div>}
+      {billingStatus === 'active' && <div role="status" style={{ position: 'fixed', zIndex: 1099, top: 66, right: 12, padding: '7px 10px', border: '1px solid #375b48', borderRadius: 9, background: '#14221c', color: '#a9d9b8', fontSize: 12 }}>Subscription active</div>}
       <App />
     </>;
   }
