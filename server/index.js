@@ -207,10 +207,16 @@ app.put('/api/workspace/state', async (req, res) => {
   if (serialized.length > 1_000_000 || Object.keys(state).length > 250) {
     return res.status(413).json({ error: 'Workspace data is too large. Export a backup and remove old data before syncing.' });
   }
+  const expectedRevision = req.body?.expectedRevision ?? null;
+  if (expectedRevision !== null && (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1)) {
+    return res.status(400).json({ error: 'Workspace revision is invalid.' });
+  }
   try {
-    await writeWorkspaceState(session.user.id, state);
-    return res.json({ saved: true, updatedAt: new Date().toISOString() });
-  } catch {
+    const result = await writeWorkspaceState(session.user.id, state, expectedRevision);
+    return res.json({ ...result, updatedAt: new Date().toISOString() });
+  } catch (error) {
+    if (error?.statusCode === 400) return res.status(400).json({ error: error.message });
+    if (error?.statusCode === 409) return res.status(409).json({ error: error.message });
     return workspaceUnavailable(res);
   }
 });
