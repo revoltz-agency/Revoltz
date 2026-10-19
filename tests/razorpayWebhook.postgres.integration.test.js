@@ -14,7 +14,7 @@ test('PostgreSQL webhook processing ignores an older subscription event delivere
   __setPoolForTests(null);
   const suffix = randomUUID();
   const email = `webhook-order-${suffix}@example.test`;
-  const eventIds = [`evt-newer-${suffix}`, `evt-older-${suffix}`, `evt-cancel-${suffix}`, `evt-reactivate-${suffix}`, `evt-same-second-${suffix}`, `evt-duplicate-${suffix}`];
+  const eventIds = [`evt-newer-${suffix}`, `evt-older-${suffix}`, `evt-no-time-${suffix}`, `evt-cancel-${suffix}`, `evt-reactivate-${suffix}`, `evt-same-second-${suffix}`, `evt-duplicate-${suffix}`];
   let userId;
   let organizationId;
   const subscriptionId = `sub-${suffix}`;
@@ -56,6 +56,15 @@ test('PostgreSQL webhook processing ignores an older subscription event delivere
 
     await sendEvent(eventIds[0], 'subscription.activated', 1_780_000_000);
     await sendEvent(eventIds[1], 'subscription.created', 1_779_999_999);
+    // Once a timestamped event has been applied, a later delivery with no
+    // provider timestamp cannot safely establish ordering and must be ignored.
+    await sendEvent(eventIds[2], 'subscription.created', undefined);
+    const afterMissingTimestamp = await queryDatabase(
+      'SELECT status, last_provider_event_created FROM organization_subscriptions WHERE organization_id = $1',
+      [organizationId],
+    );
+    assert.equal(afterMissingTimestamp.rows[0].status, 'active');
+    assert.equal(Number(afterMissingTimestamp.rows[0].last_provider_event_created), 1_780_000_000);
     // A terminal provider state is sticky: even a later-timestamp activation
     // for the same subscription must not resurrect it.
     await sendEvent(eventIds[2], 'subscription.cancelled', 1_780_000_001);
