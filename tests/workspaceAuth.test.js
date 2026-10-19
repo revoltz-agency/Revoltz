@@ -169,18 +169,28 @@ test('workspace session cookies are secure, CSRF-bound, renewable, and revocable
   assert.ok(clearWorkspaceCookies(request).every((value) => /Max-Age=0/.test(value)));
 });
 
-test('workspace state is upserted and read back for its account only', async () => {
+test('workspace state stays isolated between accounts on reads and writes', async () => {
   const db = useWorkspaceDatabase();
+  const otherUserId = '7a6b5c4d-3e2f-1a09-8b7c-6d5e4f3a2b1c';
   const state = { 'agencyos:business-profile:v1': { name: 'North Star Cafe' }, employees: [{ name: 'Example Worker', salary: 0 }] };
+  const otherState = { 'agencyos:business-profile:v1': { name: 'Different Business' }, leads: [{ name: 'Different Customer' }] };
 
   assert.deepEqual(await writeWorkspaceState(USER_ID, state), { saved: true });
+  assert.deepEqual(await writeWorkspaceState(otherUserId, otherState), { saved: true });
   assert.deepEqual((await readWorkspaceState(USER_ID)).state, state);
-  assert.deepEqual((await readWorkspaceState('another-user-id')).state, {});
+  assert.deepEqual((await readWorkspaceState(otherUserId)).state, otherState);
+  assert.notDeepEqual((await readWorkspaceState(USER_ID)).state, otherState);
+  assert.notDeepEqual((await readWorkspaceState(otherUserId)).state, state);
+  assert.deepEqual((await readWorkspaceState('unknown-user-id')).state, {});
 
-  const write = db.calls.find((call) => call.text.includes('INSERT INTO workspace_data'));
-  assert.deepEqual(write.values, [USER_ID, JSON.stringify(state)]);
-  assert.match(write.text, /ON CONFLICT \(user_id\) DO UPDATE/);
-  assert.match(db.calls.find((call) => call.text.includes('SELECT state, updated_at')).text, /WHERE user_id = \$1/);
+  const writes = db.calls.filter((call) => call.text.includes('INSERT INTO workspace_data'));
+  assert.deepEqual(writes.map((write) => write.values), [
+    [USER_ID, JSON.stringify(state)],
+    [otherUserId, JSON.stringify(otherState)],
+  ]);
+  assert.ok(writes.every((write) => /ON CONFLICT \(user_id\) DO UPDATE/.test(write.text)));
+  const reads = db.calls.filter((call) => call.text.includes('SELECT state, updated_at FROM workspace_data'));
+  assert.ok(reads.every((read) => /WHERE user_id = \$1/.test(read.text)));
 });
 
 
