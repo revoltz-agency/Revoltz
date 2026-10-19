@@ -144,9 +144,11 @@ const SCHEMA_STATEMENTS = [
      short_url text,
      current_start bigint,
      current_end bigint,
+     last_event_created_at bigint,
      created_at timestamptz NOT NULL DEFAULT now(),
      updated_at timestamptz NOT NULL DEFAULT now()
    )`,
+  `ALTER TABLE workspace_subscriptions ADD COLUMN IF NOT EXISTS last_event_created_at bigint`,
   `CREATE INDEX IF NOT EXISTS workspace_subscriptions_user_idx ON workspace_subscriptions (user_id, updated_at DESC)`,
   `CREATE TABLE IF NOT EXISTS razorpay_webhook_events (
      event_id text PRIMARY KEY,
