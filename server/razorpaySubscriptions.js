@@ -37,18 +37,23 @@ function apiCredentials() {
   return { keyId, keySecret };
 }
 
-function configuration() {
+function configuration(planKey) {
   const credentials = apiCredentials();
-  const planId = String(process.env.RAZORPAY_PLAN_ID_STARTER || '').trim();
+  const envName = planKey === 'pro' ? 'RAZORPAY_PLAN_ID_PRO' : 'RAZORPAY_PLAN_ID_STARTER';
+  const planId = String(process.env[envName] || '').trim();
   if (!planId) {
-    throw Object.assign(new Error('Razorpay billing plan is not configured on the server yet.'), { statusCode: 503 });
+    throw Object.assign(new Error(`Razorpay ${planKey} plan is not configured on the server yet.`), { statusCode: 503 });
   }
   return { ...credentials, planId };
 }
 
-export async function createRazorpaySubscription(userId) {
+export async function createRazorpaySubscription(userId, requestedPlanKey = 'starter') {
+  const planKey = typeof requestedPlanKey === 'string' ? requestedPlanKey.trim().toLowerCase() : '';
+  if (!['starter', 'pro'].includes(planKey)) {
+    throw Object.assign(new Error('Choose a valid paid subscription plan.'), { statusCode: 400 });
+  }
   await ensureSchema();
-  const { keyId, keySecret, planId } = configuration();
+  const { keyId, keySecret, planId } = configuration(planKey);
   const client = await getPool().connect();
   try {
     await client.query('BEGIN');
@@ -100,11 +105,11 @@ export async function createRazorpaySubscription(userId) {
     await client.query(
       `UPDATE organization_subscriptions
        SET razorpay_subscription_id = $2, razorpay_customer_id = $3, status = $4,
-           current_period_start = NULL, current_period_end = NULL,
+           plan_key = $5, current_period_start = NULL, current_period_end = NULL,
            last_provider_event_created = NULL,
            cancel_at_period_end = false, updated_at = now()
        WHERE organization_id = $1`,
-      [membership.organization_id, payload.id, payload.customer_id || null, initialStatus],
+      [membership.organization_id, payload.id, payload.customer_id || null, initialStatus, planKey],
     );
     await client.query('COMMIT');
     return { checkoutUrl: payload.short_url, subscriptionId: payload.id, status: initialStatus };
