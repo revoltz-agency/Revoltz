@@ -359,6 +359,11 @@ export default function WorkspaceAuthGate() {
       setCleanupStorage(null);
       setUser(null);
       setStorageReady(false);
+      setSubscriptionRequired(false);
+      setBillingConfigured(false);
+      setBillingStatus('');
+      setBillingLoading(false);
+      setBillingError('');
       setSyncStatus('saved');
       window.__agencyOSUser = null;
       setPassword('');
