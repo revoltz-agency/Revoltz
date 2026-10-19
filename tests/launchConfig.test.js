@@ -22,7 +22,7 @@ test('paid launch preflight passes when all required configuration is valid', ()
   assert.ok(result.checks.every((check) => check.ok));
 });
 
-test('paid launch preflight blocks missing billing and provider configuration', () => {
+test('paid launch preflight blocks missing required billing configuration but not optional Google Places', () => {
   const result = validateLaunchConfiguration({
     ...validEnvironment,
     RAZORPAY_PLAN_ID_STARTER: '',
@@ -34,9 +34,11 @@ test('paid launch preflight blocks missing billing and provider configuration', 
   assert.deepEqual(result.checks.filter((check) => !check.ok).map((check) => check.key), [
     'RAZORPAY_PLAN_ID_STARTER',
     'RAZORPAY_WEBHOOK_SECRET',
-    'GOOGLE_MAPS_API_KEY',
     'AGENCYOS_BILLING_ENFORCED',
   ]);
+  const googlePlaces = result.checks.find((check) => check.key === 'GOOGLE_MAPS_API_KEY');
+  assert.equal(googlePlaces.ok, true);
+  assert.equal(googlePlaces.configured, false);
 });
 
 test('paid launch preflight rejects malformed database URLs and origin allowlists', () => {
