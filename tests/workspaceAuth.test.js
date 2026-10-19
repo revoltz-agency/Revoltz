@@ -33,7 +33,7 @@ function workspaceDatabase() {
     async end() {},
     async query(text, values = []) {
       calls.push({ text, values });
-      if (/^\s*CREATE (TABLE|INDEX) IF NOT EXISTS/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*(CREATE (TABLE|INDEX) IF NOT EXISTS|ALTER TABLE)/i.test(text)) return { rows: [], rowCount: 0 };
 
       if (text.includes('INSERT INTO workspace_users')) {
         const [name, email, passwordHash] = values;
@@ -72,14 +72,22 @@ function workspaceDatabase() {
         return { rows: [], rowCount: session && session.revoked_at ? 1 : 0 };
       }
 
-      if (text.includes('SELECT state, updated_at FROM workspace_data')) {
+      if (text.includes('SELECT state, updated_at, revision FROM workspace_data')) {
         const row = states.get(values[0]);
         return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
       }
 
       if (text.includes('INSERT INTO workspace_data')) {
-        states.set(values[0], { state: JSON.parse(values[1]), updated_at: new Date('2026-01-02T00:00:00.000Z') });
-        return { rows: [], rowCount: 1 };
+        if (states.has(values[0])) return { rows: [], rowCount: 0 };
+        const row = { state: JSON.parse(values[1]), updated_at: new Date('2026-01-02T00:00:00.000Z'), revision: 1 };
+        states.set(values[0], row);
+        return { rows: [{ revision: row.revision }], rowCount: 1 };
+      }
+      if (text.includes('UPDATE workspace_data SET state')) {
+        const row = states.get(values[0]);
+        if (!row || row.revision !== values[2]) return { rows: [], rowCount: 0 };
+        row.state = JSON.parse(values[1]); row.revision += 1; row.updated_at = new Date('2026-01-03T00:00:00.000Z');
+        return { rows: [{ revision: row.revision }], rowCount: 1 };
       }
 
       throw new Error(`Unexpected workspace SQL: ${text}`);
@@ -193,8 +201,8 @@ test('workspace state stays isolated between accounts on reads and writes', asyn
   const state = { 'agencyos:business-profile:v1': { name: 'North Star Cafe' }, employees: [{ name: 'Example Worker', salary: 0 }] };
   const otherState = { 'agencyos:business-profile:v1': { name: 'Different Business' }, leads: [{ name: 'Different Customer' }] };
 
-  assert.deepEqual(await writeWorkspaceState(USER_ID, state), { saved: true });
-  assert.deepEqual(await writeWorkspaceState(otherUserId, otherState), { saved: true });
+  assert.deepEqual(await writeWorkspaceState(USER_ID, state), { saved: true, revision: 1 });
+  assert.deepEqual(await writeWorkspaceState(otherUserId, otherState), { saved: true, revision: 1 });
   assert.deepEqual((await readWorkspaceState(USER_ID)).state, state);
   assert.deepEqual((await readWorkspaceState(otherUserId)).state, otherState);
   assert.notDeepEqual((await readWorkspaceState(USER_ID)).state, otherState);
@@ -206,8 +214,8 @@ test('workspace state stays isolated between accounts on reads and writes', asyn
     [USER_ID, JSON.stringify(state)],
     [otherUserId, JSON.stringify(otherState)],
   ]);
-  assert.ok(writes.every((write) => /ON CONFLICT \(user_id\) DO UPDATE/.test(write.text)));
-  const reads = db.calls.filter((call) => call.text.includes('SELECT state, updated_at FROM workspace_data'));
+  assert.ok(writes.every((write) => /ON CONFLICT \(user_id\) DO NOTHING/.test(write.text)));
+  const reads = db.calls.filter((call) => call.text.includes('SELECT state, updated_at, revision FROM workspace_data'));
   assert.ok(reads.every((read) => /WHERE user_id = \$1/.test(read.text)));
 });
 
@@ -225,4 +233,17 @@ test('workspace origin validation rejects cross-origin and protocol-mismatched r
   // Native/server-to-server requests without Origin remain supported; state-changing
   // browser requests still require the session-bound CSRF token at their route.
   assert.equal(workspaceOriginAllowed(request(undefined)), true);
+});
+
+
+test('workspace snapshots reject stale revisions instead of overwriting newer data', async () => {
+  const db = useWorkspaceDatabase();
+  const first = { leads: [{ id: 'lead-1' }] };
+  const newer = { leads: [{ id: 'lead-1' }, { id: 'lead-2' }] };
+  assert.deepEqual(await writeWorkspaceState(USER_ID, first), { saved: true, revision: 1 });
+  assert.deepEqual(await writeWorkspaceState(USER_ID, newer, 1), { saved: true, revision: 2 });
+  await assert.rejects(writeWorkspaceState(USER_ID, first, 1), { statusCode: 409 });
+  assert.deepEqual((await readWorkspaceState(USER_ID)).state, newer);
+  assert.equal((await readWorkspaceState(USER_ID)).revision, 2);
+  assert.ok(db.calls.some((call) => call.text.includes('WHERE user_id = $1 AND revision = $3')));
 });
