@@ -15,19 +15,11 @@ Manual lead creation and CSV import are available independently of provider conf
 Google Maps scraping is available only through the optional self-hosted scraper integration described below; it is not active unless configured. AgencyOS does not send messages. WhatsApp drafts and follow-up dates require explicit operator actions; the operator reviews and sends every message.
 
 
-## Optional Google Maps Scraper
+## Google Maps Scraper status
 
-Find Leads can connect to a self-hosted `gosom/google-maps-scraper` web service. This runs separately from the Node app because the scraper requires a browser runtime and its own job storage.
+The Google Maps scraper integration is **quarantined and hidden from the lead-source selector** because the current free-tier deployment has produced repeated Render 502 responses, long-running jobs, and browser-memory failures. Its backend code is retained temporarily for safe rollback and investigation, but AgencyOS now defaults to zero-cost public web research after loading configuration.
 
-- Deploy the protected gateway in `scraper-service/` as a Docker web service. Its gateway requires a bearer token and keeps the upstream unauthenticated API on container loopback.
-- Set `SCRAPER_API_TOKEN` on the scraper service to a random secret of at least 32 characters.
-- Set `GOOGLE_MAPS_SCRAPER_URL` to the scraper service's HTTPS base URL (no trailing slash) and `GOOGLE_MAPS_SCRAPER_TOKEN` to the same secret on the AgencyOS service. The token is only used server-to-server and is never returned to the browser.
-- Render free services cannot receive private-network traffic, so this setup uses a token-protected public HTTPS endpoint instead of an internal-only URL. Never expose port 8080 or remove the token check.
-- Choose **Google Maps Scraper** in Find Leads. Jobs can take several minutes; the UI polls job status and imports the available business name, category, address, phone, website, rating, reviews, and Maps link.
-- This integration uses no Google API key, but results can be incomplete or blocked. Scraped listings are not proof of consent to contact, and this feature does not bypass CAPTCHA, access controls, or anti-bot challenges.
-- This is an optional integration. If either scraper environment variable is unset or the token is shorter than 32 characters, the option stays disabled and no scraper request is made. Free Render instances have only 512 MB RAM and may run out of memory while launching Chromium; the zero-cost deployment is best-effort, not guaranteed.
-
-The scraper project is MIT-licensed: https://github.com/gosom/google-maps-scraper. Deployment steps and the free-tier limitation are documented in [scraper-service/README.md](scraper-service/README.md). Review the upstream documentation for its runtime, browser dependencies, and current API schema before deploying it.
+Do not treat `/healthz` returning healthy as proof that scraping works: it only indicates the gateway process is alive. The scraper must complete an end-to-end job reliably before this feature is exposed again. Do not add paid search, paid APIs, or new hosting costs to restore it.
 
 ## Routes and builds
 
