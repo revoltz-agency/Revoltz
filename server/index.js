@@ -185,10 +185,9 @@ app.post('/api/billing/webhook', async (req, res) => {
   if (!nextStatus) return res.status(200).json({ received: true, ignored: true });
   try {
     await ensureSchema();
-    await queryDatabase('INSERT INTO razorpay_webhook_events (event_id, event_type) VALUES ($1, $2) ON CONFLICT (event_id) DO NOTHING', [eventId, eventType]);
-    const inserted = await queryDatabase('SELECT event_id FROM razorpay_webhook_events WHERE event_id = $1', [eventId]);
-    // The unique event key makes delivery idempotent. Reprocessing an existing
-    // event is harmless because the same status is applied to the same entity.
+    const eventInsert = await queryDatabase('INSERT INTO razorpay_webhook_events (event_id, event_type) VALUES ($1, $2) ON CONFLICT (event_id) DO NOTHING', [eventId, eventType]);
+    if (eventInsert.rowCount === 0) return res.json({ received: true, duplicate: true });
+    // Only the first delivery of a provider event can update the subscription.
     await queryDatabase(
       'UPDATE workspace_subscriptions SET status = $2, current_start = COALESCE($3, current_start), current_end = COALESCE($4, current_end), updated_at = now() WHERE razorpay_subscription_id = $1',
       [entity.id, nextStatus, entity.current_start ?? null, entity.current_end ?? null],
