@@ -135,6 +135,24 @@ const SCHEMA_STATEMENTS = [
    )`,
   // Additive migration for installations created before revision-aware saves.
   `ALTER TABLE workspace_data ADD COLUMN IF NOT EXISTS revision bigint NOT NULL DEFAULT 1`,
+  `CREATE TABLE IF NOT EXISTS workspace_subscriptions (
+     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     user_id uuid NOT NULL REFERENCES workspace_users(id),
+     razorpay_subscription_id text NOT NULL UNIQUE,
+     plan_id text NOT NULL,
+     status text NOT NULL DEFAULT 'created',
+     short_url text,
+     current_start bigint,
+     current_end bigint,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     updated_at timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS workspace_subscriptions_user_idx ON workspace_subscriptions (user_id, updated_at DESC)`,
+  `CREATE TABLE IF NOT EXISTS razorpay_webhook_events (
+     event_id text PRIMARY KEY,
+     event_type text NOT NULL,
+     received_at timestamptz NOT NULL DEFAULT now()
+   )`,
 ];
 
 /**
