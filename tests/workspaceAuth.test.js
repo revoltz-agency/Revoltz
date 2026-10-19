@@ -13,6 +13,7 @@ import {
   revokeWorkspaceSession,
   workspaceCsrfAllowed,
   workspaceCsrfCookie,
+  workspaceOriginAllowed,
   workspaceSessionCookie,
   writeWorkspaceState,
 } from '../server/workspaceAuth.js';
@@ -180,4 +181,20 @@ test('workspace state is upserted and read back for its account only', async () 
   assert.deepEqual(write.values, [USER_ID, JSON.stringify(state)]);
   assert.match(write.text, /ON CONFLICT \(user_id\) DO UPDATE/);
   assert.match(db.calls.find((call) => call.text.includes('SELECT state, updated_at')).text, /WHERE user_id = \$1/);
+});
+
+
+test('workspace origin validation rejects cross-origin and protocol-mismatched requests', () => {
+  const request = (origin, overrides = {}) => ({
+    secure: true,
+    headers: { host: 'agencyos.example.test', 'x-forwarded-proto': 'https', ...(origin === undefined ? {} : { origin }), ...overrides },
+  });
+
+  assert.equal(workspaceOriginAllowed(request('https://agencyos.example.test')), true);
+  assert.equal(workspaceOriginAllowed(request('https://evil.example.test')), false);
+  assert.equal(workspaceOriginAllowed(request('http://agencyos.example.test')), false);
+  assert.equal(workspaceOriginAllowed(request('not a URL')), false);
+  // Native/server-to-server requests without Origin remain supported; state-changing
+  // browser requests still require the session-bound CSRF token at their route.
+  assert.equal(workspaceOriginAllowed(request(undefined)), true);
 });
