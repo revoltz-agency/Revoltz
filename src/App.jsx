@@ -876,10 +876,10 @@ function AgencyOSApp() {
 }
 
 const NAV_GROUPS = [
-  { label: 'Growth & sales', icon: Target, items: ['Growth Dashboard', 'Find Leads', 'Leads', 'AI Business Auditor', 'Audit Inbox', 'Campaigns', 'Sales Engine', 'Deal Pipeline', 'Follow-up Assistant'] },
-  { label: 'Clients & delivery', icon: Users, items: ['Client Onboarding', 'Client Retention', 'Website Delivery Hub', 'Project Tracker', 'Client Activity Log'] },
-  { label: 'Finance & reports', icon: CircleDollarSign, items: ['Invoice Tracker', 'Cash Flow Planner', 'Expense Tracker', 'Revenue Goals', 'Business Reports'] },
-  { label: 'Tools', icon: Zap, items: ['Daily Action Center', 'Quick Notes', 'Website Demo Builder', 'Proposal Builder', 'Data Backup'] },
+  { label: 'Customers & sales', icon: Users, items: ['Leads', 'Find Leads', 'Deal Pipeline', 'Sales Engine', 'Campaigns', 'Follow-up Assistant', 'Proposal Builder', 'AI Business Auditor', 'Audit Inbox'] },
+  { label: 'Operations & delivery', icon: BriefcaseBusiness, items: ['Client Onboarding', 'Client Retention', 'Project Tracker', 'Website Delivery Hub', 'Client Activity Log', 'Daily Action Center'] },
+  { label: 'Finance & insights', icon: CircleDollarSign, items: ['Invoice Tracker', 'Cash Flow Planner', 'Expense Tracker', 'Revenue Goals', 'Business Reports', 'Growth Dashboard'] },
+  { label: 'Workspace tools', icon: SettingsIcon, items: ['Quick Notes', 'Website Demo Builder', 'Data Backup'] },
 ];
 function Sidebar({ activePage, onNavigate, open, profile }) {
   const [expandedGroup, setExpandedGroup] = useState(() => NAV_GROUPS.find(group => group.items.includes(activePage))?.label || '');
@@ -892,7 +892,7 @@ function Sidebar({ activePage, onNavigate, open, profile }) {
     return <button type="button" key={item.label} onClick={() => onNavigate(item.label)} className={`nav-item ${activePage === item.label ? 'nav-item-active' : ''}`} style={{width:'100%'}}><Icon size={18} strokeWidth={1.8} /><span>{item.label}</span>{item.label === 'Leads' && <span className="nav-count">•</span>}</button>;
   };
   return <aside className={`sidebar ${open ? 'sidebar-open' : ''}`}>
-    <div className="brand-lockup"><div className="brand-mark"><Sparkles size={20} strokeWidth={1.8} /></div><div><span className="brand-name">Agency<span>OS</span></span><span className="brand-caption">BUSINESS MANAGEMENT</span></div></div>
+    <div className="brand-lockup"><div className="brand-mark"><Sparkles size={20} strokeWidth={1.8} /></div><div><span className="brand-name">Agency<span>OS</span></span><span className="brand-caption">UNIVERSAL BUSINESS SYSTEM</span></div></div>
     <div className="workspace-switcher"><div className="workspace-monogram">{initials(profile?.name || 'Business')}</div><div className="workspace-label"><strong>{profile?.name || 'Business workspace'}</strong><span>{profile?.industry || 'Business management'}</span></div><ChevronDown size={15} /></div>
     <div className="nav-section-label">WORKSPACE</div>
     <nav className="main-nav" aria-label="Main navigation">
