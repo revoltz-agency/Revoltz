@@ -185,10 +185,40 @@ function installWorkspaceStorage(userId, remoteState, initialRevision = null) {
     },
   });
 
+  async function recoverFromConflict() {
+    if (!active) throw new Error('This workspace session has ended.');
+    // Save the current browser snapshot before replacing anything with the server copy.
+    const backupKey = `agencyos:conflict-backup:${userId}:${Date.now()}`;
+    const backup = { userId, savedAt: new Date().toISOString(), state: collectState() };
+    native.setItem.call(window.localStorage, backupKey, JSON.stringify(backup));
+    const response = await fetch('/api/workspace/state', { credentials: 'include', cache: 'no-store' });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.state || typeof result.state !== 'object') {
+      throw new Error('Your local backup was preserved, but the latest workspace could not be loaded. Try again.');
+    }
+    window.clearTimeout(syncTimer);
+    syncVersion += 1;
+    for (let i = native.length.get.call(window.localStorage) - 1; i >= 0; i -= 1) {
+      const key = native.key.call(window.localStorage, i);
+      if (key?.startsWith(prefix)) native.removeItem.call(window.localStorage, key);
+    }
+    for (const [key, value] of Object.entries(result.state)) {
+      if (typeof key === 'string' && typeof value === 'string' && key.length <= 300) {
+        native.setItem.call(window.localStorage, prefix + key, value);
+      }
+    }
+    serverRevision = Number.isSafeInteger(result.revision) ? result.revision : null;
+    reportSyncStatus('saved');
+    window.location.reload();
+    return backupKey;
+  }
+  window.__agencyOSRecoverWorkspace = recoverFromConflict;
+
   if (migrationPending) scheduleSync();
 
   return () => {
     active = false;
+    if (window.__agencyOSRecoverWorkspace === recoverFromConflict) delete window.__agencyOSRecoverWorkspace;
     window.clearTimeout(syncTimer);
     window.removeEventListener('online', retryWhenOnline);
     proto.getItem = native.getItem;
@@ -212,6 +242,8 @@ export default function WorkspaceAuthGate() {
   const [storageReady, setStorageReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState(VERCEL_PREVIEW ? 'preview' : 'saved');
   const [cleanupStorage, setCleanupStorage] = useState(null);
+  const [recoveringConflict, setRecoveringConflict] = useState(false);
+  const [recoveryError, setRecoveryError] = useState('');
 
   const loadWorkspace = useCallback(async (account) => {
     const response = await fetch('/api/workspace/state', { credentials: 'include', cache: 'no-store' });
@@ -326,6 +358,19 @@ export default function WorkspaceAuthGate() {
     return <>
       <div role="status" aria-live="polite" style={{ position: 'fixed', zIndex: 1100, top: 10, right: 12, maxWidth: 'min(420px, calc(100vw - 24px))', padding: '8px 11px', border: `1px solid ${warning ? '#84683b' : '#375b48'}`, borderRadius: 9, background: warning ? '#282319' : '#14221c', color: warning ? '#e5d2a4' : '#a9d9b8', fontSize: 12, lineHeight: 1.4, boxShadow: '0 4px 18px #0005' }}>
         {syncLabels[syncStatus] || syncLabels.saved}
+        {syncStatus === 'conflict' && <div style={{ marginTop: 8 }}>
+          <div style={{ marginBottom: 7 }}>Your current browser changes will be backed up before the latest cloud copy is loaded. You can recover the backup from browser storage if needed.</div>
+          <button type="button" disabled={recoveringConflict} onClick={async () => {
+            setRecoveringConflict(true);
+            setRecoveryError('');
+            try { await window.__agencyOSRecoverWorkspace?.(); }
+            catch (error) { setRecoveryError(error?.message || 'Could not reload the latest workspace.'); }
+            finally { setRecoveringConflict(false); }
+          }} style={{ border: '1px solid #bda36d', borderRadius: 6, padding: '6px 9px', background: '#3a3020', color: '#f2dfb0', cursor: recoveringConflict ? 'wait' : 'pointer' }}>
+            {recoveringConflict ? 'Backing up and reloading…' : 'Back up local changes & reload'}
+          </button>
+          {recoveryError && <div role="alert" style={{ marginTop: 6 }}>{recoveryError}</div>}
+        </div>}
       </div>
       <App />
     </>;
