@@ -311,10 +311,12 @@ app.post('/api/maps-scraper/jobs', async (req, res) => {
     const scrapePayload = {
       keyword: `${category} in ${location}`,
       lang: 'en',
-      max_depth: 5,
+      // Keep free-tier Chromium memory and runtime bounded. Deeper searches
+      // often restart small Render instances and surface as proxy-generated 502 HTML.
+      max_depth: 2,
       radius: radiusKm,
       zoom: 15,
-      timeout: 240,
+      timeout: 90,
     };
     const requestScrape = (path, payload) => fetch(`${mapsScraperUrl}${path}`, {
       method: 'POST',
