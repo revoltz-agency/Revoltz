@@ -234,3 +234,65 @@ test('subscription checkout locks the organization row and commits the hosted su
     }
   }
 });
+
+
+test('billing refuses to guess when an account belongs to multiple organizations', async () => {
+  const oldEnv = {
+    DATABASE_URL: process.env.DATABASE_URL,
+    RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID,
+    RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET,
+    RAZORPAY_PLAN_ID_STARTER: process.env.RAZORPAY_PLAN_ID_STARTER,
+  };
+  const oldFetch = globalThis.fetch;
+  process.env.DATABASE_URL = 'postgres://example.invalid/agencyos-ambiguous-billing-test';
+  process.env.RAZORPAY_KEY_ID = 'test_key_id';
+  process.env.RAZORPAY_KEY_SECRET = 'test_key_secret';
+  process.env.RAZORPAY_PLAN_ID_STARTER = 'plan_monthly_test';
+  let providerCalls = 0;
+  const memberships = [
+    { organization_id: 'org-one', role: 'owner', status: 'inactive', razorpay_subscription_id: null, cancel_at_period_end: false },
+    { organization_id: 'org-two', role: 'owner', status: 'active', razorpay_subscription_id: 'sub_two', cancel_at_period_end: false },
+  ];
+  const pool = {
+    on() {},
+    async end() {},
+    async query(text) {
+      if (/^\\s*(CREATE TABLE|CREATE INDEX) IF NOT EXISTS/i.test(text) ||
+          /^\\s*ALTER TABLE organization_subscriptions/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\\s*INSERT INTO /i.test(text) && /\\bSELECT\\b/i.test(text)) return { rows: [], rowCount: 0 };
+      throw new Error(`Unexpected billing SQL: ${text}`);
+    },
+    async connect() {
+      return {
+        async query(text) {
+          if (/^\\s*(BEGIN|COMMIT|ROLLBACK)$/i.test(text)) return { rows: [], rowCount: 0 };
+          if (text.includes('FROM organization_memberships m') && text.includes('JOIN organization_subscriptions s')) {
+            return { rows: memberships, rowCount: memberships.length };
+          }
+          throw new Error(`Unexpected billing SQL: ${text}`);
+        },
+        release() {},
+      };
+    },
+  };
+  __setPoolForTests(pool);
+  globalThis.fetch = async () => { providerCalls += 1; throw new Error('Provider must not be called for ambiguous billing.'); };
+  try {
+    await assert.rejects(
+      createRazorpaySubscription('user-multi-org', 'starter'),
+      { statusCode: 409, message: /multiple organizations/i },
+    );
+    await assert.rejects(
+      cancelRazorpaySubscriptionAtPeriodEnd('user-multi-org'),
+      { statusCode: 409, message: /multiple organizations/i },
+    );
+    assert.equal(providerCalls, 0, 'no payment-provider action occurs without an unambiguous organization');
+  } finally {
+    __setPoolForTests(null);
+    globalThis.fetch = oldFetch;
+    for (const [key, value] of Object.entries(oldEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
