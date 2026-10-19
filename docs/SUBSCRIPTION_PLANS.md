@@ -40,7 +40,7 @@ Status: proposed commercial structure. These tiers are not active offers and mus
 2. Checkout must be created for the authenticated organization owner and the selected server-defined plan.
 3. Access to paid features is granted only after a valid, verified provider state/webhook. A checkout redirect alone is not proof of payment.
 4. Webhook signatures must be verified against the exact raw request bytes. Event deduplication and subscription updates must be atomic.
-5. Older provider events must not overwrite newer subscription state. Missing or equal-second timestamps need a deterministic, tested policy.
+5. Older provider events must not overwrite newer subscription state. Timestamped updates require a strictly newer provider timestamp; when events share the same second, the first applied event wins. Once cancelled, completed, or expired, a subscription cannot be reactivated by a non-terminal webhook for that same provider subscription ID. Missing timestamps may update state only before any timestamped event has been recorded.
 6. Cancellation, failed payment, expiry, duplicate delivery, invalid signatures, retry/recovery, and organization isolation must be tested.
 7. Keep billing enforcement disabled until all tests and live smoke checks pass. Never enable paid provider calls silently.
 8. Do not publish or charge these plans until actual pricing, plan IDs, refund/cancellation terms, support contact, privacy/retention, and applicable tax requirements are reviewed.
