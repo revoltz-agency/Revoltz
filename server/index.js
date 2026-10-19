@@ -169,7 +169,10 @@ app.post('/api/billing/webhook', async (req, res) => {
   const eventId = razorpayWebhookEventId(req.headers['x-razorpay-event-id']);
   const eventType = typeof req.body?.event === 'string' ? req.body.event : '';
   const entity = req.body?.payload?.subscription?.entity;
-  if (!eventId || !eventType || typeof entity?.id !== 'string') return res.status(400).json({ error: 'Webhook payload is incomplete.' });
+  const eventCreatedAt = Number(req.body?.created_at);
+  if (!eventId || !eventType || typeof entity?.id !== 'string' || !Number.isSafeInteger(eventCreatedAt) || eventCreatedAt <= 0) {
+    return res.status(400).json({ error: 'Webhook payload is incomplete or has no valid creation timestamp.' });
+  }
   const statusByEvent = {
     'subscription.authenticated': 'authenticated',
     'subscription.activated': 'active',
@@ -186,9 +189,9 @@ app.post('/api/billing/webhook', async (req, res) => {
   if (!nextStatus) return res.status(200).json({ received: true, ignored: true });
   try {
     await ensureSchema();
-    // Deduplicate and apply the event in one SQL statement. This prevents an
-    // older redelivery from changing the subscription after a newer event has
-    // already been processed, and keeps unknown subscriptions retryable.
+    // Deduplicate and apply events atomically. Only a strictly newer provider
+    // event timestamp can update state, and terminal states cannot be reactivated
+    // by delayed active/pending events. Unknown subscriptions remain retryable.
     const outcome = await queryDatabase(
       `WITH known_subscription AS MATERIALIZED (
          SELECT razorpay_subscription_id
@@ -206,14 +209,18 @@ app.post('/api/billing/webhook', async (req, res) => {
          SET status = $2,
              current_start = COALESCE($3, current_start),
              current_end = COALESCE($4, current_end),
+             last_event_created_at = $7,
              updated_at = now()
          WHERE razorpay_subscription_id = $1
            AND EXISTS (SELECT 1 FROM inserted_event)
+           AND (last_event_created_at IS NULL OR $7 > last_event_created_at)
+           AND status NOT IN ('cancelled', 'completed', 'expired')
          RETURNING razorpay_subscription_id
        )
        SELECT EXISTS (SELECT 1 FROM known_subscription) AS subscription_exists,
-              EXISTS (SELECT 1 FROM inserted_event) AS event_inserted`,
-      [entity.id, nextStatus, entity.current_start ?? null, entity.current_end ?? null, eventId, eventType],
+              EXISTS (SELECT 1 FROM inserted_event) AS event_inserted,
+              EXISTS (SELECT 1 FROM updated_subscription) AS subscription_updated`,
+      [entity.id, nextStatus, entity.current_start ?? null, entity.current_end ?? null, eventId, eventType, eventCreatedAt],
     );
     const result = outcome.rows[0] || {};
     if (!result.subscription_exists) {
