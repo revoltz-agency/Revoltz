@@ -1395,6 +1395,7 @@ function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onG
   const [organizationError, setOrganizationError] = useState('');
   const [organizationSaving, setOrganizationSaving] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [selectedPlanKey, setSelectedPlanKey] = useState('starter');
   const [cancelBusy, setCancelBusy] = useState(false);
   const [organizationNotice, setOrganizationNotice] = useState('');
   const [moduleNotice, setModuleNotice] = useState('');
@@ -1450,7 +1451,8 @@ function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onG
       const response = await fetch('/api/workspace/subscription/checkout', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'X-Workspace-CSRF': workspaceCsrf() },
+        headers: { 'Content-Type': 'application/json', 'X-Workspace-CSRF': workspaceCsrf() },
+        body: JSON.stringify({ planKey: selectedPlanKey }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Checkout could not be started.');
@@ -1493,8 +1495,9 @@ function SettingsPage({ config, notice, onRefresh, onNavigate, geminiApiKey, onG
       <section className="surface-card settings-card">
         <div className="card-heading-row"><div><div className="card-kicker">ORGANIZATION & BILLING</div><h2>{organizationLoading ? 'Loading workspace…' : organizationWorkspace?.organization?.name || 'Workspace plan'}</h2></div><CircleDollarSign size={19} className="muted-icon" /></div>
         {organizationError ? <p className="settings-paragraph">{organizationError} Billing controls are unavailable until the organization service is reachable.</p> : <>
-          <p className="settings-paragraph">Plan: <strong>{organizationWorkspace?.subscription?.planKey || 'Starter'}</strong> · Status: <strong>{organizationLoading ? 'Loading' : subscriptionStatus.replaceAll('_', ' ')}</strong></p>
-          <p className="settings-paragraph settings-small-note">Payment status is confirmed by signed server webhooks. Prices and billing intervals are managed in the Razorpay plan configured by the workspace administrator.</p>
+          <p className="settings-paragraph">Current plan: <strong>{organizationWorkspace?.subscription?.planKey || 'Starter'}</strong> · Status: <strong>{organizationLoading ? 'Loading' : subscriptionStatus.replaceAll('_', ' ')}</strong></p>
+          {subscriptionStatus !== 'active' && <label className="field-group"><span>Choose a paid plan</span><select className="field-input" value={selectedPlanKey} onChange={(event) => setSelectedPlanKey(event.target.value)} disabled={checkoutBusy || organizationWorkspace?.organization?.role !== 'owner'}><option value="starter">Starter</option><option value="pro">Pro</option></select></label>}
+          <p className="settings-paragraph settings-small-note">Checkout uses the matching server-configured Razorpay plan. Prices and billing intervals are set in Razorpay, not in this browser. A plan must be configured by the administrator before checkout can work.</p>
           {subscriptionStatus === 'active'
             ? <div className="settings-callout"><CheckCircle2 size={15} /><span>{organizationWorkspace?.subscription?.cancelAtPeriodEnd ? 'Cancellation is scheduled for the end of the billing period.' : 'Your subscription is active.'}</span></div>
             : <button className="button button-primary" type="button" onClick={startSubscriptionCheckout} disabled={organizationLoading || checkoutBusy || organizationWorkspace?.organization?.role !== 'owner'}>{checkoutBusy ? 'Connecting to Razorpay…' : organizationWorkspace?.organization?.role === 'owner' ? 'Continue to secure checkout' : 'Only the owner can manage billing'}</button>}
