@@ -28,14 +28,16 @@ test('deployment smoke check passes only when public config and private-route bo
     ['/api/workspace/organization', response(401, unauthorized)],
     ['/api/workspace/state', response(401, unauthorized)],
     ['/api/workspace/modules/growth_sales/data', response(401, unauthorized)],
+    ['/api/workspace/subscription/checkout', response(401, unauthorized)],
+    ['/api/workspace/subscription/cancel', response(401, unauthorized)],
   ]);
   const result = await runDeploymentSmokeCheck({
     baseUrl: 'https://agencyos.example.test',
     fetchImpl: async (url) => payloads.get(url.pathname),
   });
   assert.equal(result.ready, true, JSON.stringify(result.checks));
-  assert.equal(result.passed, 6);
-  assert.equal(result.total, 6);
+  assert.equal(result.passed, 8);
+  assert.equal(result.total, 8);
 });
 
 test('deployment smoke check blocks a private route that unexpectedly allows anonymous access', async () => {
