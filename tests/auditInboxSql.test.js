@@ -119,7 +119,9 @@ test('schema initialization only issues IF NOT EXISTS DDL and never destroys dat
     assert.deepEqual(values, [], 'DDL must not carry parameters');
     assert.match(text, /^\s*(CREATE TABLE IF NOT EXISTS|CREATE INDEX IF NOT EXISTS|ALTER TABLE (workspace_data ADD COLUMN IF NOT EXISTS revision|workspace_subscriptions ADD COLUMN IF NOT EXISTS last_event_created_at))\s/);
     assert.doesNotMatch(text, /\bDROP\b|\bTRUNCATE\b|\bDELETE\b|\bUPDATE\b/i);
-    if (/^\s*ALTER\b/i.test(text)) assert.match(text, /^\s*ALTER TABLE workspace_data ADD COLUMN IF NOT EXISTS revision bigint NOT NULL DEFAULT 1$/);
+    if (/^\s*ALTER\b/i.test(text)) {
+      assert.match(text, /^\s*ALTER TABLE (workspace_data ADD COLUMN IF NOT EXISTS revision bigint NOT NULL DEFAULT 1|workspace_subscriptions ADD COLUMN IF NOT EXISTS last_event_created_at bigint)$/);
+    }
   }
   const ddl = pool.calls.map((call) => call.text).join('\n');
   assert.match(ddl, /audit_requests/);
