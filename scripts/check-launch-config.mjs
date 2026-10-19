@@ -6,7 +6,6 @@ const REQUIRED_VALUES = [
   ['RAZORPAY_KEY_SECRET', (value) => value.length > 0, 'Razorpay API secret'],
   ['RAZORPAY_PLAN_ID_STARTER', (value) => value.length > 0, 'Razorpay monthly plan ID'],
   ['RAZORPAY_WEBHOOK_SECRET', (value) => value.length > 0, 'Razorpay webhook signing secret'],
-  ['GOOGLE_MAPS_API_KEY', (value) => value.length > 0, 'Google Places API key'],
   ['AUDIT_OWNER_PASSWORD_HASH', (value) => /^scrypt\$[a-f0-9]+\$[a-f0-9]+$/i.test(value), 'Audit Inbox password hash'],
   ['AUDIT_ALLOWED_ORIGINS', (value) => value.split(',').every((origin) => {
     try {
@@ -23,6 +22,18 @@ export function validateLaunchConfiguration(env = process.env) {
   });
 
   checks.push(
+    {
+      key: 'GOOGLE_MAPS_API_KEY',
+      description: 'Optional Google Places integration (not required for launch)',
+      ok: true,
+      configured: Boolean(String(env.GOOGLE_MAPS_API_KEY || '').trim()),
+    },
+    {
+      key: 'RAZORPAY_PLAN_ID_PRO',
+      description: 'Optional Pro tier plan ID (Starter is required)',
+      ok: true,
+      configured: Boolean(String(env.RAZORPAY_PLAN_ID_PRO || '').trim()),
+    },
     {
       key: 'AGENCYOS_BILLING_ENFORCED',
       description: 'Subscription enforcement enabled',
