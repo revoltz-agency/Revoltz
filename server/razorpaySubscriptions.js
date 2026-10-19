@@ -256,8 +256,14 @@ export async function processRazorpayWebhook({ rawBody, signature, eventId }) {
                ))
          )
            AND (
-             ($6::bigint IS NOT NULL AND (last_provider_event_created IS NULL OR last_provider_event_created <= $6::bigint))
+             ($6::bigint IS NOT NULL AND (last_provider_event_created IS NULL OR last_provider_event_created < $6::bigint))
              OR ($6::bigint IS NULL AND last_provider_event_created IS NULL)
+           )
+           -- Once the provider has put a subscription into a terminal state,
+           -- a later-delivered non-terminal event must not reactivate it.
+           AND NOT (
+             status IN ('cancelled', 'completed', 'expired')
+             AND $2::text IN ('created', 'authenticated', 'active', 'pending', 'halted', 'past_due')
            )`,
         [subscriptionId, nextStatus, entity.customer_id || invoice?.customer_id || null, entity.current_start ?? null, entity.current_end ?? null, providerEventCreated, eventOrganizationId, eventCancelAtPeriodEnd],
       );
