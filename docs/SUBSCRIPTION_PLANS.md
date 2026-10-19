@@ -25,6 +25,15 @@ Status: proposed commercial structure. These tiers are not active offers and mus
 - Organization-level collaboration only after team permissions and tenant isolation have been verified.
 - Usage limits and included integrations must be documented before the plan is sold.
 
+## Razorpay server configuration
+
+- Starter checkout requires `RAZORPAY_PLAN_ID_STARTER`.
+- Pro checkout requires `RAZORPAY_PLAN_ID_PRO`.
+- Both plan IDs must be created and reviewed in the Razorpay dashboard before the corresponding tier is offered.
+- Keep `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_WEBHOOK_SECRET` only in the server hosting environment. Never put them in frontend variables, browser storage, or Git.
+- If the selected plan ID is missing, checkout should fail closed with a configuration error; it must not silently switch to another tier.
+- The UI currently offers Starter and Pro checkout choices; Free remains a no-payment tier and is not a Razorpay checkout option. Published prices are still unset.
+
 ## Billing implementation rules
 
 1. The server owns plan definitions, prices, Razorpay plan IDs, and entitlements. Never trust a browser-submitted price or plan ID.
