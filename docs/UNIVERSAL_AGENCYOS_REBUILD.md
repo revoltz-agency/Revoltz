@@ -46,4 +46,4 @@ Add integrations only behind explicit configuration and status checks. Free publ
 
 ## Current implementation note
 
-The navigation was regrouped around universal business workflows and the default landing page was changed to the Growth Dashboard. This is a first safe redesign step, not a claim that every module has been audited or rebuilt. The full feature audit and reliability work remain necessary before calling the system production-ready.
+The navigation was regrouped around universal business workflows and the default landing page was changed to the Growth Dashboard. Website Demo Builder was removed from navigation and its component deleted. This is a first safe redesign step, not a claim that every module has been audited or rebuilt. See `docs/SAAS_READINESS_AUDIT.md` for verified code observations and launch blockers. The full feature audit and reliability work remain necessary before calling the system production-ready.
