@@ -29,7 +29,7 @@ Configure a webhook pointing to `https://YOUR-AGENCYOS-HOST/api/billing/webhook`
 - `subscription.completed`
 - `subscription.expired`
 
-The server verifies the HMAC against the exact raw request body and records provider event IDs for idempotency. The webhook must be tested against the actual host before enabling access enforcement.
+The server verifies the HMAC against the exact raw request body and records provider event IDs for idempotency. Repeated delivery of the same event ID is deduplicated. **Distinct events can still arrive out of order**; the current handler does not compare provider event timestamps before changing subscription status, so event-ordering protection is a remaining acceptance item. The webhook must be tested against the actual host before enabling access enforcement.
 
 ## Release checklist
 
@@ -37,7 +37,7 @@ The server verifies the HMAC against the exact raw request body and records prov
 2. Create a fresh AgencyOS account and start checkout from the signed-in workspace.
 3. Complete the test checkout and confirm the webhook reaches the deployed backend with a valid signature.
 4. Confirm the subscription row becomes `active` and the account status endpoint reports it.
-5. Test invalid signatures, duplicate event IDs, cancelled subscriptions, halted subscriptions, and failed database access.
+5. Test invalid signatures, duplicate event IDs, deliberately out-of-order distinct events, cancelled subscriptions, halted subscriptions, and failed database access. Confirm an older event cannot reactivate a cancelled/expired subscription; if it can, keep enforcement disabled until ordering protection is implemented.
 6. Confirm a non-subscriber receives a subscription-required response only when enforcement is deliberately enabled; confirm an active subscriber can use the workspace.
 7. Verify account A cannot use account B's subscription and that all billing rows are scoped to the authenticated account.
 8. Verify Render's deployed commit, database schema, backups/restore, support contact, privacy notice and cancellation/refund terms.
