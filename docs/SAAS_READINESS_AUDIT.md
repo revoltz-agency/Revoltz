@@ -12,7 +12,7 @@
 | Per-account workspace state | PostgreSQL JSONB row keyed by user ID; API uses authenticated session's user ID | Implemented in code | Test cross-account access through HTTP endpoints and multiple browser sessions |
 | Workspace data model | One JSONB snapshot per account, not relational business entities | Limited | Gradually migrate to typed records only when needed; preserve JSON snapshot and provide reversible migration |
 | Collaboration / organization teams | Current auth model is user-account keyed; no verified organization/member/role model in the reviewed paths | Not ready | Build organizations, membership, roles and invitation flow before marketing team collaboration |
-| Subscription / entitlements | No billing/subscription route identified in the reviewed server routes | Not implemented/verified | Add only after the core workflow is reliable; validate Razorpay webhooks and enforce plans server-side |
+| Subscription / entitlements | Razorpay checkout initiation, signed webhook verification, subscription records, status endpoint, and opt-in server-side access checks exist in code; CI passes | Implemented in code; live lifecycle not verified | Test checkout/webhook against deployed backend, event ordering/idempotency, cancellation, failed payment, account scoping, and support/refund operations before enabling enforcement |
 | Password reset / email verification | No verified implementation in the reviewed auth UI/routes | Not verified | Add secure recovery and verification before broad paid launch; never expose account enumeration |
 | Leads / CRM | Current app has CRM UI and browser-key based records synced through workspace JSON state | Limited | Test CRUD, duplicates, refresh, export and record integrity |
 | Public audit intake | Separate public intake and owner inbox code paths exist | Implemented in code; live delivery/config not verified | Keep it working; verify origin allowlist, DB persistence and notifications in production |
@@ -36,9 +36,21 @@ Do not claim “production-ready SaaS” until these are verified:
 7. **Support/legal:** privacy notice, terms, support process, retention/deletion policy and honest feature/uptime descriptions are available.
 8. **Economics:** free-tier hosting limits, database capacity, backups, email, monitoring and payment fees are understood; never assume “free” means unlimited or sustainable at scale.
 
-## Recommended build sequence
+## Updated build sequence
 
 ### Release 0 — Stabilize the current product
+- Keep the public audit form and data.
+- Remove dead UI and duplicate features, not records.
+- Run unit tests/build and review deployment status.
+- Label each module Working / Limited / Unavailable.
+
+### Release 0.5 — Billing acceptance (code exists; not yet launch-approved)
+- Use Razorpay test credentials and a test plan on the actual deployed AgencyOS backend.
+- Verify checkout creation, signed webhook delivery, duplicate/retried events, active access, cancelled/halted access, and database failure behavior.
+- Confirm all subscription checks use the authenticated account and keep `AGENCYOS_BILLING_ENFORCED=false` until the test matrix passes.
+- Add and test customer-facing cancellation, failed-payment recovery, support and refund procedures before taking live payments.
+
+### Release 1 — Sellable solo workspace
 - Keep the public audit form and data.
 - Remove dead UI and duplicate features, not records.
 - Run unit tests/build and review deployment status.
