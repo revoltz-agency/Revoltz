@@ -27,6 +27,7 @@ Configure a webhook pointing to `https://YOUR-AGENCYOS-HOST/api/billing/webhook`
 - `subscription.resumed`
 - `subscription.cancelled`
 - `subscription.completed`
+- `subscription.expired`
 
 The server verifies the HMAC against the exact raw request body and records provider event IDs for idempotency. The webhook must be tested against the actual host before enabling access enforcement.
 
