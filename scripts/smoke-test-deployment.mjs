@@ -13,12 +13,13 @@ export async function runDeploymentSmokeCheck({
   if (base.protocol !== 'https:') throw new Error('Deployment smoke checks require HTTPS.');
 
   const checks = [];
-  async function request(path, expectedStatus, validate = () => true) {
+  async function request(path, expectedStatus, validate = () => true, { method = 'GET', body } = {}) {
     try {
       const response = await fetchImpl(new URL(path, base), {
-        method: 'GET',
+        method,
         redirect: 'manual',
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        ...(body ? { body: JSON.stringify(body) } : {}),
         signal: AbortSignal.timeout(10_000),
       });
       let payload = null;
@@ -64,6 +65,14 @@ export async function runDeploymentSmokeCheck({
 
   await request('/api/workspace/modules/growth_sales/data', 401, (payload) =>
     payload && typeof payload.error === 'string');
+
+  // These are deliberately anonymous, side-effect-free auth-boundary checks.
+  // A 401 must happen before CSRF validation or any Razorpay provider call.
+  await request('/api/workspace/subscription/checkout', 401, (payload) =>
+    payload && typeof payload.error === 'string', { method: 'POST', body: { planKey: 'starter' } });
+
+  await request('/api/workspace/subscription/cancel', 401, (payload) =>
+    payload && typeof payload.error === 'string', { method: 'POST', body: {} });
 
   const result = {
     baseUrl: base.origin,
