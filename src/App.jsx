@@ -231,7 +231,7 @@ function safeHttpUrl(value) {
 function getDefaultCrm(lead) { return cleanCrmRecord({ ...DEFAULT_CRM, ...(lead?.initialCRM || {}) }); }
 
 function AgencyOSApp() {
-  const [activePage, setActivePage] = useState('Business Management');
+  const [activePage, setActivePage] = useState('Growth Dashboard');
   const [businessProfile, setBusinessProfile] = useState(() => {
     try { const value = JSON.parse(window.localStorage.getItem(BUSINESS_PROFILE_KEY) || 'null'); return value && typeof value === 'object' ? value : null; } catch { return null; }
   });
@@ -876,10 +876,13 @@ function AgencyOSApp() {
 }
 
 const NAV_GROUPS = [
-  { label: 'Customers & sales', icon: Users, items: ['Leads', 'Find Leads', 'Deal Pipeline', 'Sales Engine', 'Campaigns', 'Follow-up Assistant', 'Proposal Builder', 'AI Business Auditor', 'Audit Inbox'] },
-  { label: 'Operations & delivery', icon: BriefcaseBusiness, items: ['Client Onboarding', 'Client Retention', 'Project Tracker', 'Website Delivery Hub', 'Client Activity Log', 'Daily Action Center'] },
-  { label: 'Finance & insights', icon: CircleDollarSign, items: ['Invoice Tracker', 'Cash Flow Planner', 'Expense Tracker', 'Revenue Goals', 'Business Reports', 'Growth Dashboard'] },
-  { label: 'Workspace tools', icon: SettingsIcon, items: ['Quick Notes', 'Website Demo Builder', 'Data Backup'] },
+  { label: 'Overview', icon: LayoutDashboard, items: ['Growth Dashboard', 'Daily Action Center'] },
+  { label: 'Customers & relationships', icon: Users, items: ['Leads', 'Deal Pipeline', 'Follow-up Assistant', 'Client Onboarding', 'Client Retention', 'Client Activity Log'] },
+  { label: 'Operations & delivery', icon: BriefcaseBusiness, items: ['Project Tracker', 'Website Delivery Hub', 'Audit Inbox'] },
+  { label: 'Finance', icon: CircleDollarSign, items: ['Invoice Tracker', 'Expense Tracker', 'Cash Flow Planner', 'Revenue Goals', 'Business Reports'] },
+  { label: 'Growth tools', icon: Target, items: ['Find Leads', 'Campaigns', 'Sales Engine', 'Proposal Builder'] },
+  { label: 'Optional AI & build tools', icon: Sparkles, items: ['AI Business Auditor', 'Website Demo Builder'] },
+  { label: 'Workspace tools', icon: SettingsIcon, items: ['Quick Notes', 'Data Backup'] },
 ];
 function Sidebar({ activePage, onNavigate, open, profile }) {
   const [expandedGroup, setExpandedGroup] = useState(() => NAV_GROUPS.find(group => group.items.includes(activePage))?.label || '');
