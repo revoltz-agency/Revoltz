@@ -67,12 +67,12 @@ test('PostgreSQL webhook processing ignores an older subscription event delivere
     assert.equal(Number(afterMissingTimestamp.rows[0].last_provider_event_created), 1_780_000_000);
     // A terminal provider state is sticky: even a later-timestamp activation
     // for the same subscription must not resurrect it.
-    await sendEvent(eventIds[2], 'subscription.cancelled', 1_780_000_001);
-    await sendEvent(eventIds[3], 'subscription.activated', 1_780_000_002);
+    await sendEvent(eventIds[3], 'subscription.cancelled', 1_780_000_001);
+    await sendEvent(eventIds[4], 'subscription.activated', 1_780_000_002);
     // Same-second events are deterministic: the first applied state wins.
-    await sendEvent(eventIds[4], 'subscription.created', 1_780_000_002);
+    await sendEvent(eventIds[5], 'subscription.created', 1_780_000_002);
     // Re-delivery of the same event ID must be acknowledged as duplicate.
-    const duplicate = await sendEvent(eventIds[2], 'subscription.activated', 1_780_000_003);
+    const duplicate = await sendEvent(eventIds[3], 'subscription.activated', 1_780_000_003);
     assert.equal(duplicate.duplicate, true);
 
     const saved = await queryDatabase(
