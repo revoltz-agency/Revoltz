@@ -222,6 +222,28 @@ async function requireWorkspaceUser(req, res) {
   }
 }
 
+async function requireActiveSubscription(userId, res) {
+  const config = razorpayConfig();
+  if (!config.enforcementEnabled) return true;
+  if (!config.configured || !isDatabaseConfigured()) {
+    res.status(503).json({ error: 'Subscription verification is unavailable. Please contact support.' });
+    return false;
+  }
+  try {
+    await ensureSchema();
+    const result = await queryDatabase(
+      "SELECT 1 FROM workspace_subscriptions WHERE user_id = $1 AND status = 'active' AND (current_end IS NULL OR current_end >= EXTRACT(EPOCH FROM now())::bigint) LIMIT 1",
+      [userId],
+    );
+    if (result.rows.length) return true;
+    res.status(402).json({ error: 'An active AgencyOS subscription is required to use this workspace.', code: 'subscription_required' });
+    return false;
+  } catch {
+    workspaceUnavailable(res);
+    return false;
+  }
+}
+
 app.post('/api/workspace/register', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDatabaseConfigured()) return workspaceUnavailable(res);
@@ -288,6 +310,7 @@ app.get('/api/workspace/state', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const session = await requireWorkspaceUser(req, res);
   if (!session) return;
+  if (!(await requireActiveSubscription(session.user.id, res))) return;
   try {
     return res.json(await readWorkspaceState(session.user.id));
   } catch {
@@ -301,6 +324,7 @@ app.put('/api/workspace/state', async (req, res) => {
   if (!session) return;
   if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
   if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  if (!(await requireActiveSubscription(session.user.id, res))) return;
   const state = req.body?.state;
   if (!state || typeof state !== 'object' || Array.isArray(state)) {
     return res.status(400).json({ error: 'Workspace state must be an object.' });
@@ -330,6 +354,7 @@ app.put('/api/workspace/state', async (req, res) => {
 app.use(['/api/places', '/api/website', '/api/maps-scraper'], async (req, res, next) => {
   const session = await requireWorkspaceUser(req, res);
   if (!session) return;
+  if (!(await requireActiveSubscription(session.user.id, res))) return;
   req.workspaceUser = session.user;
   return next();
 });
