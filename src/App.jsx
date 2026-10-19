@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity, ArrowDownUp, ArrowRight, ArrowUpRight, Award, BarChart3, Building2, CalendarDays, ClipboardList,
+  Activity, ArrowDownUp, ArrowRight, ArrowUpRight, Award, BarChart3, Building2, BriefcaseBusiness, CalendarDays, ClipboardList,
   Check, CheckCircle2, ChevronDown, CircleHelp, Clock3, Copy, Download, ExternalLink, FileText, CircleDollarSign,
   Filter, Flame, Globe2, Inbox, LayoutDashboard, LoaderCircle, MapPin, Menu, MessageCircle,
   MoreHorizontal, Phone, Plus, RefreshCw, Search, Send, Settings as SettingsIcon, ShieldCheck, LogOut,
