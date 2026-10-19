@@ -140,7 +140,9 @@ test('webhook subscription updates carry provider event time to prevent stale st
     const update = queries.find((query) => query.text.includes('UPDATE organization_subscriptions'));
     assert.ok(update, 'the subscription row is updated');
     assert.match(update.text, /last_provider_event_created\s*=\s*COALESCE\(\$6::bigint, last_provider_event_created\)/);
-    assert.match(update.text, /last_provider_event_created IS NULL OR last_provider_event_created <= \$6::bigint/);
+    assert.match(update.text, /last_provider_event_created IS NULL OR last_provider_event_created < \$6::bigint/);
+    assert.match(update.text, /status IN \('cancelled', 'completed', 'expired'\)/, 'terminal subscription states must be protected');
+    assert.match(update.text, /AND \$2::text IN \('created', 'authenticated', 'active', 'pending', 'halted', 'past_due'\)/, 'non-terminal events must not reactivate a terminal subscription');
     assert.equal(update.values[0], 'sub_order_test');
     assert.equal(update.values[1], 'active');
     assert.equal(update.values[5], 1_780_000_000);
