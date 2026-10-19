@@ -101,6 +101,28 @@ test('organization overview returns membership, subscription and explicit module
   assert.ok(db.calls.some((call) => call.text.includes('JOIN organization_subscriptions s')));
 });
 
+test('organization access fails closed when a user has ambiguous memberships', async () => {
+  const db = useOrganizationDatabase();
+  const originalQuery = db.pool.query.bind(db.pool);
+  db.pool.query = async (text, values = []) => {
+    if (text.includes('FROM organization_memberships m') && text.includes('JOIN organizations o')) {
+      return { rows: [
+        { organization_id: 'org-first', organization_name: 'First workspace', role: 'owner', plan_key: 'starter', subscription_status: 'active', current_period_start: null, current_period_end: null, cancel_at_period_end: false },
+        { organization_id: 'org-second', organization_name: 'Second workspace', role: 'owner', plan_key: 'starter', subscription_status: 'active', current_period_start: null, current_period_end: null, cancel_at_period_end: false },
+      ], rowCount: 2 };
+    }
+    return originalQuery(text, values);
+  };
+  await assert.rejects(readOrganizationWorkspace(USER_ID), {
+    statusCode: 409,
+    code: 'AMBIGUOUS_ORGANIZATION_MEMBERSHIP',
+  });
+  await assert.rejects(requireOrganizationRole(USER_ID, ['owner', 'admin']), {
+    statusCode: 409,
+    code: 'AMBIGUOUS_ORGANIZATION_MEMBERSHIP',
+  });
+});
+
 test('owners can save a bounded allowlisted module selection', async () => {
   const db = useOrganizationDatabase();
   const result = await updateOrganizationModules(USER_ID, ['growth_sales', 'tools', 'growth_sales']);
