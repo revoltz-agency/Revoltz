@@ -397,7 +397,7 @@ function AgencyOSApp() {
       const response = await fetch('/api/config', { cache: 'no-store' });
       const data = await response.json();
       setApiConfig({ loading: false, reachable: true, ...data });
-      setSearchForm((current) => ({ ...current, source: 'gemini' }));
+      setSearchForm((current) => ({ ...current, source: 'free-research' }));
       const savedReferences = savedPlaceIds.map((id) => savedLeadPlaceholder(id));
       const savedGeminiReferences = savedGeminiPlaceIds.map((id) => savedGeminiLeadPlaceholder(id));
       setLeads((current) => {
@@ -1012,7 +1012,7 @@ function FinderPage({ searchForm, setSearchForm, onSearch, searching, searchErro
   const sourceChoice = searchForm.source || 'gemini';
   const sourceOptions = [
     { id: 'free-research', title: 'Free web research', detail: 'No API key · no usage charges', disabled: false },
-    { id: 'maps-scraper', title: 'Google Maps Scraper', detail: config.mapsScraperConfigured ? 'Protected scraper · no API key' : 'Scraper service not connected', disabled: !config.mapsScraperConfigured },
+    // Unreliable free-tier Chromium scraper is intentionally hidden until it passes live reliability checks.
     { id: 'gemini', title: 'Gemini AI + Google Maps', detail: 'May require billing / quota', disabled: false },
     { id: 'google', title: 'Google Places', detail: config.googlePlacesConfigured ? 'API · billing may apply' : 'Server API key required', disabled: !config.googlePlacesConfigured },
     { id: 'openrouter', title: 'OpenRouter + live web', detail: 'Paid · not for zero-cost mode', disabled: true },
