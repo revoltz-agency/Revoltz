@@ -136,15 +136,36 @@ export function workspaceCsrfAllowed(req, session) {
 }
 export async function readWorkspaceState(userId) {
   await ensureSchema();
-  const result = await queryDatabase('SELECT state, updated_at FROM workspace_data WHERE user_id = $1', [userId]);
-  return { state: result.rows[0]?.state && typeof result.rows[0].state === 'object' ? result.rows[0].state : {}, updatedAt: result.rows[0]?.updated_at || null };
+  const result = await queryDatabase('SELECT state, updated_at, revision FROM workspace_data WHERE user_id = $1', [userId]);
+  const row = result.rows[0];
+  return {
+    state: row?.state && typeof row.state === 'object' ? row.state : {},
+    updatedAt: row?.updated_at || null,
+    revision: row ? Number(row.revision || 1) : null,
+  };
 }
-export async function writeWorkspaceState(userId, state) {
+export async function writeWorkspaceState(userId, state, expectedRevision = null) {
   await ensureSchema();
-  await queryDatabase(
-    `INSERT INTO workspace_data (user_id, state, updated_at) VALUES ($1, $2::jsonb, now())
-     ON CONFLICT (user_id) DO UPDATE SET state = EXCLUDED.state, updated_at = now()`,
-    [userId, JSON.stringify(state)],
-  );
-  return { saved: true };
+  let result;
+  if (expectedRevision === null) {
+    // First save is insert-only: never replace a row created by another tab/session.
+    result = await queryDatabase(
+      `INSERT INTO workspace_data (user_id, state, updated_at, revision) VALUES ($1, $2::jsonb, now(), 1)
+       ON CONFLICT (user_id) DO NOTHING RETURNING revision`,
+      [userId, JSON.stringify(state)],
+    );
+  } else {
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+      throw Object.assign(new Error('Workspace revision is invalid.'), { statusCode: 400 });
+    }
+    result = await queryDatabase(
+      `UPDATE workspace_data SET state = $2::jsonb, updated_at = now(), revision = revision + 1
+       WHERE user_id = $1 AND revision = $3 RETURNING revision`,
+      [userId, JSON.stringify(state), expectedRevision],
+    );
+  }
+  if (!result.rowCount) {
+    throw Object.assign(new Error('Workspace changed in another tab or session. Reload the workspace before saving again.'), { statusCode: 409 });
+  }
+  return { saved: true, revision: Number(result.rows[0].revision) };
 }
