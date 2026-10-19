@@ -5,7 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getGooglePlaceDetails, searchGooglePlaces } from './googlePlaces.js';
 import { auditWebsite } from './websiteAudit.js';
-import { isDatabaseConfigured } from './db.js';
+import { ensureSchema, isDatabaseConfigured, queryDatabase } from './db.js';
+import { normalizeRazorpaySubscriptionStatus, razorpayConfig, razorpayWebhookEventId, verifyRazorpayWebhook } from './razorpay.js';
 import {
   AUDIT_STATUS_TRANSITIONS,
   auditRetentionPurgeStatement,
@@ -94,7 +95,109 @@ app.use('/api/audit/requests', (req, res, next) => {
   return next();
 });
 
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '2mb', verify: (req, res, buffer) => { if (req.originalUrl === '/api/billing/webhook') req.rawBody = Buffer.from(buffer); } }));
+
+// --- Razorpay subscription billing -----------------------------------------
+// Checkout is opt-in and fails closed until every required secret/plan is set.
+// This endpoint creates a Razorpay subscription; it never marks an account paid.
+// Only a signature-verified webhook may update subscription status.
+app.get('/api/billing/config', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const config = razorpayConfig();
+  return res.json({ configured: config.configured, enforcementEnabled: config.enforcementEnabled });
+});
+
+app.get('/api/billing/status', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  if (!isDatabaseConfigured()) return workspaceUnavailable(res);
+  try {
+    await ensureSchema();
+    const result = await queryDatabase(
+      'SELECT razorpay_subscription_id, plan_id, status, short_url, current_start, current_end, updated_at FROM workspace_subscriptions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1',
+      [session.user.id],
+    );
+    const subscription = result.rows[0] || null;
+    return res.json({ subscription: subscription ? { id: subscription.razorpay_subscription_id, planId: subscription.plan_id, status: subscription.status, shortUrl: subscription.short_url, currentStart: subscription.current_start, currentEnd: subscription.current_end, updatedAt: subscription.updated_at } : null, enforcementEnabled: razorpayConfig().enforcementEnabled });
+  } catch { return workspaceUnavailable(res); }
+});
+
+app.post('/api/billing/subscribe', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  const config = razorpayConfig();
+  if (!config.configured) return res.status(503).json({ error: 'Subscriptions are not configured yet. Please contact Revoltz support.' });
+  try {
+    await ensureSchema();
+    const existing = await queryDatabase(
+      "SELECT razorpay_subscription_id, status, short_url FROM workspace_subscriptions WHERE user_id = $1 AND status IN ('created', 'authenticated', 'active', 'pending') ORDER BY updated_at DESC LIMIT 1",
+      [session.user.id],
+    );
+    if (existing.rows[0]?.short_url) return res.json({ subscriptionId: existing.rows[0].razorpay_subscription_id, shortUrl: existing.rows[0].short_url, status: existing.rows[0].status, reused: true });
+    const response = await fetch('https://api.razorpay.com/v1/subscriptions', {
+      method: 'POST',
+      headers: { Authorization: 'Basic ' + Buffer.from(config.keyId + ':' + config.keySecret).toString('base64'), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan_id: config.planId, customer_notify: 1, total_count: 120, notes: { workspace_user_id: session.user.id, product: 'Revoltz AgencyOS' } }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const subscription = await response.json().catch(() => ({}));
+    if (!response.ok || typeof subscription.id !== 'string' || typeof subscription.short_url !== 'string') {
+      console.error('[billing] Razorpay subscription creation failed:', response.status);
+      return res.status(502).json({ error: 'Razorpay could not create the subscription. Please try again later.' });
+    }
+    await queryDatabase(
+      'INSERT INTO workspace_subscriptions (user_id, razorpay_subscription_id, plan_id, status, short_url, current_start, current_end) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (razorpay_subscription_id) DO NOTHING',
+      [session.user.id, subscription.id, config.planId, normalizeRazorpaySubscriptionStatus(subscription.status), subscription.short_url, subscription.current_start ?? null, subscription.current_end ?? null],
+    );
+    return res.status(201).json({ subscriptionId: subscription.id, shortUrl: subscription.short_url, status: normalizeRazorpaySubscriptionStatus(subscription.status) });
+  } catch (error) {
+    console.error('[billing] Subscription setup failed:', error?.message || 'unknown error');
+    return workspaceUnavailable(res);
+  }
+});
+
+app.post('/api/billing/webhook', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const config = razorpayConfig();
+  if (!config.configured || !verifyRazorpayWebhook(req.rawBody, req.headers['x-razorpay-signature'], config.webhookSecret)) {
+    return res.status(400).json({ error: 'Invalid webhook signature.' });
+  }
+  const eventId = razorpayWebhookEventId(req.headers['x-razorpay-event-id']);
+  const eventType = typeof req.body?.event === 'string' ? req.body.event : '';
+  const entity = req.body?.payload?.subscription?.entity;
+  if (!eventId || !eventType || typeof entity?.id !== 'string') return res.status(400).json({ error: 'Webhook payload is incomplete.' });
+  const statusByEvent = {
+    'subscription.authenticated': 'authenticated',
+    'subscription.activated': 'active',
+    'subscription.charged': 'active',
+    'subscription.pending': 'pending',
+    'subscription.halted': 'halted',
+    'subscription.paused': 'paused',
+    'subscription.resumed': 'active',
+    'subscription.cancelled': 'cancelled',
+    'subscription.completed': 'completed',
+  };
+  const nextStatus = statusByEvent[eventType];
+  if (!nextStatus) return res.status(200).json({ received: true, ignored: true });
+  try {
+    await ensureSchema();
+    await queryDatabase('INSERT INTO razorpay_webhook_events (event_id, event_type) VALUES ($1, $2) ON CONFLICT (event_id) DO NOTHING', [eventId, eventType]);
+    const inserted = await queryDatabase('SELECT event_id FROM razorpay_webhook_events WHERE event_id = $1', [eventId]);
+    // The unique event key makes delivery idempotent. Reprocessing an existing
+    // event is harmless because the same status is applied to the same entity.
+    await queryDatabase(
+      'UPDATE workspace_subscriptions SET status = $2, current_start = COALESCE($3, current_start), current_end = COALESCE($4, current_end), updated_at = now() WHERE razorpay_subscription_id = $1',
+      [entity.id, nextStatus, entity.current_start ?? null, entity.current_end ?? null],
+    );
+    return res.json({ received: true, processed: true, eventId });
+  } catch {
+    return workspaceUnavailable(res);
+  }
+});
 
 // --- Multi-user AgencyOS workspace accounts --------------------------------
 const workspaceLoginLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 10 });
