@@ -78,7 +78,7 @@ export default function BusinessManagement({ profile, onUpdateProfile, onNavigat
 
   function persistTeam(next) {
     setTeam(next);
-    try { localStorage.setItem(TEAM_KEY, JSON.stringify(next)); setNotice('Changes saved to your business workspace.'); }
+    try { localStorage.setItem(TEAM_KEY, JSON.stringify(next)); setNotice('Team and payroll changes saved in this browser only. They do not sync to other devices.'); }
     catch { setNotice('Could not save these changes in this browser. Export a backup and remove older records.'); }
   }
   function saveEmployee(event) {
