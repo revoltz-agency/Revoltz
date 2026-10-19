@@ -257,7 +257,7 @@ test('billing refuses to guess when an account belongs to multiple organizations
     on() {},
     async end() {},
     async query(text) {
-      if (/^\\s*(BEGIN|COMMIT|ROLLBACK)$/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*(BEGIN|COMMIT|ROLLBACK)$/i.test(text)) return { rows: [], rowCount: 0 };
       if (/^\s*(CREATE TABLE|CREATE INDEX) IF NOT EXISTS/i.test(text) ||
           /^\s*ALTER TABLE /i.test(text)) return { rows: [], rowCount: 0 };
       if (/^\s*INSERT INTO /i.test(text) && /\bSELECT\b/i.test(text)) return { rows: [], rowCount: 0 };
@@ -266,7 +266,7 @@ test('billing refuses to guess when an account belongs to multiple organizations
     async connect() {
       return {
         async query(text) {
-          if (/^\\s*(BEGIN|COMMIT|ROLLBACK)$/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/^\s*(BEGIN|COMMIT|ROLLBACK)$/i.test(text)) return { rows: [], rowCount: 0 };
           if (text.includes('FROM organization_memberships m') && text.includes('JOIN organization_subscriptions s')) {
             return { rows: memberships, rowCount: memberships.length };
           }
