@@ -240,6 +240,7 @@ export default function WorkspaceAuthGate() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [storageReady, setStorageReady] = useState(false);
+  const [subscriptionRequired, setSubscriptionRequired] = useState(false);
   const [syncStatus, setSyncStatus] = useState(VERCEL_PREVIEW ? 'preview' : 'saved');
   const [cleanupStorage, setCleanupStorage] = useState(null);
   const [recoveringConflict, setRecoveringConflict] = useState(false);
@@ -251,9 +252,17 @@ export default function WorkspaceAuthGate() {
 
   const loadWorkspace = useCallback(async (account) => {
     const response = await fetch('/api/workspace/state', { credentials: 'include', cache: 'no-store' });
+    const result = await response.json().catch(() => ({}));
+    if (response.status === 402 && result.code === 'subscription_required') {
+      window.__agencyOSUser = account;
+      setUser(account);
+      setSubscriptionRequired(true);
+      setStorageReady(true);
+      return;
+    }
     if (!response.ok) throw new Error('Could not load your saved workspace. Please sign in again.');
-    const result = await response.json();
     const cleanup = installWorkspaceStorage(account.id, result.state || {}, Number.isSafeInteger(result.revision) ? result.revision : null);
+    setSubscriptionRequired(false);
     setSyncStatus('saved');
     window.__agencyOSUser = account;
     setCleanupStorage(() => cleanup);
@@ -389,6 +398,19 @@ export default function WorkspaceAuthGate() {
   if (busy) {
     return <div className="workspace-auth-page"><div className="workspace-auth-card"><LoaderCircle className="spin" size={24} /><p>Checking your workspace session…</p></div></div>;
   }
+  if (user && storageReady && subscriptionRequired) {
+    return <div className="workspace-auth-page"><section className="workspace-auth-card">
+      <div className="workspace-auth-mark">R</div>
+      <div className="workspace-auth-eyebrow">REVOLTZ AI · AGENCYOS</div>
+      <h1>Choose your monthly plan</h1>
+      <p className="workspace-auth-description">Your account is signed in. An active subscription is required to open this workspace. Continue to Razorpay to review the plan price and terms before approving payment.</p>
+      {billingConfigured ? <button className="workspace-auth-submit" type="button" disabled={billingLoading} onClick={startSubscription}>{billingLoading ? <LoaderCircle className="spin" size={16} /> : <ArrowRight size={16} />}{billingLoading ? 'Opening secure checkout…' : 'Continue to Razorpay checkout'}</button> : <p className="workspace-auth-error">Subscription checkout is not configured yet. Please contact Revoltz support.</p>}
+      {billingError && <div className="workspace-auth-error" role="alert">{billingError}</div>}
+      <button className="workspace-auth-switch" type="button" onClick={() => window.location.reload()}>I have completed payment — check again</button>
+      <div className="workspace-auth-security"><ShieldCheck size={14} /> Access is granted only after the server verifies an active subscription.</div>
+    </section></div>;
+  }
+
   if (user && storageReady) {
     const syncLabels = {
       saved: 'All changes saved to your account',
