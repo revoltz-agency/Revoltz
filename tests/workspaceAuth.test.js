@@ -169,6 +169,24 @@ test('workspace session cookies are secure, CSRF-bound, renewable, and revocable
   assert.ok(clearWorkspaceCookies(request).every((value) => /Max-Age=0/.test(value)));
 });
 
+test('workspace sessions expire at the idle and absolute deadlines', async () => {
+  const db = useWorkspaceDatabase();
+  await registerWorkspaceUser({ name: 'Priya', email: 'priya@example.test', password: 'a-strong-test-password' });
+  const start = new Date('2026-01-01T00:00:00.000Z');
+  const session = await createWorkspaceSession(USER_ID, start);
+  const request = {
+    secure: true,
+    headers: { cookie: `${WORKSPACE_SESSION_COOKIE}=${session.token}`, host: 'agencyos.example.test', 'x-forwarded-proto': 'https' },
+  };
+
+  assert.equal(await resolveWorkspaceSession(request, { now: new Date(start.getTime() + 14 * 24 * 60 * 60 * 1000) }), null,
+    'an idle-expired session must not resolve');
+  assert.equal(await resolveWorkspaceSession(request, { now: new Date(start.getTime() + 30 * 24 * 60 * 60 * 1000) }), null,
+    'a session must not outlive its absolute expiry');
+  assert.equal(db.calls.filter((call) => call.text.includes('UPDATE workspace_sessions SET last_used_at')).length, 0,
+    'expired sessions must not be renewed');
+});
+
 test('workspace state stays isolated between accounts on reads and writes', async () => {
   const db = useWorkspaceDatabase();
   const otherUserId = '7a6b5c4d-3e2f-1a09-8b7c-6d5e4f3a2b1c';
