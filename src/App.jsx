@@ -28,7 +28,6 @@ import DailyActionCenter from './components/DailyActionCenter.jsx';
 import QuickNotes from './components/QuickNotes.jsx';
 import ExpenseTracker from './components/ExpenseTracker.jsx';
 import ProposalBuilder from './components/ProposalBuilder.jsx';
-import WebsiteDemoBuilder from './components/WebsiteDemoBuilder.jsx';
 import ClientRetention from './components/ClientRetention.jsx';
 import WebsiteDelivery from './components/WebsiteDelivery.jsx';
 import AuditInbox from './components/AuditInbox.jsx';
@@ -82,7 +81,6 @@ const NAV_ITEMS = [
   { label: 'Daily Action Center', icon: ClipboardList },
   { label: 'Quick Notes', icon: FileText },
   { label: 'Expense Tracker', icon: CircleDollarSign },
-  { label: 'Website Demo Builder', icon: Globe2 },
   { label: 'Proposal Builder', icon: FileText },
   { label: 'Settings', icon: SettingsIcon },
 ];
@@ -844,7 +842,6 @@ function AgencyOSApp() {
           {activePage === 'Daily Action Center' && <DailyActionCenter />}
           {activePage === 'Quick Notes' && <QuickNotes />}
           {activePage === 'Expense Tracker' && <ExpenseTracker />}
-          {activePage === 'Website Demo Builder' && <WebsiteDemoBuilder />}
       {activePage === 'Proposal Builder' && <ProposalBuilder />}
           {activePage === 'Find Leads' && <FinderPage searchForm={searchForm} setSearchForm={setSearchForm} onSearch={runLeadSearch} searching={searching} searchError={searchError} results={finderResults} source={finderSource} warnings={finderWarnings} groundingSources={finderGroundingSources} requests={finderRequests} geocodingRequests={finderGeocodingRequests} history={searchHistory} onSelectHistory={(entry) => setSearchForm((current) => ({ ...current, ...entry }))} hasRun={searchHasRun} query={finderQuery} configLoading={apiConfig.loading} leads={leads} onAdd={addLeadToWorkspace} onOpenLead={openLead} onManualEntries={addManualLeadEntries} config={apiConfig} />}
           {activePage === 'Leads' && <PageErrorBoundary><LeadsPage leads={sortedLeads} allCount={leads.length} getCrm={getCrm} search={leadSearch} setSearch={setLeadSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} priorityFilter={priorityFilter} setPriorityFilter={setPriorityFilter} sortKey={sortKey} sortDirection={sortDirection} onSort={handleSort} onOpenLead={openLead} onPitch={handleOpenPitch} onStatus={updateStatus} onBulkUpdate={updateCrmBulk} onBulkRemove={removeSavedLeads} onRemove={removeSavedLead} onRefreshDetails={refreshSavedPlace} refreshingDetailsIds={refreshingDetailsIds} onExport={() => exportCsv(leads)} onFind={() => setActivePage('Find Leads')} /></PageErrorBoundary>}
@@ -881,7 +878,7 @@ const NAV_GROUPS = [
   { label: 'Operations & delivery', icon: BriefcaseBusiness, items: ['Project Tracker', 'Website Delivery Hub', 'Audit Inbox'] },
   { label: 'Finance', icon: CircleDollarSign, items: ['Invoice Tracker', 'Expense Tracker', 'Cash Flow Planner', 'Revenue Goals', 'Business Reports'] },
   { label: 'Growth tools', icon: Target, items: ['Find Leads', 'Campaigns', 'Sales Engine', 'Proposal Builder'] },
-  { label: 'Optional AI & build tools', icon: Sparkles, items: ['AI Business Auditor', 'Website Demo Builder'] },
+  { label: 'Optional AI & build tools', icon: Sparkles, items: ['AI Business Auditor'] },
   { label: 'Workspace tools', icon: SettingsIcon, items: ['Quick Notes', 'Data Backup'] },
 ];
 function Sidebar({ activePage, onNavigate, open, profile }) {
