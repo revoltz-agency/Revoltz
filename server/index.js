@@ -411,9 +411,8 @@ const googleApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || '';
 const auditPublicIntakeEnabled = String(process.env.AUDIT_PUBLIC_INTAKE_ENABLED || '')
   .trim().toLowerCase() === 'true';
 const auditRetentionDays = retentionDaysFromEnv(process.env.AUDIT_RETENTION_DAYS);
-// Passwordless mode requested by the operator: the inbox only requires its database.
-// WARNING: audit request contact details and inbox controls are accessible to anyone
-// who can reach this service. Keep the service private if the data is confidential.
+// Owner authentication is mandatory: the inbox contains contact details and management controls.
+// A database connection alone must never make private inbox routes available.
 const auditInboxConfigured = () => isDatabaseConfigured() && isOwnerAuthConfigured();
 
 const auditLoginLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 5 });
