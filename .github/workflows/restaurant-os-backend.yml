@@ -26,8 +26,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: restaurant-saas/backend/package.json
       - run: npm install --no-audit --no-fund
       - run: node --check src/server.mjs
       - run: node --check src/migrate.mjs
