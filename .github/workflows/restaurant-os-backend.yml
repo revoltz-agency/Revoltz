@@ -1,0 +1,34 @@
+name: Restaurant OS backend checks
+
+on:
+  pull_request:
+    paths:
+      - "restaurant-saas/backend/**"
+      - ".github/workflows/restaurant-os-backend.yml"
+  push:
+    branches:
+      - "product/restaurant-saas-foundation"
+    paths:
+      - "restaurant-saas/backend/**"
+      - ".github/workflows/restaurant-os-backend.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: restaurant-saas/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: restaurant-saas/backend/package.json
+      - run: npm install --no-audit --no-fund
+      - run: node --check src/server.mjs
+      - run: node --check src/migrate.mjs
+      - run: npm test
