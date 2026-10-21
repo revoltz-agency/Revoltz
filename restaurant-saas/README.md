@@ -115,10 +115,24 @@ Acceptance: order totals are reproducible; cancelled/voided orders are auditable
 - Design the local runtime so a pilot can operate without paid cloud hosting; cloud sync and managed SaaS availability depend on provider free-tier limits.
 - Keep secrets out of source control and never commit real customer data.
 
-## Immediate next engineering tasks
+## Current implementation status — 22 October 2026
 
-1. Review FloCafe upstream code and current MIT license before adopting it.
-2. Run its documented install, build and test workflow in an isolated environment.
-3. Create a small technical spike for India tax/rounding, local order persistence, KOT and printer abstraction.
-4. Define sync/event contracts before adding multi-tenant cloud sync.
-5. Add automated tests before exposing the pilot to real restaurant transactions.
+The isolated branch now contains:
+- A standalone browser POS pilot at restaurant-saas/pilot/ (sample/local-only data).
+- An independent Node.js API package at restaurant-saas/backend/.
+- A PostgreSQL migration for restaurant/outlet memberships, menu, orders, kitchen tickets, payments, inventory, stock movements and audit events.
+- Row-level security policies intended as defense-in-depth for tenant-scoped tables.
+- A migration runner and API health/readiness endpoints.
+- GitHub Actions checks for API syntax and automated HTTP behavior.
+
+Important: the schema has been committed but has **not** yet been applied to a database or validated against a live PostgreSQL instance. API data routes deliberately return HTTP 501; authentication and server-enforced tenant authorization are not implemented yet. No database was connected and no deployment was performed.
+
+## Next engineering tasks
+
+1. Run the new backend checks in GitHub Actions and fix any failures.
+2. Validate the SQL migration against a disposable PostgreSQL database and test cross-tenant isolation.
+3. Implement secure authentication, sessions, tenant creation and membership bootstrap before enabling data routes.
+4. Implement menu APIs and server-side validated order creation with idempotency, then kitchen ticket transitions.
+5. Add GST/tax configuration and rounding tests; do not use the pilot's illustrative 5% tax as production tax logic.
+6. Evaluate FloCafe's exact upstream release/license/build in isolation before deciding whether to adapt any code.
+7. Only after tests pass, provision a dedicated preview database/service; never reuse the AgencyOS or Revoltz-1 database.
