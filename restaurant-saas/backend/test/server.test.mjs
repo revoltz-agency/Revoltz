@@ -41,3 +41,22 @@ test('non-GET requests are rejected', async () => {
     assert.equal(response.headers.get('allow'), 'GET');
   }, null);
 });
+
+test('database readiness reports a successful probe only when the database query works', async () => {
+  const fakeDb = { query: async (sql) => { assert.equal(sql, 'SELECT 1'); return { rows: [{ '?column?': 1 }] }; } };
+  await withServer(async (base) => {
+    const response = await fetch(base + '/readyz');
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true, database: 'connected' });
+  }, fakeDb);
+});
+
+test('database readiness hides connection error details', async () => {
+  const fakeDb = { query: async () => { throw new Error('private database host'); } };
+  await withServer(async (base) => {
+    const response = await fetch(base + '/readyz');
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { ok: false, database: 'unavailable' });
+    assert.equal(JSON.stringify(await response.json()).includes('private database host'), false);
+  }, fakeDb);
+});
