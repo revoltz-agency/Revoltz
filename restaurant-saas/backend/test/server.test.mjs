@@ -56,7 +56,8 @@ test('database readiness hides connection error details', async () => {
   await withServer(async (base) => {
     const response = await fetch(base + '/readyz');
     assert.equal(response.status, 503);
-    assert.deepEqual(await response.json(), { ok: false, database: 'unavailable' });
-    assert.equal(JSON.stringify(await response.json()).includes('private database host'), false);
+    const payload = await response.json();
+    assert.deepEqual(payload, { ok: false, database: 'unavailable' });
+    assert.equal(JSON.stringify(payload).includes('private database host'), false);
   }, fakeDb);
 });
