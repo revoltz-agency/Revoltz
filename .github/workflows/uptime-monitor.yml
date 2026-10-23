@@ -1,0 +1,53 @@
+name: Revoltz uptime monitor
+
+on:
+  schedule:
+    # GitHub Actions uses UTC. Runs every five minutes; scheduled starts can be delayed.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: revoltz-uptime-monitor
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Check public website and new AgencyOS service
+        shell: bash
+        run: |
+          set +e
+          failed=0
+
+          check_url() {
+            local name="$1"
+            local url="$2"
+            local code
+
+            echo "Checking ${name}: ${url}"
+            code="$(curl --silent --show-error --location \
+              --connect-timeout 15 --max-time 90 \
+              --retry 1 --retry-delay 5 --retry-all-errors \
+              --output /dev/null --write-out '%{http_code}' "${url}")"
+            local result=$?
+
+            if [ "${result}" -eq 0 ] && [[ "${code}" =~ ^[23][0-9][0-9]$ ]]; then
+              echo "PASS ${name}: HTTP ${code}"
+            else
+              echo "::error title=Uptime check failed::${name} returned HTTP ${code:-no response} (curl exit ${result})"
+              failed=1
+            fi
+          }
+
+          # Static public marketing website (GitHub Pages).
+          check_url "Revoltz website" "https://revoltz-agency.github.io/Revoltz/"
+
+          # New SaaS service only; do not change or deploy the original production service.
+          check_url "Revoltz-1 AgencyOS" "https://revoltz-1.onrender.com/agencyos"
+
+          exit "${failed}"
