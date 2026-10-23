@@ -99,6 +99,58 @@ function enforceActiveSubscription(membership) {
   return true;
 }
 
+
+/**
+ * Explicit, short-lived test activation. This is deliberately unavailable unless
+ * all three test-only guards are configured on the isolated Render test service.
+ * It never creates a payment-provider ID and must not be used for real customers.
+ */
+export async function activateTestOrganizationSubscription(userId, requestedEmail) {
+  await ensureSchema();
+  const enabled = String(process.env.AGENCYOS_TEST_SUBSCRIPTION_ACTIVATION || '').trim().toLowerCase() === 'true';
+  const serviceName = String(process.env.RENDER_SERVICE_NAME || '').trim();
+  const allowlistedEmail = String(process.env.AGENCYOS_TEST_SUBSCRIPTION_EMAIL || '').trim().toLowerCase();
+  const email = typeof requestedEmail === 'string' ? requestedEmail.trim().toLowerCase() : '';
+  if (!enabled || serviceName !== 'Revoltz-1' || !allowlistedEmail || email !== allowlistedEmail) {
+    throw Object.assign(new Error('Test subscription activation is not available for this account.'), { statusCode: 404 });
+  }
+  const membership = await getMembership(userId);
+  if (membership.role !== 'owner') {
+    throw Object.assign(new Error('Only the workspace owner can activate the test subscription.'), { statusCode: 403 });
+  }
+  const result = await queryDatabase(
+    `UPDATE organization_subscriptions s
+     SET plan_key = 'starter',
+         status = 'active',
+         current_period_start = now(),
+         current_period_end = now() + interval '30 days',
+         cancel_at_period_end = false,
+         razorpay_customer_id = NULL,
+         razorpay_subscription_id = NULL,
+         updated_at = now()
+     FROM organizations o
+     JOIN workspace_users u ON u.id = o.owner_user_id
+     WHERE s.organization_id = o.id
+       AND o.id = $1
+       AND o.owner_user_id = $2
+       AND lower(u.email) = $3
+     RETURNING s.plan_key, s.status, s.current_period_start, s.current_period_end`,
+    [membership.organization_id, userId, allowlistedEmail],
+  );
+  if (!result.rows[0]) {
+    throw Object.assign(new Error('The allowlisted test account was not found for this workspace.'), { statusCode: 403 });
+  }
+  return {
+    testOnly: true,
+    subscription: {
+      planKey: result.rows[0].plan_key,
+      status: result.rows[0].status,
+      currentPeriodStart: result.rows[0].current_period_start,
+      currentPeriodEnd: result.rows[0].current_period_end,
+    },
+  };
+}
+
 export async function requireActiveOrganizationSubscription(userId) {
   await ensureSchema();
   if (String(process.env.AGENCYOS_BILLING_ENFORCED || '').trim().toLowerCase() !== 'true') return true;

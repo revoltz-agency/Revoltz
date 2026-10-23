@@ -39,7 +39,7 @@ import {
 import { clientKey, createPlacesRateLimiter, createRateLimiter, originAllowed, sha256Hex } from './security.js';
 import { checkSharedRateLimit, resetSharedRateLimit } from './sharedRateLimit.js';
 import { notifyTelegramAuditRequest } from './telegram.js';
-import { readOrganizationModuleData, readOrganizationWorkspace, requireActiveOrganizationSubscription, requireOrganizationModule, requireOrganizationRole, updateOrganizationModules, writeOrganizationModuleData } from './organizationWorkspace.js';
+import { readOrganizationModuleData, readOrganizationWorkspace, activateTestOrganizationSubscription, requireActiveOrganizationSubscription, requireOrganizationModule, requireOrganizationRole, updateOrganizationModules, writeOrganizationModuleData } from './organizationWorkspace.js';
 import { cancelRazorpaySubscriptionAtPeriodEnd, createRazorpaySubscription, processRazorpayWebhook } from './razorpaySubscriptions.js';
 import {
   authenticateWorkspaceUser,
@@ -230,6 +230,21 @@ app.post('/api/workspace/subscription/checkout', async (req, res) => {
   try {
     const planKey = typeof req.body?.planKey === 'string' ? req.body.planKey : 'starter';
     return res.json(await createRazorpaySubscription(session.user.id, planKey));
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return workspaceUnavailable(res);
+  }
+});
+
+app.post('/api/workspace/subscription/test-activate', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const session = await requireWorkspaceUser(req, res);
+  if (!session) return;
+  if (!workspaceOriginAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' });
+  if (!workspaceCsrfAllowed(req, session)) return res.status(403).json({ error: 'CSRF check failed.' });
+  try {
+    const result = await activateTestOrganizationSubscription(session.user.id, session.user.email);
+    return res.json(result);
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     return workspaceUnavailable(res);
