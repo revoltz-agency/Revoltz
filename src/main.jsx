@@ -6,6 +6,8 @@ import { isAppPath, useRouterPath } from './lib/router.js';
 import './styles.css';
 // Loaded last so the REVOLTZ AI site styles win over the workspace defaults.
 import './site/site.css';
+// Workspace-only motion layer; public marketing build uses src/site-main.jsx instead.
+import './agencyos-motion.css';
 
 class StartupErrorBoundary extends React.Component {
   constructor(props) {
