@@ -104,6 +104,7 @@ export default function MacbookScrollDemo() {
           <div className="rv-macbook-floor" aria-hidden="true" />
         </div>
         <p className="rv-macbook-caption"><span><i /> CONCEPT UI</span> This is a visual demo with sample data—not a live dashboard or a claim of product functionality.</p>
+        <div className="rv-macbook-cta"><a className="rv-button rv-button-primary" href="#contact">Explore a solution for your business <ArrowUpRight size={16} /></a></div>
       </div>
     </section>
   );
