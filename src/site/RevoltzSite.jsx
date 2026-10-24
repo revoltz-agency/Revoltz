@@ -25,7 +25,6 @@ import {
 } from 'lucide-react';
 import { AUDIT_API_BASE_URL, CONTACT_EMAIL, CONTACT_SUBJECT } from './siteConfig.js';
 import DemosSection from './SiteDemos.jsx';
-import MacbookScrollDemo from './MacbookScrollDemo.jsx';
 import { Reveal } from './SitePrimitives.jsx';
 
 const SITE_ROOT = (import.meta.env?.BASE_URL || '/').replace(/\/?$/, '/');
@@ -613,7 +612,6 @@ export default function RevoltzSite() {
       <main id="main">
         <Hero />
         <DemosSection />
-        <MacbookScrollDemo />
         <ServicesSection />
         <ProcessSection />
         <ReviewsSection />
