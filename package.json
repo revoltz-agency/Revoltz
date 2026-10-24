@@ -21,7 +21,8 @@
     "pg": "^8.23.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "undici": "^7.16.0"
+    "undici": "^7.16.0",
+    "gsap": "^3.13.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",
