@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import Lenis from 'lenis';
+import 'lenis/dist/lenis.css';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -29,6 +31,7 @@ import { Reveal } from './SitePrimitives.jsx';
 
 
 const SITE_ROOT = (import.meta.env?.BASE_URL || '/').replace(/\/?$/, '/');
+let siteLenis = null;
 
 /**
  * Lightweight, progressive-enhancement planet scene for the public marketing site.
@@ -250,6 +253,10 @@ function scrollToSection(id) {
   if (!target) return;
 
   window.history.replaceState({}, '', `#${id}`);
+  if (siteLenis) {
+    siteLenis.scrollTo(target, { offset: 0, immediate: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches });
+    return;
+  }
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   window.requestAnimationFrame(() => target.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' }));
 }
@@ -815,9 +822,30 @@ function SiteFooter() {
 
 export default function RevoltzSite() {
   useEffect(() => {
-    if (!window.location.hash) return;
-    const sectionId = window.location.hash.slice(1);
-    window.requestAnimationFrame(() => document.getElementById(sectionId)?.scrollIntoView({ block: 'start' }));
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reducedMotion) {
+      siteLenis = new Lenis({
+        autoRaf: true,
+        anchors: true,
+        smoothWheel: true,
+        lerp: 0.09,
+        wheelMultiplier: 0.9,
+      });
+    }
+
+    if (window.location.hash) {
+      const sectionId = window.location.hash.slice(1);
+      window.requestAnimationFrame(() => {
+        const target = document.getElementById(sectionId);
+        if (target && siteLenis) siteLenis.scrollTo(target, { immediate: true });
+        else target?.scrollIntoView({ block: 'start' });
+      });
+    }
+
+    return () => {
+      siteLenis?.destroy();
+      siteLenis = null;
+    };
   }, []);
 
   return (
