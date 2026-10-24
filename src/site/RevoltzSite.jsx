@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { AUDIT_API_BASE_URL, CONTACT_EMAIL, CONTACT_SUBJECT } from './siteConfig.js';
 import DemosSection from './SiteDemos.jsx';
+import MacbookScrollDemo from './MacbookScrollDemo.jsx';
 import { Reveal } from './SitePrimitives.jsx';
 
 
@@ -920,6 +921,7 @@ export default function RevoltzSite() {
       <SiteNav />
       <main id="main">
         <Hero />
+        <MacbookScrollDemo />
         <DemosSection />
         <ServicesSection />
         <ProcessSection />
