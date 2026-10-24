@@ -313,6 +313,12 @@
 
 /* Keyboard and touch users get the same clear state cues as pointer users. */
 .rv-root :is(a, button, select, input, textarea, summary) { -webkit-tap-highlight-color: transparent; }
+.rv-root :is(a, button, select, input, textarea, summary):focus-visible {
+  outline: 2px solid #aabaff;
+  outline-offset: 4px;
+}
+.rv-nav-toggle:focus-visible { border-radius: 10px; }
+.rv-mobile-links > a:focus-visible { color: #fff; background: rgba(135,154,255,.08); }
 .rv-faq details { transition: border-color .25s ease, background .25s ease; }
 .rv-faq details[open] { border-color: rgba(139,162,255,.27); background: rgba(115,135,224,.035); }
 .rv-faq details > summary::marker { color: #a8b8ff; }
