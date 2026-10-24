@@ -26,8 +26,12 @@ export default function MacbookScrollDemo() {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const rect = section.getBoundingClientRect();
-        const travel = Math.max(1, rect.height - window.innerHeight);
-        const next = Math.min(1, Math.max(0, (window.innerHeight - rect.top) / travel));
+        // Map the section's entry through the viewport to a gradual reveal.
+        // Avoid dividing by sectionHeight - viewportHeight: short sections
+        // would otherwise jump straight to 100% on the first scroll event.
+        const start = window.innerHeight * 0.9;
+        const distance = Math.max(window.innerHeight * 0.7, rect.height * 0.65);
+        const next = Math.min(1, Math.max(0, (start - rect.top) / distance));
         setProgress(next);
       });
     };
