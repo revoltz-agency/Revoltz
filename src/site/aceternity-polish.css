@@ -357,3 +357,48 @@
   .rv-preview-screen > .rv-mock-page,
   .rv-audit-report, .rv-report-item { animation: none !important; }
 }
+
+
+/* Immersive, scroll-driven globe backdrop — deliberately lightweight and accessible. */
+.rv-planet-canvas {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  opacity: .78;
+  mix-blend-mode: screen;
+  contain: strict;
+}
+.rv-root > :not(.rv-planet-canvas) {
+  position: relative;
+  z-index: 1;
+}
+.rv-root {
+  background-color: transparent;
+  background-image:
+    linear-gradient(180deg, rgba(7,10,18,.18) 0%, rgba(7,10,18,.46) 42%, rgba(7,10,18,.76) 100%),
+    radial-gradient(1000px 520px at 51% -14%, rgba(38,71,149,.12), transparent 68%);
+}
+.rv-hero {
+  background: linear-gradient(180deg, rgba(7,10,18,.38), rgba(7,10,18,.08) 45%, rgba(7,10,18,.3));
+}
+.rv-section-heading,
+.rv-hero-copy,
+.rv-hero-art-wrap,
+.rv-contact-layout,
+.rv-footer-main {
+  text-shadow: 0 1px 24px rgba(0,0,0,.2);
+}
+.rv-planet-canvas + .rv-skip { position: absolute; }
+@media (max-width: 760px) {
+  .rv-planet-canvas { opacity: .52; }
+  .rv-root {
+    background-image: linear-gradient(180deg, rgba(7,10,18,.25), rgba(7,10,18,.64) 54%, rgba(7,10,18,.86));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-planet-canvas { opacity: .28; }
+}
