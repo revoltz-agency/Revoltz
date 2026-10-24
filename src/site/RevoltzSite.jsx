@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -27,7 +27,194 @@ import { AUDIT_API_BASE_URL, CONTACT_EMAIL, CONTACT_SUBJECT } from './siteConfig
 import DemosSection from './SiteDemos.jsx';
 import { Reveal } from './SitePrimitives.jsx';
 
+
 const SITE_ROOT = (import.meta.env?.BASE_URL || '/').replace(/\/?$/, '/');
+
+/**
+ * Lightweight, progressive-enhancement planet scene for the public marketing site.
+ * Canvas 2D keeps this dependency-free and avoids blocking the page on large GLTF assets.
+ */
+function PlanetBackdrop() {
+  const canvasRef = React.useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d', { alpha: true });
+    if (!canvas || !ctx) return undefined;
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let raf = 0;
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    let lastTime = 0;
+    let elapsed = 0;
+    let scrollProgress = 0;
+    const stars = Array.from({ length: 170 }, (_, index) => ({
+      x: ((index * 73.17) % 997) / 997,
+      y: ((index * 137.31) % 991) / 991,
+      radius: 0.35 + ((index * 17) % 13) / 10,
+      phase: (index * 2.399) % (Math.PI * 2),
+    }));
+    const pings = Array.from({ length: 22 }, (_, index) => ({
+      angle: (index * 2.399) % (Math.PI * 2),
+      latitude: -0.76 + ((index * 37) % 151) / 100,
+      phase: (index * 0.37) % 1,
+    }));
+
+    const resize = () => {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      dpr = Math.min(window.devicePixelRatio || 1, 1.6);
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    const updateScroll = () => {
+      const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+      scrollProgress = Math.min(1, Math.max(0, window.scrollY / max));
+    };
+
+    const draw = (time) => {
+      if (!ctx) return;
+      const dt = Math.min(0.05, lastTime ? (time - lastTime) / 1000 : 0.016);
+      lastTime = time;
+      if (!reducedMotion) elapsed += dt;
+      ctx.clearRect(0, 0, width, height);
+
+      // Sparse stars and soft, slowly breathing nebulae.
+      const nebula = ctx.createRadialGradient(width * 0.55, height * 0.28, 0, width * 0.55, height * 0.28, Math.max(width, height) * 0.72);
+      nebula.addColorStop(0, 'rgba(53, 77, 170, 0.11)');
+      nebula.addColorStop(0.48, 'rgba(46, 47, 126, 0.045)');
+      nebula.addColorStop(1, 'rgba(7, 10, 18, 0)');
+      ctx.fillStyle = nebula;
+      ctx.fillRect(0, 0, width, height);
+      stars.forEach((star) => {
+        const twinkle = reducedMotion ? 0.72 : 0.42 + (Math.sin(elapsed * 0.8 + star.phase) + 1) * 0.28;
+        ctx.beginPath();
+        ctx.arc(star.x * width, star.y * height, star.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(195, 211, 255,' + (twinkle * 0.58) + ')';
+        ctx.fill();
+      });
+
+      // Scroll choreography: oversized low globe in the hero, drifting across the page as it recedes.
+      const narrow = width < 720;
+      const startX = width * (narrow ? 0.52 : 0.73);
+      const endX = width * (narrow ? 0.5 : 0.52);
+      const swing = Math.sin(scrollProgress * Math.PI * 2.15) * width * (narrow ? 0.06 : 0.18);
+      const cx = startX + (endX - startX) * scrollProgress + swing;
+      const startRadius = Math.min(width * (narrow ? 0.68 : 0.46), height * 0.58);
+      const radius = startRadius * (1 - scrollProgress * 0.43);
+      const cy = height * (narrow ? 0.91 : 0.83) - scrollProgress * height * 0.28;
+      const rotation = elapsed * 0.035 + scrollProgress * Math.PI * 1.25;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(rotation);
+
+      // Atmospheric halo.
+      const halo = ctx.createRadialGradient(0, 0, radius * 0.72, 0, 0, radius * 1.42);
+      halo.addColorStop(0, 'rgba(77, 112, 255, 0.17)');
+      halo.addColorStop(0.58, 'rgba(75, 111, 255, 0.09)');
+      halo.addColorStop(1, 'rgba(75, 111, 255, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * 1.42, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Sphere with a shaded terminator and subtle mint/blue rim.
+      const sphere = ctx.createRadialGradient(-radius * 0.38, -radius * 0.42, radius * 0.05, radius * 0.08, radius * 0.12, radius * 1.16);
+      sphere.addColorStop(0, 'rgba(57, 91, 173, 0.83)');
+      sphere.addColorStop(0.48, 'rgba(22, 42, 91, 0.86)');
+      sphere.addColorStop(0.78, 'rgba(8, 18, 43, 0.94)');
+      sphere.addColorStop(1, 'rgba(4, 8, 22, 0.98)');
+      ctx.fillStyle = sphere;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * 0.995, 0, Math.PI * 2);
+      ctx.clip();
+
+      // Longitudes and latitudes give the globe depth without a heavy 3D runtime.
+      ctx.lineWidth = Math.max(0.7, radius * 0.0025);
+      ctx.strokeStyle = 'rgba(127, 163, 255, 0.17)';
+      for (let i = -3; i <= 3; i += 1) {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, Math.abs(Math.cos(i * 0.34)) * radius, radius, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      for (let i = -2; i <= 2; i += 1) {
+        const lat = i * 0.31;
+        const y = Math.sin(lat) * radius;
+        const rx = Math.cos(lat) * radius;
+        ctx.beginPath();
+        ctx.ellipse(0, y, rx, Math.max(2, radius * 0.12 * Math.cos(lat)), 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Abstract land-like ribbons, intentionally illustrative rather than a geographic map.
+      ctx.fillStyle = 'rgba(104, 158, 179, 0.19)';
+      const landShapes = [
+        [-0.36, -0.34, 0.23, 0.11], [-0.12, -0.22, 0.16, 0.22],
+        [0.18, -0.36, 0.22, 0.13], [0.34, -0.05, 0.13, 0.23],
+        [-0.42, 0.12, 0.18, 0.12], [-0.04, 0.28, 0.27, 0.1],
+      ];
+      landShapes.forEach(([x, y, rx, ry]) => {
+        ctx.beginPath();
+        ctx.ellipse(x * radius, y * radius, rx * radius, ry * radius, x * 2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Golden radar pings pulse across the surface.
+      pings.forEach((ping) => {
+        const x = Math.cos(ping.angle + rotation * 0.22) * Math.cos(ping.latitude) * radius * 0.82;
+        const y = Math.sin(ping.latitude) * radius * 0.78;
+        const pulse = reducedMotion ? 0.5 : (elapsed * 0.32 + ping.phase) % 1;
+        ctx.beginPath();
+        ctx.arc(x, y, 1.5 + pulse * radius * 0.06, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 210, 122,' + ((1 - pulse) * 0.5) + ')';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(1.2, radius * 0.006), 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 220, 157, 0.82)';
+        ctx.fill();
+      });
+      ctx.restore();
+
+      // Rim highlight.
+      ctx.lineWidth = Math.max(1, radius * 0.009);
+      ctx.strokeStyle = 'rgba(126, 177, 255, 0.36)';
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * 0.99, -Math.PI * 0.82, Math.PI * 0.58);
+      ctx.stroke();
+      ctx.restore();
+
+      if (!reducedMotion) raf = window.requestAnimationFrame(draw);
+    };
+
+    resize();
+    updateScroll();
+    window.addEventListener('resize', resize, { passive: true });
+    window.addEventListener('scroll', updateScroll, { passive: true });
+    if (reducedMotion) draw(0);
+    else raf = window.requestAnimationFrame(draw);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('scroll', updateScroll);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="rv-planet-canvas" aria-hidden="true" />;
+}
+
 
 function scrollToSection(id) {
   if (typeof window === 'undefined' || !id) return;
