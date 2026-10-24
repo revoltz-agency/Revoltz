@@ -121,4 +121,9 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .rv-macbook-device { will-change: auto; transition: none; }
+  .rv-macbook-cta .rv-button { transition: none !important; }
+  .rv-macbook-stage,
+  .rv-macbook-screen-shell,
+  .rv-macbook-base,
+  .rv-macbook-floor { scroll-behavior: auto; animation: none !important; }
 }
