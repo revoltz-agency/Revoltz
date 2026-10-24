@@ -1,0 +1,151 @@
+/* Aceternity-inspired polish for the public REVOLTZ marketing site.
+   Lightweight CSS only: no extra runtime dependency, with reduced-motion support. */
+
+.rv-hero {
+  isolation: isolate;
+}
+.rv-hero::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  top: -18rem;
+  left: 22%;
+  width: min(70rem, 110vw);
+  height: 48rem;
+  transform: translateX(-18%);
+  background: radial-gradient(ellipse at center, rgba(75, 104, 255, .15) 0%, rgba(116, 75, 232, .08) 32%, transparent 68%);
+  filter: blur(18px);
+  animation: rv-aceternity-spotlight 14s ease-in-out infinite alternate;
+}
+.rv-hero::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  inset: 0;
+  opacity: .38;
+  background: radial-gradient(circle at 50% 0%, rgba(120, 142, 255, .12), transparent 54%);
+  mask-image: linear-gradient(180deg, #000 0%, transparent 78%);
+}
+.rv-hero h1 span {
+  background-image: linear-gradient(100deg, #a5bbff 0%, #8f9cff 28%, #c4a3ff 54%, #8edbff 76%, #a5bbff 100%);
+  background-size: 220% 100%;
+  animation: rv-aceternity-gradient 11s ease-in-out infinite;
+}
+.rv-system-visual {
+  isolation: isolate;
+  transition: border-color .35s ease, box-shadow .35s ease, transform .35s ease;
+}
+.rv-system-visual::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: -45%;
+  left: -70%;
+  width: 45%;
+  height: 190%;
+  pointer-events: none;
+  opacity: 0;
+  transform: rotate(22deg);
+  background: linear-gradient(90deg, transparent, rgba(175, 191, 255, .10), rgba(175, 191, 255, .34), transparent);
+  transition: opacity .35s ease;
+}
+.rv-system-visual:hover {
+  border-color: rgba(155, 173, 255, .42);
+  box-shadow: 0 38px 110px -52px rgba(76, 91, 210, .78), inset 0 1px rgba(255,255,255,.07);
+  transform: translateY(-3px);
+}
+.rv-system-visual:hover::after {
+  opacity: 1;
+  animation: rv-aceternity-beam 1.25s ease-out both;
+}
+.rv-service-row {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transition: border-color .28s ease, background .28s ease, transform .28s ease, box-shadow .28s ease;
+}
+.rv-service-row::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at 0% 50%, rgba(98, 119, 255, .13), transparent 62%);
+  transition: opacity .28s ease;
+}
+.rv-service-row:hover {
+  transform: translateX(4px);
+  border-color: rgba(142, 160, 255, .34);
+  box-shadow: 0 16px 45px -34px rgba(104, 112, 255, .7);
+}
+.rv-service-row:hover::before { opacity: 1; }
+.rv-service-icon {
+  transition: color .28s ease, background .28s ease, border-color .28s ease, transform .28s ease;
+}
+.rv-service-row:hover .rv-service-icon {
+  color: #e2e7ff;
+  background: rgba(105, 119, 255, .16);
+  border-color: rgba(149, 164, 255, .38);
+  transform: translateY(-2px);
+}
+.rv-button-primary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow: 0 0 0 1px rgba(181, 193, 255, .12), 0 8px 28px -14px rgba(112, 112, 255, .8);
+  transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+}
+.rv-button-primary::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  transform: translateX(-130%) skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.2), transparent);
+}
+.rv-button-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 1px rgba(181, 193, 255, .22), 0 13px 34px -13px rgba(112, 112, 255, .9);
+  filter: saturate(1.12);
+}
+.rv-button-primary:hover::after { animation: rv-aceternity-button-shine .8s ease-out; }
+
+@keyframes rv-aceternity-spotlight {
+  from { transform: translate3d(-18%, 0, 0) scale(.96); opacity: .7; }
+  to { transform: translate3d(-7%, 2.5rem, 0) scale(1.08); opacity: 1; }
+}
+@keyframes rv-aceternity-gradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes rv-aceternity-beam {
+  0% { left: -70%; }
+  100% { left: 145%; }
+}
+@keyframes rv-aceternity-button-shine {
+  to { transform: translateX(140%) skewX(-18deg); }
+}
+
+@media (max-width: 760px) {
+  .rv-hero::before { left: 0; top: -12rem; width: 130vw; height: 36rem; }
+  .rv-system-visual:hover { transform: none; }
+  .rv-service-row:hover { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-hero::before,
+  .rv-hero h1 span,
+  .rv-system-visual:hover::after,
+  .rv-button-primary:hover::after {
+    animation: none !important;
+  }
+  .rv-system-visual,
+  .rv-service-row,
+  .rv-service-icon,
+  .rv-button-primary {
+    transition: none !important;
+  }
+}
