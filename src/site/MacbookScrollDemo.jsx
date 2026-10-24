@@ -26,11 +26,10 @@ export default function MacbookScrollDemo() {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const rect = section.getBoundingClientRect();
-        // Map the section's entry through the viewport to a gradual reveal.
-        // Avoid dividing by sectionHeight - viewportHeight: short sections
-        // would otherwise jump straight to 100% on the first scroll event.
-        const start = window.innerHeight * 0.9;
-        const distance = Math.max(window.innerHeight * 0.7, rect.height * 0.65);
+        // Keep the transformation active over a longer scroll distance so
+        // the tilt and lift are visibly noticeable instead of finishing early.
+        const start = window.innerHeight * 0.85;
+        const distance = Math.max(window.innerHeight * 1.8, rect.height * 1.1);
         const next = Math.min(1, Math.max(0, (start - rect.top) / distance));
         setProgress(next);
       });
@@ -46,9 +45,9 @@ export default function MacbookScrollDemo() {
     };
   }, []);
 
-  const tilt = 22 - progress * 22;
-  const lift = 42 - progress * 42;
-  const scale = 0.88 + progress * 0.12;
+  const tilt = 38 - progress * 38;
+  const lift = 78 - progress * 78;
+  const scale = 0.78 + progress * 0.22;
 
   return (
     <section className="rv-section rv-macbook-section" id="product-preview" ref={sectionRef}>
