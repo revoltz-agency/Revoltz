@@ -265,6 +265,7 @@ function scrollToSection(id) {
 
 const NAV_LINKS = [
   { id: 'solutions', label: 'Solutions' },
+  { id: 'product-preview', label: 'Product preview' },
   { id: 'demos', label: 'Demos' },
   { id: 'process', label: 'Our approach' },
   { id: 'reviews', label: 'Reviews' },
