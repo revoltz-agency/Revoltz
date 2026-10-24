@@ -903,6 +903,7 @@ export default function RevoltzSite() {
 
   return (
     <div className="rv-root">
+      <PlanetBackdrop />
       <a className="rv-skip" href="#main">Skip to content</a>
       <SiteNav />
       <main id="main">
