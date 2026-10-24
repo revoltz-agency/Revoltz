@@ -279,7 +279,7 @@ function SystemMap() {
 function Hero() {
   return (
     <section className="rv-hero" id="top">
-      <div className="rv-hero-atmosphere" aria-hidden="true"><span className="rv-hero-grid" /><span className="rv-hero-glow rv-hero-glow-blue" /><span className="rv-hero-glow rv-hero-glow-violet" /></div>
+      <div className="rv-hero-atmosphere" aria-hidden="true"><span className="rv-hero-grid" /><span className="rv-hero-glow rv-hero-glow-blue" /><span className="rv-hero-glow rv-hero-glow-violet" /><span className="rv-cubes-grid"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></span></div>
       <div className="rv-shell rv-hero-layout">
         <div className="rv-hero-copy">
           <Reveal>
