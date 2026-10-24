@@ -866,6 +866,17 @@ function SiteFooter() {
 
 export default function RevoltzSite() {
   useEffect(() => {
+    const root = document.querySelector('.rv-root');
+    const spotlightTargets = '.rv-service-row, .rv-process-step, .rv-commitment, .rv-review-placeholder, .rv-service-visual, .rv-mac-panel, .rv-mac-metrics > div';
+    const updateSpotlight = (event) => {
+      const target = event.target instanceof Element ? event.target.closest(spotlightTargets) : null;
+      if (!target || !root?.contains(target)) return;
+      const bounds = target.getBoundingClientRect();
+      target.style.setProperty('--rv-spot-x', ((event.clientX - bounds.left) / Math.max(1, bounds.width) * 100) + '%');
+      target.style.setProperty('--rv-spot-y', ((event.clientY - bounds.top) / Math.max(1, bounds.height) * 100) + '%');
+    };
+    root?.addEventListener('pointermove', updateSpotlight, { passive: true });
+
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const animationContext = gsap.context(() => {
       if (!reducedMotion) {
@@ -895,6 +906,7 @@ export default function RevoltzSite() {
     }
 
     return () => {
+      root?.removeEventListener('pointermove', updateSpotlight);
       animationContext.revert();
       siteLenis?.destroy();
       siteLenis = null;
