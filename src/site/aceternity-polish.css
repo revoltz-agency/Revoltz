@@ -402,3 +402,19 @@
 @media (prefers-reduced-motion: reduce) {
   .rv-planet-canvas { opacity: .28; }
 }
+
+
+/* Vanta's WebGL canvas stays behind hero content; CSS atmosphere remains the fallback. */
+.rv-hero {
+  position: relative;
+  overflow: clip;
+}
+.rv-hero .vanta-canvas {
+  z-index: -1 !important;
+  pointer-events: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-hero .vanta-canvas {
+    display: none !important;
+  }
+}
