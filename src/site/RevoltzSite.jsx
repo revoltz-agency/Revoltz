@@ -366,7 +366,7 @@ function SiteNav() {
   useEffect(() => {
     if (!open) return undefined;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') close();
+      if (event.key === 'Escape') setOpen(false);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
