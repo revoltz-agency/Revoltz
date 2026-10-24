@@ -2,6 +2,14 @@
 
 REVOLTZ AI is the public marketing site. AgencyOS is the signed-in workspace for lead research and agency operations. The GitHub Pages build contains only the marketing site; the internal app is served by the Express deployment.
 
+## Website links
+
+- **Redesigned marketing-site preview (feature branch):** https://revoltz-agencyos-test-git-feature-aceternity-mar-bb0c0e-revoltz.vercel.app
+- **GitHub Pages site:** https://revoltz-agency.github.io/Revoltz/ — currently published from `main`, so it may not include the latest redesign.
+- **Redesign pull request:** https://github.com/revoltz-agency/Revoltz/pull/62
+
+The Vercel link is a preview URL, not a custom domain or confirmed production URL. Keep the existing production deployment unchanged until the redesign is verified and explicitly approved.
+
 ## AgencyOS lead sources
 
 Find Leads offers several explicit choices. **Free web research is the default for every workspace**, so a new user can start without adding an API key or triggering provider charges. It opens public search links and provides a verification checklist; it does not scrape those pages or auto-populate business records.

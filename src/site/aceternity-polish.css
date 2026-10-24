@@ -1,0 +1,581 @@
+/* Aceternity-inspired polish for the public REVOLTZ marketing site.
+   Lightweight CSS only: no extra runtime dependency, with reduced-motion support. */
+
+.rv-hero {
+  isolation: isolate;
+}
+.rv-hero::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  top: -18rem;
+  left: 22%;
+  width: min(70rem, 110vw);
+  height: 48rem;
+  transform: translateX(-18%);
+  background: radial-gradient(ellipse at center, rgba(75, 104, 255, .15) 0%, rgba(116, 75, 232, .08) 32%, transparent 68%);
+  filter: blur(18px);
+  animation: rv-aceternity-spotlight 14s ease-in-out infinite alternate;
+}
+.rv-hero::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  inset: 0;
+  opacity: .38;
+  background: radial-gradient(circle at 50% 0%, rgba(120, 142, 255, .12), transparent 54%);
+  mask-image: linear-gradient(180deg, #000 0%, transparent 78%);
+}
+.rv-hero h1 span {
+  background-image: linear-gradient(100deg, #a5bbff 0%, #8f9cff 28%, #c4a3ff 54%, #8edbff 76%, #a5bbff 100%);
+  background-size: 220% 100%;
+  animation: rv-aceternity-gradient 11s ease-in-out infinite;
+}
+.rv-system-visual {
+  isolation: isolate;
+  transition: border-color .35s ease, box-shadow .35s ease, transform .35s ease;
+}
+.rv-system-visual::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: -45%;
+  left: -70%;
+  width: 45%;
+  height: 190%;
+  pointer-events: none;
+  opacity: 0;
+  transform: rotate(22deg);
+  background: linear-gradient(90deg, transparent, rgba(175, 191, 255, .10), rgba(175, 191, 255, .34), transparent);
+  transition: opacity .35s ease;
+}
+.rv-system-visual:hover {
+  border-color: rgba(155, 173, 255, .42);
+  box-shadow: 0 38px 110px -52px rgba(76, 91, 210, .78), inset 0 1px rgba(255,255,255,.07);
+  transform: translateY(-3px);
+}
+.rv-system-visual:hover::after {
+  opacity: 1;
+  animation: rv-aceternity-beam 1.25s ease-out both;
+}
+.rv-service-row {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transition: border-color .28s ease, background .28s ease, transform .28s ease, box-shadow .28s ease;
+}
+.rv-service-row::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at 0% 50%, rgba(98, 119, 255, .13), transparent 62%);
+  transition: opacity .28s ease;
+}
+.rv-service-row:hover {
+  transform: translateX(4px);
+  border-color: rgba(142, 160, 255, .34);
+  box-shadow: 0 16px 45px -34px rgba(104, 112, 255, .7);
+}
+.rv-service-row:hover::before { opacity: 1; }
+.rv-service-icon {
+  transition: color .28s ease, background .28s ease, border-color .28s ease, transform .28s ease;
+}
+.rv-service-row:hover .rv-service-icon {
+  color: #e2e7ff;
+  background: rgba(105, 119, 255, .16);
+  border-color: rgba(149, 164, 255, .38);
+  transform: translateY(-2px);
+}
+.rv-button-primary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow: 0 0 0 1px rgba(181, 193, 255, .12), 0 8px 28px -14px rgba(112, 112, 255, .8);
+  transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+}
+.rv-button-primary::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  transform: translateX(-130%) skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.2), transparent);
+}
+.rv-button-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 1px rgba(181, 193, 255, .22), 0 13px 34px -13px rgba(112, 112, 255, .9);
+  filter: saturate(1.12);
+}
+.rv-button-primary:hover::after { animation: rv-aceternity-button-shine .8s ease-out; }
+
+@keyframes rv-aceternity-spotlight {
+  from { transform: translate3d(-18%, 0, 0) scale(.96); opacity: .7; }
+  to { transform: translate3d(-7%, 2.5rem, 0) scale(1.08); opacity: 1; }
+}
+@keyframes rv-aceternity-gradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes rv-aceternity-beam {
+  0% { left: -70%; }
+  100% { left: 145%; }
+}
+@keyframes rv-aceternity-button-shine {
+  to { transform: translateX(140%) skewX(-18deg); }
+}
+
+@media (max-width: 760px) {
+  .rv-hero::before { left: 0; top: -12rem; width: 130vw; height: 36rem; }
+  .rv-system-visual:hover { transform: none; }
+  .rv-service-row:hover { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-hero::before,
+  .rv-hero h1 span,
+  .rv-system-visual:hover::after,
+  .rv-button-primary:hover::after {
+    animation: none !important;
+  }
+  .rv-system-visual,
+  .rv-service-row,
+  .rv-service-icon,
+  .rv-button-primary {
+    transition: none !important;
+  }
+}
+
+
+/* Layered cube field: a lightweight, dependency-free interpretation for the existing Vite/React site.
+   Kept inside the hero atmosphere so it never blocks content or pointer interaction. */
+.rv-cubes-grid {
+  position: absolute;
+  z-index: 0;
+  top: 5%;
+  right: -2%;
+  display: grid;
+  width: min(54vw, 720px);
+  height: min(48vw, 590px);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+  gap: clamp(5px, .9vw, 13px);
+  transform: perspective(850px) rotateX(56deg) rotateZ(-31deg) scale(.92);
+  transform-origin: 55% 45%;
+  opacity: .48;
+  mask-image: radial-gradient(ellipse at 48% 45%, #000 0%, rgba(0,0,0,.82) 42%, transparent 76%);
+}
+.rv-cubes-grid i {
+  position: relative;
+  display: block;
+  min-width: 0;
+  border: 1px solid rgba(133, 158, 255, .28);
+  border-radius: 3px;
+  background: linear-gradient(145deg, rgba(96, 124, 219, .16), rgba(12, 20, 41, .09) 70%);
+  box-shadow: inset 1px 1px 0 rgba(204, 216, 255, .12), 5px 5px 0 rgba(41, 58, 112, .18), 0 0 22px rgba(75, 111, 255, .045);
+  animation: rv-cube-breathe 7s ease-in-out infinite alternate;
+}
+.rv-cubes-grid i::before,
+.rv-cubes-grid i::after {
+  position: absolute;
+  content: "";
+  pointer-events: none;
+}
+.rv-cubes-grid i::before {
+  top: 5px;
+  right: -6px;
+  bottom: -1px;
+  width: 6px;
+  border: 1px solid rgba(111, 135, 223, .17);
+  border-left: 0;
+  background: linear-gradient(180deg, rgba(72, 91, 163, .15), rgba(11, 17, 34, .08));
+  transform: skewY(42deg);
+  transform-origin: left top;
+}
+.rv-cubes-grid i::after {
+  top: -6px;
+  right: -3px;
+  left: 3px;
+  height: 6px;
+  border: 1px solid rgba(147, 167, 255, .2);
+  border-bottom: 0;
+  background: rgba(105, 130, 231, .13);
+  transform: skewX(48deg);
+  transform-origin: bottom left;
+}
+.rv-cubes-grid i:nth-child(3n) { animation-delay: -2.2s; }
+.rv-cubes-grid i:nth-child(4n) { border-color: rgba(110, 208, 255, .32); }
+.rv-cubes-grid i:nth-child(5n) { background: linear-gradient(145deg, rgba(121, 109, 255, .2), rgba(12, 20, 41, .06) 72%); animation-delay: -4.1s; }
+.rv-cubes-grid i:nth-child(7n) { opacity: .38; }
+.rv-cubes-grid i:nth-child(11n) { box-shadow: inset 1px 1px 0 rgba(220,230,255,.2), 5px 5px 0 rgba(41,58,112,.2), 0 0 26px rgba(87,129,255,.16); }
+.rv-hero-copy, .rv-hero-art-wrap, .rv-hero-footerline { position: relative; }
+.rv-hero-copy { z-index: 2; }
+.rv-hero-art-wrap { z-index: 1; }
+.rv-hero-footerline { z-index: 2; }
+@keyframes rv-cube-breathe {
+  from { filter: brightness(.78); transform: translate3d(0, 0, 0); }
+  to { filter: brightness(1.28); transform: translate3d(0, -3px, 0); }
+}
+@media (max-width: 900px) {
+  .rv-cubes-grid { top: 9%; right: -23%; width: 92vw; height: 78vw; opacity: .34; }
+}
+@media (max-width: 600px) {
+  .rv-cubes-grid { top: 12%; right: -45%; width: 125vw; height: 105vw; gap: 5px; opacity: .25; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-cubes-grid i { animation: none !important; }
+}
+
+
+/* Editorial interaction pass: quieter surfaces, clearer hierarchy, purposeful motion. */
+.rv-nav {
+  transition: background .28s ease, border-color .28s ease, box-shadow .28s ease;
+  box-shadow: 0 10px 32px -28px rgba(0,0,0,.85);
+}
+.rv-nav-links a {
+  position: relative;
+  transition: color .2s ease, background .2s ease;
+}
+.rv-nav-links a::after {
+  position: absolute;
+  right: 11px;
+  bottom: 4px;
+  left: 11px;
+  height: 1px;
+  content: "";
+  transform: scaleX(0);
+  transform-origin: left;
+  background: linear-gradient(90deg, #8da8ff, #b5a1ff);
+  transition: transform .24s ease;
+}
+.rv-nav-links a:hover::after,
+.rv-nav-links a:focus-visible::after { transform: scaleX(1); }
+.rv-brand-mark { transition: transform .3s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease; }
+.rv-brand:hover .rv-brand-mark {
+  transform: rotate(-7deg) translateY(-1px);
+  box-shadow: 0 0 24px rgba(113,139,255,.2), inset 0 1px rgba(255,255,255,.12);
+}
+
+/* Make each section feel composed rather than a stack of generic cards. */
+.rv-section-heading .rv-eyebrow { transition: color .25s ease; }
+.rv-section-heading:hover .rv-eyebrow { color: #d3dcff; }
+.rv-service-row {
+  border-radius: 12px;
+  padding-right: 14px;
+  padding-left: 12px;
+}
+.rv-service-row-copy h3 { transition: color .24s ease, transform .24s ease; }
+.rv-service-row:hover .rv-service-row-copy h3 { color: #e5eaff; transform: translateX(2px); }
+.rv-process-step { transition: transform .3s cubic-bezier(.2,.8,.2,1); }
+.rv-process-step:hover { transform: translateY(-5px); }
+.rv-process-node {
+  transition: border-color .25s ease, background .25s ease, box-shadow .25s ease, transform .25s ease;
+}
+.rv-process-step:hover .rv-process-node {
+  transform: translateY(-2px) rotate(-3deg);
+  border-color: rgba(150,173,255,.5);
+  background: linear-gradient(145deg, rgba(108,132,255,.2), rgba(139,111,240,.12));
+  box-shadow: 0 10px 28px -17px rgba(120,137,255,.8);
+}
+
+/* Interactive examples should respond crisply without pretending to be live products. */
+.rv-transform-preview,
+.rv-demo-panel,
+.rv-service-visual,
+.rv-review-placeholder,
+.rv-contact-form {
+  transition: border-color .3s ease, box-shadow .3s ease, transform .3s cubic-bezier(.2,.8,.2,1);
+}
+.rv-transform-preview:hover,
+.rv-demo-panel:hover {
+  border-color: rgba(142,160,255,.27);
+  box-shadow: 0 26px 72px -48px rgba(80,104,225,.52), inset 0 1px rgba(255,255,255,.035);
+}
+.rv-preview-screen > .rv-mock-page { animation: rv-preview-enter .42s cubic-bezier(.2,.72,.2,1) both; }
+.rv-preview-switch button { transition: color .2s ease, background .2s ease, box-shadow .2s ease; }
+.rv-preview-switch button:hover { color: #fff; }
+.rv-audit-report { animation: rv-report-enter .38s cubic-bezier(.2,.72,.2,1) both; }
+.rv-report-item { animation: rv-report-row-enter .4s cubic-bezier(.2,.72,.2,1) both; }
+.rv-report-item:nth-child(2) { animation-delay: 55ms; }
+.rv-report-item:nth-child(3) { animation-delay: 110ms; }
+.rv-report-item:nth-child(4) { animation-delay: 165ms; }
+.rv-pipeline-stage { transition: border-color .22s ease, background .22s ease, transform .22s ease; }
+.rv-pipeline-stage:hover { transform: translateY(-2px); border-color: rgba(141,163,255,.27); }
+.rv-lead-sample { transition: border-color .2s ease, background .2s ease, transform .2s ease; }
+.rv-lead-sample:hover { transform: translateY(-1px); border-color: rgba(142,160,255,.32); }
+.rv-audit-button:active,
+.rv-reset-button:active,
+.rv-button:active { transform: translateY(0) scale(.985); }
+
+/* Keyboard and touch users get the same clear state cues as pointer users. */
+.rv-root :is(a, button, select, input, textarea, summary) { -webkit-tap-highlight-color: transparent; }
+.rv-root :is(a, button, select, input, textarea, summary):focus-visible {
+  outline: 2px solid #aabaff;
+  outline-offset: 4px;
+}
+.rv-nav-toggle:focus-visible { border-radius: 10px; }
+.rv-mobile-links > a:focus-visible { color: #fff; background: rgba(135,154,255,.08); }
+.rv-faq details { transition: border-color .25s ease, background .25s ease; }
+.rv-faq details[open] { border-color: rgba(139,162,255,.27); background: rgba(115,135,224,.035); }
+.rv-faq details > summary::marker { color: #a8b8ff; }
+.rv-contact-form:focus-within { border-color: rgba(141,164,255,.32); box-shadow: 0 22px 65px -48px rgba(91,116,233,.45); }
+.rv-form-grid input:focus,
+.rv-form-grid textarea:focus,
+.rv-form-grid select:focus { border-color: rgba(145,168,255,.6); background: rgba(17,25,45,.92); }
+.rv-mobile-links > a { transition: color .2s ease, padding-left .2s ease; }
+.rv-mobile-links > a:hover { padding-left: 5px; color: #fff; }
+
+@keyframes rv-preview-enter {
+  from { opacity: .45; transform: translateY(5px) scale(.995); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes rv-report-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes rv-report-row-enter {
+  from { opacity: 0; transform: translateX(-5px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (hover: none) {
+  .rv-process-step:hover,
+  .rv-pipeline-stage:hover,
+  .rv-lead-sample:hover { transform: none; }
+  .rv-service-row { padding-right: 0; padding-left: 0; }
+}
+@media (max-width: 760px) {
+  .rv-process-step:hover { transform: none; }
+  .rv-transform-preview:hover,
+  .rv-demo-panel:hover { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-nav, .rv-nav-links a, .rv-brand-mark, .rv-service-row-copy h3,
+  .rv-process-step, .rv-process-node, .rv-transform-preview, .rv-demo-panel,
+  .rv-preview-switch button, .rv-pipeline-stage, .rv-lead-sample,
+  .rv-faq details, .rv-contact-form, .rv-mobile-links > a {
+    transition: none !important;
+  }
+  .rv-preview-screen > .rv-mock-page,
+  .rv-audit-report, .rv-report-item { animation: none !important; }
+}
+
+
+/* Immersive, scroll-driven globe backdrop — deliberately lightweight and accessible. */
+.rv-planet-canvas {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  opacity: .78;
+  mix-blend-mode: screen;
+  contain: strict;
+}
+.rv-root > :not(.rv-planet-canvas) {
+  position: relative;
+  z-index: 1;
+}
+.rv-root {
+  background-color: transparent;
+  background-image:
+    linear-gradient(180deg, rgba(7,10,18,.18) 0%, rgba(7,10,18,.46) 42%, rgba(7,10,18,.76) 100%),
+    radial-gradient(1000px 520px at 51% -14%, rgba(38,71,149,.12), transparent 68%);
+}
+.rv-hero {
+  background: linear-gradient(180deg, rgba(7,10,18,.38), rgba(7,10,18,.08) 45%, rgba(7,10,18,.3));
+}
+.rv-section-heading,
+.rv-hero-copy,
+.rv-hero-art-wrap,
+.rv-contact-layout,
+.rv-footer-main {
+  text-shadow: 0 1px 24px rgba(0,0,0,.2);
+}
+.rv-planet-canvas + .rv-skip { position: absolute; }
+@media (max-width: 760px) {
+  .rv-planet-canvas { opacity: .52; }
+  .rv-root {
+    background-image: linear-gradient(180deg, rgba(7,10,18,.25), rgba(7,10,18,.64) 54%, rgba(7,10,18,.86));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-planet-canvas { opacity: .28; }
+}
+
+
+/* Vanta's WebGL canvas stays behind hero content; CSS atmosphere remains the fallback. */
+.rv-hero {
+  position: relative;
+  overflow: clip;
+}
+.rv-hero .vanta-canvas {
+  z-index: -1 !important;
+  pointer-events: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-hero .vanta-canvas {
+    display: none !important;
+  }
+}
+
+
+/* React Bits-inspired interaction layer, adapted to the existing REVOLTZ design system.
+   Lightweight CSS only: no extra runtime, no third-party asset dependency. */
+.rv-root {
+  --rv-spot-x: 50%;
+  --rv-spot-y: 50%;
+}
+.rv-service-row,
+.rv-process-step,
+.rv-commitment,
+.rv-review-placeholder,
+.rv-service-visual,
+.rv-mac-panel,
+.rv-mac-metrics > div {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.rv-service-row::before,
+.rv-process-step::before,
+.rv-commitment::before,
+.rv-review-placeholder::before,
+.rv-service-visual::before,
+.rv-mac-panel::before,
+.rv-mac-metrics > div::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    420px circle at var(--rv-spot-x, 50%) var(--rv-spot-y, 50%),
+    rgba(117, 143, 255, .13),
+    transparent 42%
+  );
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .28s ease;
+}
+.rv-service-row:hover::before,
+.rv-process-step:hover::before,
+.rv-commitment:hover::before,
+.rv-review-placeholder:hover::before,
+.rv-service-visual:hover::before,
+.rv-mac-panel:hover::before,
+.rv-mac-metrics > div:hover::before {
+  opacity: 1;
+}
+.rv-service-row,
+.rv-process-step,
+.rv-commitment,
+.rv-review-placeholder,
+.rv-service-visual,
+.rv-mac-panel,
+.rv-mac-metrics > div {
+  transition:
+    transform .3s cubic-bezier(.2,.72,.2,1),
+    border-color .3s ease,
+    box-shadow .3s ease;
+}
+.rv-service-row:hover,
+.rv-commitment:hover,
+.rv-mac-panel:hover,
+.rv-mac-metrics > div:hover {
+  transform: translateY(-3px);
+  border-color: rgba(139, 160, 255, .32);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .18), 0 0 28px rgba(101, 126, 255, .06);
+}
+.rv-process-step:hover { transform: translateY(-4px); }
+.rv-review-placeholder:hover,
+.rv-service-visual:hover { border-color: rgba(139, 160, 255, .3); }
+.rv-service-icon,
+.rv-process-node,
+.rv-stack-icon {
+  transition: transform .35s cubic-bezier(.2,.72,.2,1), box-shadow .35s ease;
+}
+.rv-service-row:hover .rv-service-icon,
+.rv-process-step:hover .rv-process-node {
+  transform: translateY(-2px) rotate(-5deg) scale(1.06);
+  box-shadow: 0 0 24px rgba(122, 146, 255, .17);
+}
+.rv-service-row:hover .rv-service-arrow {
+  transform: translateX(4px);
+  color: #a9b8ff;
+}
+.rv-service-arrow { transition: transform .25s ease, color .25s ease; }
+.rv-button-primary {
+  box-shadow: 0 8px 28px rgba(91, 116, 255, .2);
+}
+.rv-button-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 34px rgba(91, 116, 255, .3);
+}
+.rv-hero h1 span {
+  background: linear-gradient(105deg, #a8b8ff 0%, #c2a7ff 38%, #80dff4 72%, #a8b8ff 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: rv-gradient-flow 9s ease-in-out infinite alternate;
+}
+@keyframes rv-gradient-flow {
+  from { background-position: 0% 50%; }
+  to { background-position: 100% 50%; }
+}
+.rv-eyebrow-spark {
+  display: inline-block;
+  animation: rv-spark-turn 12s linear infinite;
+}
+@keyframes rv-spark-turn { to { transform: rotate(360deg); } }
+.rv-section-heading .rv-h2 {
+  text-wrap: balance;
+}
+.rv-hero-art-wrap {
+  transform-style: preserve-3d;
+}
+.rv-hero-art-wrap > * {
+  backface-visibility: hidden;
+}
+.rv-macbook-device {
+  transition: filter .35s ease;
+}
+.rv-macbook-device:hover {
+  filter: drop-shadow(0 44px 55px rgba(48, 68, 150, .28));
+}
+@media (hover: none), (max-width: 760px) {
+  .rv-service-row:hover,
+  .rv-commitment:hover,
+  .rv-mac-panel:hover,
+  .rv-mac-metrics > div:hover,
+  .rv-process-step:hover {
+    transform: none;
+    box-shadow: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-hero h1 span,
+  .rv-eyebrow-spark {
+    animation: none !important;
+  }
+  .rv-service-row,
+  .rv-process-step,
+  .rv-commitment,
+  .rv-review-placeholder,
+  .rv-service-visual,
+  .rv-mac-panel,
+  .rv-mac-metrics > div,
+  .rv-service-icon,
+  .rv-process-node,
+  .rv-service-arrow {
+    transition: none !important;
+    transform: none !important;
+  }
+}
