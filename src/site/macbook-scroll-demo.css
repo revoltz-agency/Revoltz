@@ -68,6 +68,9 @@
 .rv-macbook-caption { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 14px; margin-top: -24px !important; color: #77839a; font-size: 10px; text-align: center; }
 .rv-macbook-caption > span { display: inline-flex; align-items: center; gap: 7px; color: #9cafff; font-size: 8px; font-weight: 750; letter-spacing: .12em; }
 .rv-macbook-caption i { width: 5px; height: 5px; border-radius: 50%; background: #9cafff; }
+.rv-macbook-cta { display: flex; justify-content: center; margin: 22px auto 0; }
+.rv-macbook-cta .rv-button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; text-align: center; }
+@media (max-width: 480px) { .rv-macbook-cta { margin-top: 18px; } .rv-macbook-cta .rv-button { width: 100%; max-width: 340px; } }
 @media (max-width: 760px) {
   .rv-macbook-stage { min-height: 390px; padding-top: 18px; margin: 0 -12px; }
   .rv-macbook-screen-shell { padding: 7px 7px 6px; border-radius: 14px 14px 5px 5px; }
