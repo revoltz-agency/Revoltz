@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Lenis from 'lenis';
+import { gsap } from 'gsap';
 import 'lenis/dist/lenis.css';
 import {
   ArrowRight,
@@ -823,6 +824,14 @@ function SiteFooter() {
 export default function RevoltzSite() {
   useEffect(() => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const animationContext = gsap.context(() => {
+      if (!reducedMotion) {
+        const intro = gsap.timeline({ defaults: { ease: 'power3.out' } });
+        intro.fromTo('.rv-hero-art-wrap', { autoAlpha: 0, y: 24, scale: 0.985 }, { autoAlpha: 1, y: 0, scale: 1, duration: 1.05 }, 0.18);
+        intro.fromTo('.rv-hero-footerline', { autoAlpha: 0, y: 12 }, { autoAlpha: 1, y: 0, duration: 0.65 }, 0.62);
+      }
+    });
+
     if (!reducedMotion) {
       siteLenis = new Lenis({
         autoRaf: true,
@@ -843,6 +852,7 @@ export default function RevoltzSite() {
     }
 
     return () => {
+      animationContext.revert();
       siteLenis?.destroy();
       siteLenis = null;
     };
