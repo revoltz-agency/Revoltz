@@ -1,0 +1,121 @@
+/* MacBook scroll reveal adapted to the existing CSS-only REVOLTZ site. */
+.rv-macbook-section { overflow: hidden; }
+.rv-macbook-intro { max-width: 760px; margin: 0 auto 28px; text-align: center; }
+.rv-macbook-intro .rv-eyebrow { justify-content: center; }
+.rv-macbook-intro .rv-eyebrow::before { display: none; }
+.rv-macbook-intro .rv-lead { margin-right: auto !important; margin-left: auto !important; }
+.rv-macbook-stage { position: relative; display: grid; min-height: clamp(330px, 50vw, 620px); align-items: start; justify-items: center; padding: 28px 0 0; perspective: 1400px; }
+.rv-macbook-device { position: relative; z-index: 1; width: min(100%, 1020px); transform-origin: center top; will-change: transform; transition: filter .25s ease; filter: drop-shadow(0 40px 46px rgba(0,0,0,.38)); }
+.rv-macbook-screen-shell { position: relative; padding: 11px 11px 10px; border: 1px solid #4c5363; border-bottom: 0; border-radius: 22px 22px 7px 7px; background: linear-gradient(145deg,#3c4350,#151923 26%,#292f3b 80%,#555c68); box-shadow: inset 0 1px rgba(255,255,255,.3), 0 0 0 1px rgba(0,0,0,.7); }
+.rv-macbook-camera { position: absolute; z-index: 4; top: 5px; left: 50%; width: 4px; height: 4px; transform: translateX(-50%); border-radius: 50%; background: #080b12; box-shadow: 0 0 0 1px rgba(255,255,255,.08); }
+.rv-macbook-screen { display: grid; min-height: clamp(245px, 34vw, 425px); grid-template-columns: 190px minmax(0,1fr); overflow: hidden; border: 1px solid rgba(154,177,227,.17); border-radius: 10px 10px 3px 3px; background: #080d17; color: #edf2ff; font-family: Inter, ui-sans-serif, system-ui, sans-serif; text-align: left; }
+.rv-mac-sidebar { position: relative; display: flex; flex-direction: column; gap: 5px; padding: 17px 12px 58px; border-right: 1px solid rgba(159,177,218,.11); background: linear-gradient(180deg,#0e1422,#0a0f1b); }
+.rv-mac-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; font-size: 10px; letter-spacing: .08em; }
+.rv-mac-brand > span { display: grid; width: 25px; height: 25px; place-items: center; border: 1px solid rgba(142,163,255,.3); border-radius: 7px; background: rgba(108,130,255,.13); color: #aebaff; }
+.rv-mac-brand b { font-size: 10px; }
+.rv-mac-brand i { color: #9eacff; font-size: 8px; font-style: normal; }
+.rv-mac-workspace-label { margin: 0 0 5px 7px; color: #6e7b95; font-size: 7px; font-weight: 750; letter-spacing: .14em; }
+.rv-mac-nav-item { display: flex; min-height: 32px; align-items: center; gap: 8px; padding: 0 8px; border-radius: 6px; color: #9ca9c1; font-size: 9px; }
+.rv-mac-nav-item.is-active { background: rgba(116,137,255,.15); color: #dce3ff; box-shadow: inset 2px 0 #8ea3ff; }
+.rv-mac-nav-item small { margin-left: auto; color: #9fafff; font-size: 8px; }
+.rv-mac-sidebar-bottom { position: absolute; right: 10px; bottom: 13px; left: 10px; display: flex; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid rgba(159,177,218,.11); }
+.rv-mac-avatar { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 8px; background: linear-gradient(135deg,#7185ff,#a18bff); color: #fff; font-size: 10px; font-weight: 800; }
+.rv-mac-sidebar-bottom b,.rv-mac-sidebar-bottom small { display: block; }
+.rv-mac-sidebar-bottom b { font-size: 8px; font-weight: 650; }
+.rv-mac-sidebar-bottom small { margin-top: 2px; color: #7e8ba5; font-size: 7px; }
+.rv-mac-main { min-width: 0; padding: 0 20px 12px; background: radial-gradient(ellipse at 58% 0%,rgba(69,91,178,.12),transparent 48%),#0a101c; }
+.rv-mac-topbar { display: flex; min-height: 39px; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid rgba(159,177,218,.11); color: #8592aa; font-size: 8px; }
+.rv-mac-live { display: inline-flex; align-items: center; gap: 5px; color: #9caac2; font-size: 7px; font-weight: 750; letter-spacing: .08em; }
+.rv-mac-live i,.rv-mac-screen-footer i { width: 5px; height: 5px; border-radius: 50%; background: #7de0b8; box-shadow: 0 0 9px rgba(125,224,184,.55); }
+.rv-mac-welcome { display: flex; align-items: start; justify-content: space-between; gap: 14px; padding: 19px 0 14px; }
+.rv-mac-welcome > div > small { color: #8fa4ff; font-size: 7px; font-weight: 750; letter-spacing: .13em; }
+.rv-mac-welcome h3 { margin-top: 5px; color: #f2f5ff; font-size: clamp(13px,1.7vw,20px); font-weight: 650; letter-spacing: -.04em; line-height: 1.2; }
+.rv-mac-welcome p { margin-top: 5px; color: #8f9bb2; font-size: 8px; }
+.rv-mac-date { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; padding: 7px 8px; border: 1px solid rgba(157,177,226,.16); border-radius: 6px; color: #b9c4db; font-size: 7px; }
+.rv-mac-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 9px; }
+.rv-mac-metrics > div { display: grid; gap: 5px; padding: 11px; border: 1px solid rgba(157,177,226,.14); border-radius: 8px; background: linear-gradient(140deg,rgba(22,32,53,.95),rgba(13,20,34,.94)); }
+.rv-mac-metrics > div > span { color: #9ba8bf; font-size: 8px; }
+.rv-mac-metrics b { color: #f0f3ff; font-size: clamp(17px,2.1vw,25px); font-weight: 650; letter-spacing: -.05em; line-height: 1; }
+.rv-mac-metrics small { color: #7f8ca4; font-size: 7px; }
+.rv-mac-metrics small.is-positive { color: #8ee1bf; }
+.rv-mac-metrics small i { color: #7f8ca4; font-style: normal; }
+.rv-mac-lower { display: grid; grid-template-columns: 1.2fr 1fr; gap: 9px; margin-top: 10px; }
+.rv-mac-panel { min-width: 0; padding: 11px; border: 1px solid rgba(157,177,226,.14); border-radius: 8px; background: rgba(13,20,34,.82); }
+.rv-mac-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; color: #dbe2f4; font-size: 8px; }
+.rv-mac-panel-head > span { color: #7c89a2; font-size: 7px; }
+.rv-mac-panel-head > svg { color: #7888b0; }
+.rv-mac-activity-row { display: flex; min-width: 0; align-items: center; gap: 7px; padding: 7px 0; border-top: 1px solid rgba(157,177,226,.08); }
+.rv-mac-activity-icon { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; border-radius: 6px; background: rgba(92,205,161,.1); color: #8ee1bf; }
+.rv-mac-activity-icon.is-violet { background: rgba(151,126,255,.12); color: #b6a5ff; }
+.rv-mac-activity-icon.is-cyan { background: rgba(102,204,233,.1); color: #7ed8f0; }
+.rv-mac-activity-row > span:nth-child(2) { min-width: 0; }
+.rv-mac-activity-row b,.rv-mac-activity-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-mac-activity-row b { color: #cbd4e8; font-size: 7px; font-weight: 620; }
+.rv-mac-activity-row small { margin-top: 3px; color: #78869f; font-size: 6px; }
+.rv-mac-activity-row time { margin-left: auto; color: #77849c; font-size: 7px; }
+.rv-mac-next-card { display: flex; align-items: center; gap: 7px; padding: 9px 0; border-top: 1px solid rgba(157,177,226,.08); }
+.rv-mac-next-card > span { color: #8399ff; font-size: 8px; font-weight: 750; }
+.rv-mac-next-card p { min-width: 0; flex: 1; }
+.rv-mac-next-card b,.rv-mac-next-card small { display: block; }
+.rv-mac-next-card b { color: #cbd4e8; font-size: 7px; font-weight: 620; }
+.rv-mac-next-card small { margin-top: 3px; color: #78869f; font-size: 6px; }
+.rv-mac-next-card > svg { color: #8293b4; }
+.rv-mac-screen-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; color: #65738d; font-size: 6px; letter-spacing: .06em; }
+.rv-mac-screen-footer > span:first-child { display: inline-flex; align-items: center; gap: 5px; }
+.rv-macbook-base { position: relative; height: 13px; margin: 0 -3.5%; border-radius: 0 0 50% 50% / 0 0 85% 85%; background: linear-gradient(180deg,#8d929b 0%,#414753 24%,#232833 60%,#151922 100%); box-shadow: inset 0 1px rgba(255,255,255,.6),0 5px 7px rgba(0,0,0,.3); }
+.rv-macbook-notch { position: absolute; top: 0; left: 50%; width: 15%; height: 4px; transform: translateX(-50%); border-radius: 0 0 5px 5px; background: linear-gradient(180deg,#343945,#1b202a); }
+.rv-macbook-floor { position: absolute; right: 8%; bottom: 2%; left: 8%; height: 45px; border-radius: 50%; background: rgba(80,105,200,.18); filter: blur(25px); }
+.rv-macbook-caption { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 14px; margin-top: -24px !important; color: #77839a; font-size: 10px; text-align: center; }
+.rv-macbook-caption > span { display: inline-flex; align-items: center; gap: 7px; color: #9cafff; font-size: 8px; font-weight: 750; letter-spacing: .12em; }
+.rv-macbook-caption i { width: 5px; height: 5px; border-radius: 50%; background: #9cafff; }
+@media (max-width: 760px) {
+  .rv-macbook-stage { min-height: 390px; padding-top: 18px; margin: 0 -12px; }
+  .rv-macbook-screen-shell { padding: 7px 7px 6px; border-radius: 14px 14px 5px 5px; }
+  .rv-macbook-screen { grid-template-columns: 105px minmax(0,1fr); min-height: 280px; }
+  .rv-mac-sidebar { padding: 12px 6px 50px; }
+  .rv-mac-brand { gap: 5px; margin-bottom: 16px; }
+  .rv-mac-brand > span { width: 21px; height: 21px; }
+  .rv-mac-brand b { font-size: 7px; }
+  .rv-mac-brand i { font-size: 6px; }
+  .rv-mac-nav-item { min-height: 29px; gap: 5px; padding: 0 5px; font-size: 7px; }
+  .rv-mac-nav-item svg { width: 11px; height: 11px; }
+  .rv-mac-nav-item small { display: none; }
+  .rv-mac-sidebar-bottom { right: 5px; left: 5px; gap: 4px; }
+  .rv-mac-avatar { width: 19px; height: 19px; }
+  .rv-mac-sidebar-bottom b { font-size: 6px; }
+  .rv-mac-sidebar-bottom small { font-size: 5px; }
+  .rv-mac-main { padding: 0 9px 8px; }
+  .rv-mac-topbar { min-height: 30px; font-size: 6px; }
+  .rv-mac-live { font-size: 5px; }
+  .rv-mac-welcome { padding: 13px 0 9px; }
+  .rv-mac-welcome h3 { font-size: 12px; }
+  .rv-mac-welcome p { font-size: 6px; }
+  .rv-mac-date { padding: 5px; font-size: 6px; }
+  .rv-mac-metrics { gap: 4px; }
+  .rv-mac-metrics > div { gap: 4px; padding: 6px; }
+  .rv-mac-metrics > div > span { font-size: 6px; }
+  .rv-mac-metrics b { font-size: 16px; }
+  .rv-mac-metrics small { font-size: 5px; }
+  .rv-mac-lower { grid-template-columns: 1fr; gap: 5px; margin-top: 5px; }
+  .rv-mac-panel { padding: 6px; }
+  .rv-mac-panel-head { margin-bottom: 5px; font-size: 6px; }
+  .rv-mac-activity-row { gap: 4px; padding: 5px 0; }
+  .rv-mac-activity-icon { width: 17px; height: 17px; }
+  .rv-mac-activity-icon svg { width: 10px; height: 10px; }
+  .rv-mac-activity-row b,.rv-mac-next-card b { font-size: 6px; }
+  .rv-mac-activity-row small,.rv-mac-next-card small { font-size: 5px; }
+  .rv-mac-activity-row time { font-size: 5px; }
+  .rv-mac-next-card { padding: 5px 0; }
+  .rv-mac-screen-footer { font-size: 4px; }
+  .rv-macbook-caption { margin-top: -12px !important; font-size: 9px; }
+}
+@media (max-width: 390px) {
+  .rv-macbook-screen { grid-template-columns: 83px minmax(0,1fr); }
+  .rv-mac-brand b { font-size: 6px; }
+  .rv-mac-sidebar { padding-right: 4px; padding-left: 4px; }
+  .rv-mac-welcome h3 { font-size: 10px; }
+  .rv-mac-date { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-macbook-device { will-change: auto; transition: none; }
+}
