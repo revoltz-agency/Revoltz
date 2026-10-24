@@ -124,6 +124,34 @@ function PlanetBackdrop() {
       ctx.arc(0, 0, radius * 1.42, 0, Math.PI * 2);
       ctx.fill();
 
+      // Fine orbital paths and a satellite marker add depth around the planet.
+      ctx.save();
+      ctx.rotate(-0.28 + Math.sin(elapsed * 0.12) * 0.035);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, radius * 1.28, radius * 0.34, -0.12, Math.PI * 0.08, Math.PI * 1.04);
+      ctx.strokeStyle = 'rgba(140, 169, 255, 0.22)';
+      ctx.lineWidth = Math.max(0.7, radius * 0.002);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(0, 0, radius * 1.28, radius * 0.34, -0.12, Math.PI * 1.08, Math.PI * 1.92);
+      ctx.strokeStyle = 'rgba(140, 169, 255, 0.09)';
+      ctx.stroke();
+      const orbitAngle = elapsed * 0.18 + 0.75;
+      const satelliteX = Math.cos(orbitAngle) * radius * 1.28;
+      const satelliteY = Math.sin(orbitAngle) * radius * 0.34;
+      const satelliteGlow = ctx.createRadialGradient(satelliteX, satelliteY, 0, satelliteX, satelliteY, radius * 0.09);
+      satelliteGlow.addColorStop(0, 'rgba(255, 220, 157, 0.8)');
+      satelliteGlow.addColorStop(1, 'rgba(255, 220, 157, 0)');
+      ctx.fillStyle = satelliteGlow;
+      ctx.beginPath();
+      ctx.arc(satelliteX, satelliteY, radius * 0.09, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(satelliteX, satelliteY, Math.max(1.6, radius * 0.009), 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 226, 176, 0.95)';
+      ctx.fill();
+      ctx.restore();
+
       // Sphere with a shaded terminator and subtle mint/blue rim.
       const sphere = ctx.createRadialGradient(-radius * 0.38, -radius * 0.42, radius * 0.05, radius * 0.08, radius * 0.12, radius * 1.16);
       sphere.addColorStop(0, 'rgba(57, 91, 173, 0.83)');
