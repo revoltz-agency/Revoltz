@@ -1,0 +1,141 @@
+/* REVOLTZ marketing motion upgrade: progressive, lightweight, reduced-motion aware. */
+.rv-root {
+  --rv-motion-ease: cubic-bezier(.16, 1, .3, 1);
+}
+
+/* Ambient motion stays on compositor-friendly transforms and opacity. */
+.rv-hero-glow-blue { animation-duration: 16s; }
+.rv-hero-glow-violet { animation-duration: 19s; }
+.rv-hero-grid {
+  animation: rv-grid-drift 34s linear infinite;
+  transform-origin: center top;
+}
+.rv-system-visual {
+  animation: rv-panel-arrive 1s var(--rv-motion-ease) both;
+}
+.rv-flow-hub {
+  animation: rv-hub-float 7s ease-in-out infinite;
+}
+.rv-flow-node {
+  transition: transform .32s var(--rv-motion-ease), border-color .32s ease, box-shadow .32s ease;
+}
+.rv-flow-inputs .rv-flow-node:nth-child(1) { animation: rv-node-arrive .8s .12s var(--rv-motion-ease) both; }
+.rv-flow-inputs .rv-flow-node:nth-child(2) { animation: rv-node-arrive .8s .24s var(--rv-motion-ease) both; }
+.rv-flow-inputs .rv-flow-node:nth-child(3) { animation: rv-node-arrive .8s .36s var(--rv-motion-ease) both; }
+.rv-flow-outputs .rv-flow-node:nth-child(1) { animation: rv-node-arrive .8s .2s var(--rv-motion-ease) both; }
+.rv-flow-outputs .rv-flow-node:nth-child(2) { animation: rv-node-arrive .8s .32s var(--rv-motion-ease) both; }
+.rv-flow-outputs .rv-flow-node:nth-child(3) { animation: rv-node-arrive .8s .44s var(--rv-motion-ease) both; }
+
+.rv-root .rv-button {
+  overflow: hidden;
+  isolation: isolate;
+  transition: transform .28s var(--rv-motion-ease), border-color .28s ease, background .28s ease, box-shadow .28s ease;
+}
+.rv-root .rv-button::after {
+  position: absolute;
+  z-index: -1;
+  inset: -1px;
+  background: linear-gradient(112deg, transparent 18%, rgba(255,255,255,.19) 45%, transparent 70%);
+  content: "";
+  transform: translateX(-130%);
+  transition: transform .7s var(--rv-motion-ease);
+  pointer-events: none;
+}
+.rv-root .rv-button:hover::after { transform: translateX(130%); }
+.rv-root .rv-nav-links a { position: relative; }
+.rv-root .rv-nav-links a::after {
+  position: absolute;
+  right: 11px;
+  bottom: 4px;
+  left: 11px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--rv-blue), var(--rv-violet));
+  content: "";
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .28s var(--rv-motion-ease);
+}
+.rv-root .rv-nav-links a:hover::after,
+.rv-root .rv-nav-links a:focus-visible::after { transform: scaleX(1); }
+
+.rv-root .rv-section-heading .rv-eyebrow::before {
+  animation: rv-status-pulse 3.2s ease-in-out infinite;
+}
+.rv-root .rv-service-row,
+.rv-root .rv-process-step,
+.rv-root .rv-commitment,
+.rv-root .rv-review-placeholder,
+.rv-root .rv-service-visual,
+.rv-root .rv-mac-panel,
+.rv-root .rv-mac-metrics > div {
+  will-change: auto;
+}
+.rv-root .rv-service-row:hover,
+.rv-root .rv-process-step:hover,
+.rv-root .rv-commitment:hover,
+.rv-root .rv-review-placeholder:hover,
+.rv-root .rv-service-visual:hover,
+.rv-root .rv-mac-panel:hover,
+.rv-root .rv-mac-metrics > div:hover {
+  transition-duration: .22s;
+}
+.rv-root .rv-service-row:hover .rv-service-icon,
+.rv-root .rv-process-step:hover .rv-process-node {
+  animation: rv-icon-nudge .42s var(--rv-motion-ease) both;
+}
+.rv-root .rv-flow-path { stroke-dasharray: 2 10; animation-duration: 14s; }
+.rv-root .rv-visual-topline i,
+.rv-root .rv-signal-dot {
+  animation: rv-status-pulse 3s ease-in-out infinite;
+}
+.rv-root .rv-visual-topline i { animation-delay: .6s; }
+.rv-root .rv-signal-dot { animation-delay: 1.2s; }
+
+@keyframes rv-grid-drift {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 0 58px, 58px 0; }
+}
+@keyframes rv-panel-arrive {
+  from { opacity: 0; transform: translateY(16px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes rv-node-arrive {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes rv-hub-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -5px; }
+}
+@keyframes rv-status-pulse {
+  0%, 100% { opacity: .75; }
+  50% { opacity: 1; }
+}
+@keyframes rv-icon-nudge {
+  0% { rotate: 0deg; }
+  45% { rotate: -7deg; }
+  100% { rotate: -4deg; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .rv-root .rv-flow-node:hover {
+    transform: translateY(-3px);
+    border-color: rgba(151, 169, 255, .45);
+    box-shadow: 0 14px 32px rgba(0,0,0,.22), 0 0 22px rgba(113,137,255,.08);
+  }
+}
+@media (max-width: 760px) {
+  .rv-hero-grid { animation-duration: 55s; }
+  .rv-flow-hub { animation-duration: 9s; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-root *,
+  .rv-root *::before,
+  .rv-root *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  .rv-root .rv-planet-canvas { opacity: .18; }
+}
