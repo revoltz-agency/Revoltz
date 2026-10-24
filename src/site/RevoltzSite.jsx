@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Lenis from 'lenis';
 import { gsap } from 'gsap';
 import 'lenis/dist/lenis.css';
@@ -361,6 +361,7 @@ function handleSectionClick(event, id, onNavigate) {
 
 function SiteNav() {
   const [open, setOpen] = useState(false);
+  const navRef = useRef(null);
   const close = () => setOpen(false);
 
   useEffect(() => {
@@ -368,12 +369,19 @@ function SiteNav() {
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') setOpen(false);
     };
+    const handlePointerDown = (event) => {
+      if (navRef.current && !navRef.current.contains(event.target)) setOpen(false);
+    };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
   }, [open]);
 
   return (
-    <header className="rv-nav">
+    <header className="rv-nav" ref={navRef}>
       <div className="rv-nav-inner">
         <a
           className="rv-brand"
