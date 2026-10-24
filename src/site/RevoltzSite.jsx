@@ -500,8 +500,51 @@ function SystemMap() {
 }
 
 function Hero() {
+  const vantaRef = React.useRef(null);
+
+  useEffect(() => {
+    const host = vantaRef.current;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!host || reducedMotion) return undefined;
+
+    let effectInstance;
+    let cancelled = false;
+    Promise.all([
+      import('vanta/dist/vanta.globe.min'),
+      import('three'),
+    ]).then(([vantaModule, threeModule]) => {
+      if (cancelled || !host) return;
+      const initGlobe = vantaModule.default || vantaModule;
+      effectInstance = initGlobe({
+        el: host,
+        THREE: threeModule,
+        mouseControls: true,
+        touchControls: true,
+        gyroControls: false,
+        minHeight: 240,
+        minWidth: 240,
+        scale: 0.85,
+        scaleMobile: 0.7,
+        color: 0x667dff,
+        color2: 0x9c6bff,
+        backgroundColor: 0x070914,
+        size: 0.75,
+        points: 8,
+        maxDistance: 22,
+        spacing: 18,
+      });
+    }).catch(() => {
+      // Keep the CSS atmosphere as a graceful fallback if WebGL is unavailable.
+    });
+
+    return () => {
+      cancelled = true;
+      effectInstance?.destroy();
+    };
+  }, []);
+
   return (
-    <section className="rv-hero" id="top">
+    <section className="rv-hero" id="top" ref={vantaRef}>
       <div className="rv-hero-atmosphere" aria-hidden="true"><span className="rv-hero-grid" /><span className="rv-hero-glow rv-hero-glow-blue" /><span className="rv-hero-glow rv-hero-glow-violet" /><span className="rv-cubes-grid"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></span></div>
       <div className="rv-shell rv-hero-layout">
         <div className="rv-hero-copy">
