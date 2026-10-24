@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import './macbook-scroll-demo.css';
 import { ArrowUpRight, BarChart3, CheckCircle2, CircleHelp, Clock3, Command, LayoutDashboard, Search, Sparkles, Workflow } from 'lucide-react';
 
 /**
