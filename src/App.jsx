@@ -35,6 +35,7 @@ import CashFlowPlanner from './components/CashFlowPlanner.jsx';
 import ClientActivityLog from './components/ClientActivityLog.jsx';
 import PageErrorBoundary from './components/PageErrorBoundary.jsx';
 import BusinessManagement, { BusinessSetup } from './components/BusinessManagement.jsx';
+import InteriorDesignStudio from './components/InteriorDesignStudio.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedGeminiLeadPlaceholder, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
 import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
 import { OPENROUTER_DEFAULT_MODEL, OPENROUTER_KEY_STORAGE, searchOpenRouterLeads, testOpenRouterApiKey } from './lib/openrouterLeadFinder.js';
@@ -59,6 +60,7 @@ const BUSINESS_PROFILE_KEY = 'agencyos:business-profile:v1';
 const EXAMPLE_SEARCHES = ['Restaurants in Pune', 'Dental clinics in Pune', 'CA firms in Pune', 'Gyms in Pune', 'Salons in Pune', 'Real estate agencies in Pune', 'Cloud kitchens in Pune'];
 const NAV_ITEMS = [
   { label: 'Business Management', icon: Building2 },
+  { label: 'Interior Design Studio', icon: Building2 },
   { label: 'Growth Dashboard', icon: LayoutDashboard },
   { label: 'Find Leads', icon: Search },
   { label: 'AI Business Auditor', icon: ClipboardList },
@@ -823,6 +825,7 @@ function AgencyOSApp() {
         <main className="main-content">
 
           {activePage === 'Business Management' && <BusinessManagement profile={businessProfile} onUpdateProfile={setBusinessProfile} onNavigate={setActivePage} />}
+          {activePage === 'Interior Design Studio' && <InteriorDesignStudio />}
           {activePage === 'Growth Dashboard' && <DashboardPage leads={leads} getCrm={getCrm} onNavigate={setActivePage} onOpenLead={openLead} onExport={() => exportCsv(leads)} />}
           {activePage === 'AI Business Auditor' && <BusinessAuditor apiKey={geminiApiKey} />}
           {activePage === 'Sales Engine' && <SalesEngine leads={leads} getCrm={getCrm} apiKey={geminiApiKey} />}
