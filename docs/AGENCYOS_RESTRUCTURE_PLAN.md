@@ -1,47 +1,54 @@
-# AgencyOS Restructure: DineTap Sales & Customer Operations
+# AgencyOS Restructure: Real Estate CRM & Operations
+
+## Product direction
+AgencyOS is being redeveloped as a focused CRM and operations workspace for real estate agencies, brokers, and property consultants in India. It is not a universal business-management system.
 
 ## Product boundary
-AgencyOS is Revoltz's internal system for acquiring and managing DineTap customers. DineTap remains a separate, untouched product. AgencyOS may store sales/account-management notes and milestone checklists only; it must not connect to DineTap APIs, database, hosting, menus, tables, orders, payments, or production configuration.
+- Work only in the `revoltz-agency/Revoltz` repository and AgencyOS.
+- Do not modify, connect to, or deploy anything in DineTap or Revoltz Restaurant OS.
+- Preserve existing user data. Do not silently repurpose or delete old records while changing the product.
+- Use sample property data only when clearly labelled as fictional.
+- No automatic messages, calls, bookings, payments, or paid-provider requests by default.
 
-## Target customer lifecycle
-1. **Prospect** — restaurant lead sourced from manual entry, CSV, or explicitly selected research provider.
-2. **Qualified** — contact and location verified, decision-maker identified, fit and next action recorded.
-3. **Contacted** — human-reviewed outreach draft sent manually; record contact date and outcome.
-4. **Demo scheduled** — date, attendees, discovery notes, and demo outcome.
-5. **Pilot/trial** — agreed scope, start/end dates, success criteria, and next review.
-6. **Proposal/negotiation** — package, setup fee, recurring fee, terms, and decision date.
-7. **Won / active customer** — only after explicit confirmation; record agreement/payment status and onboarding checklist.
-8. **At risk / renewal / former customer** — support issues, feedback, renewal date, and close-out reason.
+## Core workflows
+1. **Lead inbox** — buyer, seller, landlord, tenant, investor, and referral enquiries; source, contact details, budget, preferred locations, property type, intent, urgency, assigned agent, consent/communication preferences, and next follow-up.
+2. **Property inventory** — sale/rent, residential/commercial/land/plot, listing status, asking price or rent, location, beds/baths/area, furnishing, amenities, owner/mandate status, photos/documents, and listing verification date.
+3. **Lead-to-property matching** — shortlist listings against a lead's budget, location, property type, and requirements; explain matches without inventing availability.
+4. **Sales pipeline** — New enquiry → Contacted → Qualified → Requirement captured → Properties shared → Site visit scheduled → Site visit completed → Negotiation → Token/booking → Agreement/closed; Lost/on hold with reason. Support rental-specific stages without forcing sale-only steps.
+5. **Site visits & follow-ups** — appointment date/time, property, client, assigned agent, visit outcome, notes, next action, and overdue reminders.
+6. **Client and transaction workspace** — client requirements, linked properties, offer history, deal status, important dates, document checklist, and payment/commission tracking. Never present this as legal, tax, or payment verification.
+7. **Team operations** — agent assignments, activity history, handover notes, and transparent performance summaries.
+8. **Reports** — lead conversion, source effectiveness, listing ageing, visits-to-bookings, inventory status, pending follow-ups, closed value, and commission estimates.
 
-## Implementation phases
-### Phase 0 — Safety baseline
-- Map route/component ownership, shared localStorage keys, API routes, DB schema, tests, deployment triggers, and dependencies.
-- Record which data is browser-only versus server-persisted.
-- Add or verify export/restore and core smoke tests before any storage migration.
-- Never delete or rewrite customer data during cleanup. Keep changes on a branch and reviewable PR.
+## Delivery phases
+### Phase 0 — Safety and discovery
+- Map routes/components, shared storage keys, API routes, DB schema, tests, dependencies, and deployment triggers.
+- Identify browser-only versus server-persisted data and test backup/restore before storage changes.
+- Keep all work on a reviewable branch and PR; no production deployment without approval.
 
-### Phase 1 — Sales workflow
-- Extend the deal pipeline with restaurant-focused stages.
-- Capture next follow-up, contact/demo notes, pilot dates, lost reason, and expected one-time/recurring value.
-- Add a due/overdue follow-up view and useful pipeline summaries.
-- Outreach remains a draft; never send messages automatically.
+### Phase 1 — Real-estate product foundation
+- Replace broad/general-agency positioning, sample searches, demo copy, and sales service choices with real-estate language.
+- Define explicit lead, property, visit, and deal concepts while preserving existing records and exportability.
+- Use clearly fictional property/lead records for previews; never present them as live inventory.
 
-### Phase 2 — Customer accounts
-- Separate prospects from won/active customers without duplicating records.
-- Track package, agreed price, setup/recurring billing, start/renewal dates, agreement/payment status, and primary contact.
-- Make onboarding checklist service-aware: discovery, required menu/table data received, QR material prepared, staff training, pilot review, handover, and sign-off.
-- These are operational tracking tasks only, not DineTap application changes.
+### Phase 2 — Daily-use CRM
+- Build lead qualification, buyer/seller/rental requirements, assignments, follow-up queues, and sale/rental pipeline.
+- Add property inventory and a safe, explainable lead-to-property shortlist.
+- Link site visits to both a lead and a property; record outcomes and next actions.
 
-### Phase 3 — Reliability and cleanup
-- Validate localStorage schemas and malformed-data recovery.
-- Verify backup/restore and export preserve existing records.
-- Assess server-side persistence and concurrent-write behavior before relying on multi-device or team workflows.
-- Remove a file/dependency only after repository-wide reference analysis and passing tests.
-- Keep Google Maps scraping quarantined; provider-cost features remain opt-in.
+### Phase 3 — Transactions and team reporting
+- Add deal timeline, document checklist, booking/closing milestones, commission estimates, and reports.
+- Verify access controls and persistence before promising multi-user collaboration.
+
+### Phase 4 — Reliability and release
+- Validate stored-data schemas and malformed-data recovery.
+- Verify export/restore, migration safety, and core smoke tests.
+- Assess server-side persistence and concurrent-write behavior before multi-device/team rollout.
+- Remove files/dependencies only after repository-wide reference analysis and passing tests.
 
 ## Release gates
-- Existing records remain readable and exportable.
+- Existing records remain readable/exportable; migrations are explicit and reversible.
 - `npm test` and `npm run build` pass.
-- Core flows are checked in preview before any production rollout.
+- Core flows are tested in preview before production rollout.
 - No DineTap repository, database, service, deployment, or configuration is modified.
-- No automatic outreach, payment collection, or paid provider calls are introduced by default.
+- No automatic outreach or paid provider calls are introduced by default.
