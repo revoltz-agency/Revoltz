@@ -231,7 +231,7 @@ function safeHttpUrl(value) {
 function getDefaultCrm(lead) { return cleanCrmRecord({ ...DEFAULT_CRM, ...(lead?.initialCRM || {}) }); }
 
 function AgencyOSApp() {
-  const [activePage, setActivePage] = useState('Growth Dashboard');
+  const [activePage, setActivePage] = useState('Interior Design Studio');
   const [businessProfile, setBusinessProfile] = useState(() => {
     try { const value = JSON.parse(window.localStorage.getItem(BUSINESS_PROFILE_KEY) || 'null'); return value && typeof value === 'object' ? value : null; } catch { return null; }
   });
@@ -895,7 +895,7 @@ function Sidebar({ activePage, onNavigate, open, profile }) {
     return <button type="button" key={item.label} onClick={() => onNavigate(item.label)} className={`nav-item ${activePage === item.label ? 'nav-item-active' : ''}`} style={{width:'100%'}}><Icon size={18} strokeWidth={1.8} /><span>{item.label}</span>{item.label === 'Leads' && <span className="nav-count">•</span>}</button>;
   };
   return <aside className={`sidebar ${open ? 'sidebar-open' : ''}`}>
-    <div className="brand-lockup"><div className="brand-mark"><Sparkles size={20} strokeWidth={1.8} /></div><div><span className="brand-name">Agency<span>OS</span></span><span className="brand-caption">UNIVERSAL BUSINESS SYSTEM</span></div></div>
+    <div className="brand-lockup"><div className="brand-mark"><Sparkles size={20} strokeWidth={1.8} /></div><div><span className="brand-name">Agency<span>OS</span></span><span className="brand-caption">INTERIOR DESIGN OPERATIONS</span></div></div>
     <div className="workspace-switcher"><div className="workspace-monogram">{initials(profile?.name || 'Business')}</div><div className="workspace-label"><strong>{profile?.name || 'Business workspace'}</strong><span>{profile?.industry || 'Business management'}</span></div><ChevronDown size={15} /></div>
     <div className="nav-section-label">WORKSPACE</div>
     <nav className="main-nav" aria-label="Main navigation">
