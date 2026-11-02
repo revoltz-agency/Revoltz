@@ -926,6 +926,12 @@ app.delete('/api/audit/requests/:id', async (req, res) => {
   }
 });
 
+// Preview-only convenience: open the software at the root of the isolated preview URL.
+// This is opt-in via Render env var and has no effect on production by default.
+if (process.env.AGENCYOS_PREVIEW_DEFAULT === 'true') {
+  app.get('/', (_req, res) => res.redirect(302, '/agencyos'));
+}
+
 app.use('/api', (_req, res) => res.status(404).json({ error: 'API route not found.' }));
 
 if (process.env.NODE_ENV === 'production') {
