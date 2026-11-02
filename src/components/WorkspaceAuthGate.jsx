@@ -4,7 +4,7 @@ import App from '../App.jsx';
 import { WORKSPACE_STORAGE_KEYS } from '../lib/workspaceStorageKeys.js';
 
 const SESSION_COOKIE = 'agencyos_workspace_csrf';
-const VERCEL_PREVIEW = import.meta.env.VERCEL_ENV === 'preview';
+const VERCEL_PREVIEW = import.meta.env.VERCEL_ENV === 'preview' || (typeof window !== 'undefined' && window.location.hostname === 'agencyos-interior-design-preview.onrender.com');
 const SYNC_EVENT = 'agencyos:workspace-sync';
 
 function reportSyncStatus(status) {
