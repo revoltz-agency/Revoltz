@@ -35,6 +35,7 @@ import CashFlowPlanner from './components/CashFlowPlanner.jsx';
 import ClientActivityLog from './components/ClientActivityLog.jsx';
 import PageErrorBoundary from './components/PageErrorBoundary.jsx';
 import BusinessManagement, { BusinessSetup } from './components/BusinessManagement.jsx';
+import InteriorDesignStudio from './components/InteriorDesignStudio.jsx';
 import { dedupeLeads, isFoodBusiness, recommendService, savedGeminiLeadPlaceholder, savedLeadPlaceholder, whyThisLead } from './lib/leadUtils.js';
 import { GEMINI_KEY_STORAGE, searchGeminiLeads, testGeminiApiKey } from './lib/geminiLeadFinder.js';
 import { OPENROUTER_DEFAULT_MODEL, OPENROUTER_KEY_STORAGE, searchOpenRouterLeads, testOpenRouterApiKey } from './lib/openrouterLeadFinder.js';
@@ -59,6 +60,7 @@ const BUSINESS_PROFILE_KEY = 'agencyos:business-profile:v1';
 const EXAMPLE_SEARCHES = ['Restaurants in Pune', 'Dental clinics in Pune', 'CA firms in Pune', 'Gyms in Pune', 'Salons in Pune', 'Real estate agencies in Pune', 'Cloud kitchens in Pune'];
 const NAV_ITEMS = [
   { label: 'Business Management', icon: Building2 },
+  { label: 'Interior Design Studio', icon: Building2 },
   { label: 'Growth Dashboard', icon: LayoutDashboard },
   { label: 'Find Leads', icon: Search },
   { label: 'AI Business Auditor', icon: ClipboardList },
@@ -229,7 +231,7 @@ function safeHttpUrl(value) {
 function getDefaultCrm(lead) { return cleanCrmRecord({ ...DEFAULT_CRM, ...(lead?.initialCRM || {}) }); }
 
 function AgencyOSApp() {
-  const [activePage, setActivePage] = useState('Growth Dashboard');
+  const [activePage, setActivePage] = useState('Interior Design Studio');
   const [businessProfile, setBusinessProfile] = useState(() => {
     try { const value = JSON.parse(window.localStorage.getItem(BUSINESS_PROFILE_KEY) || 'null'); return value && typeof value === 'object' ? value : null; } catch { return null; }
   });
@@ -823,6 +825,7 @@ function AgencyOSApp() {
         <main className="main-content">
 
           {activePage === 'Business Management' && <BusinessManagement profile={businessProfile} onUpdateProfile={setBusinessProfile} onNavigate={setActivePage} />}
+          {activePage === 'Interior Design Studio' && <InteriorDesignStudio />}
           {activePage === 'Growth Dashboard' && <DashboardPage leads={leads} getCrm={getCrm} onNavigate={setActivePage} onOpenLead={openLead} onExport={() => exportCsv(leads)} />}
           {activePage === 'AI Business Auditor' && <BusinessAuditor apiKey={geminiApiKey} />}
           {activePage === 'Sales Engine' && <SalesEngine leads={leads} getCrm={getCrm} apiKey={geminiApiKey} />}
@@ -892,7 +895,7 @@ function Sidebar({ activePage, onNavigate, open, profile }) {
     return <button type="button" key={item.label} onClick={() => onNavigate(item.label)} className={`nav-item ${activePage === item.label ? 'nav-item-active' : ''}`} style={{width:'100%'}}><Icon size={18} strokeWidth={1.8} /><span>{item.label}</span>{item.label === 'Leads' && <span className="nav-count">•</span>}</button>;
   };
   return <aside className={`sidebar ${open ? 'sidebar-open' : ''}`}>
-    <div className="brand-lockup"><div className="brand-mark"><Sparkles size={20} strokeWidth={1.8} /></div><div><span className="brand-name">Agency<span>OS</span></span><span className="brand-caption">UNIVERSAL BUSINESS SYSTEM</span></div></div>
+    <div className="brand-lockup"><div className="brand-mark"><Sparkles size={20} strokeWidth={1.8} /></div><div><span className="brand-name">Agency<span>OS</span></span><span className="brand-caption">INTERIOR DESIGN OPERATIONS</span></div></div>
     <div className="workspace-switcher"><div className="workspace-monogram">{initials(profile?.name || 'Business')}</div><div className="workspace-label"><strong>{profile?.name || 'Business workspace'}</strong><span>{profile?.industry || 'Business management'}</span></div><ChevronDown size={15} /></div>
     <div className="nav-section-label">WORKSPACE</div>
     <nav className="main-nav" aria-label="Main navigation">
