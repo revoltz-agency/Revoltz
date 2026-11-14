@@ -49,7 +49,7 @@ jobs:
         # keep the default '/' base from vite.config.js.
         # The Vite config swaps index.html to the marketing-only React entry.
         # No AgencyOS code or /agencyos route is part of this Pages artifact.
-        run: VITE_PUBLIC_SITE_ONLY=true npm run build -- --base=/Revoltz/
+        run: VITE_PUBLIC_SITE_ONLY=true npm run build -- --base=/
 
       - name: Disable Jekyll processing
         run: touch dist/.nojekyll
